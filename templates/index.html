@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shift Roster Generator</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-primary-gradient">
+        <div class="container">
+            <span class="navbar-brand fw-bold">
+                <i class="bi bi-calendar3"></i> Shift Roster Generator
+            </span>
+        </div>
+    </nav>
+
+    <main class="container my-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            <i class="bi bi-{{ 'check-circle' if category == 'success' else 'exclamation-triangle' }}"></i>
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <div class="row g-4">
+
+            <!-- Add Employee Form -->
+            <div class="col-lg-5">
+                <div class="card shadow-sm border-0 animate-in">
+                    <div class="card-header bg-white border-bottom">
+                        <h5 class="mb-0"><i class="bi bi-person-plus"></i> Add Employee</h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ url_for('add_employee') }}" id="addEmployeeForm">
+                            <div class="mb-3">
+                                <label for="name" class="form-label fw-semibold">Employee Name</label>
+                                <input type="text" class="form-control" id="name" name="name"
+                                       placeholder="Enter full name" required autocomplete="off">
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="content_type" class="form-label fw-semibold">Content Type</label>
+                                <select class="form-select" id="content_type" name="content_type" required>
+                                    <option value="" disabled selected>Select type...</option>
+                                    {% for ct in content_types %}
+                                    <option value="{{ ct }}">{{ ct }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">
+                                    Working Days
+                                    <span class="text-muted fw-normal" id="dayCount">(0 selected)</span>
+                                </label>
+                                <div class="day-checkboxes">
+                                    {% for day in day_names %}
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input day-check" type="checkbox"
+                                               name="working_days" value="{{ day }}" id="day_{{ day }}">
+                                        <label class="form-check-label" for="day_{{ day }}">
+                                            {{ day[:3] }}
+                                        </label>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                <div class="form-text">Select the days this employee works.</div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="bi bi-plus-circle"></i> Add Employee
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Shift Info Card -->
+                <div class="card shadow-sm border-0 mt-3 animate-in">
+                    <div class="card-header bg-white border-bottom">
+                        <h6 class="mb-0"><i class="bi bi-info-circle"></i> Shift Information</h6>
+                    </div>
+                    <div class="card-body p-2">
+                        <table class="table table-sm mb-0 shift-info-table">
+                            <tbody>
+                                <tr>
+                                    <td><span class="badge bg-shift1">Shift 1</span></td>
+                                    <td>6:00 AM &ndash; 2:00 PM IST</td>
+                                    <td class="text-end"><span class="badge bg-secondary rounded-pill">~20% Lean</span></td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-shift2">Shift 2</span></td>
+                                    <td>1:00 PM &ndash; 10:00 PM IST</td>
+                                    <td class="text-end"><span class="badge bg-success rounded-pill">~40% Strong</span></td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-shift3">Shift 3</span></td>
+                                    <td>9:00 PM &ndash; 6:00 AM IST</td>
+                                    <td class="text-end"><span class="badge bg-success rounded-pill">~40% Strong</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Employee List & Generate -->
+            <div class="col-lg-7">
+                <div class="card shadow-sm border-0 animate-in">
+                    <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-people"></i> Employees
+                            <span class="badge bg-primary rounded-pill ms-2">{{ employees|length }}</span>
+                        </h5>
+                        {% if employees|length > 0 %}
+                        <form method="POST" action="{{ url_for('clear_all') }}" class="d-inline">
+                            <button type="submit" class="btn btn-outline-danger btn-sm"
+                                    onclick="return confirm('Clear all employees?')">
+                                <i class="bi bi-trash"></i> Clear All
+                            </button>
+                        </form>
+                        {% endif %}
+                    </div>
+                    <div class="card-body p-0">
+                        {% if employees|length == 0 %}
+                        <div class="empty-state text-center">
+                            <i class="bi bi-person-plus display-3 d-block mb-3"></i>
+                            <p class="mb-1 fw-medium">No employees added yet</p>
+                            <p class="small text-muted">Use the form on the left to add employees to the roster.</p>
+                        </div>
+                        {% else %}
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0 align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width:40px">#</th>
+                                        <th>Name</th>
+                                        <th>Content Type</th>
+                                        <th>Working Days</th>
+                                        <th style="width:48px"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for emp in employees %}
+                                    <tr>
+                                        <td class="text-muted">{{ loop.index }}</td>
+                                        <td class="fw-semibold">{{ emp.name }}</td>
+                                        <td>
+                                            {% if emp.content_type == 'Content & Email' %}
+                                            <span class="badge bg-info text-dark">{{ emp.content_type }}</span>
+                                            {% else %}
+                                            <span class="badge bg-warning text-dark">{{ emp.content_type }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% for d in emp.working_days %}
+                                            <span class="badge bg-light text-dark border">{{ d[:3] }}</span>
+                                            {% endfor %}
+                                        </td>
+                                        <td>
+                                            <form method="POST" action="{{ url_for('remove_employee', idx=loop.index0) }}"
+                                                  class="d-inline">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                        title="Remove employee">
+                                                    <i class="bi bi-x-lg"></i>
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Generate Roster -->
+                {% if employees|length >= 2 %}
+                <div class="card shadow-sm border-0 mt-3 generate-card animate-in">
+                    <div class="card-body">
+                        <form method="POST" action="{{ url_for('generate') }}">
+                            <div class="row align-items-end g-3">
+                                <div class="col-md-4">
+                                    <label for="month" class="form-label fw-semibold">Month</label>
+                                    <select class="form-select" name="month" id="month">
+                                        {% for m in range(1, 13) %}
+                                        <option value="{{ m }}" {% if m == now_month %}selected{% endif %}>
+                                            {{ month_names[m - 1] }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="year" class="form-label fw-semibold">Year</label>
+                                    <select class="form-select" name="year" id="year">
+                                        {% for y in range(now_year, now_year + 3) %}
+                                        <option value="{{ y }}" {% if y == now_year %}selected{% endif %}>
+                                            {{ y }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <button type="submit" class="btn btn-success w-100 btn-lg">
+                                        <i class="bi bi-calendar-check"></i> Generate
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="footer text-center">
+        <div class="container">
+            Shift Roster Generator &middot; Designed for efficient team scheduling
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    (function () {
+        const checks = document.querySelectorAll('.day-check');
+        const counter = document.getElementById('dayCount');
+
+        function updateCount() {
+            const n = document.querySelectorAll('.day-check:checked').length;
+            counter.textContent = '(' + n + ' selected)';
+            counter.style.color = (n === 5) ? '#27ae60' : (n > 5) ? '#dc3545' : '';
+        }
+
+        checks.forEach(function (cb) { cb.addEventListener('change', updateCount); });
+    })();
+    </script>
+</body>
+</html>

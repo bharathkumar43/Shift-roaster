@@ -1,0 +1,506 @@
+:root {
+    --shift1-color: #d5f5e3;
+    --shift2-color: #d6eaf8;
+    --shift3-color: #f9e79f;
+    --primary-dark: #2c3e50;
+    --surface: #ffffff;
+    --bg: #f0f2f5;
+    --text-primary: #1a1a2e;
+    --text-secondary: #6c757d;
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+    --radius: 12px;
+    --radius-sm: 8px;
+    --transition: 0.2s ease;
+}
+
+/* ── Base ─────────────────────────────────────────────── */
+
+body {
+    background-color: var(--bg);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    color: var(--text-primary);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex: 1;
+}
+
+/* ── Navbar ───────────────────────────────────────────── */
+
+.bg-primary-gradient {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+}
+
+.navbar {
+    padding: 0.75rem 0;
+}
+
+.navbar-brand {
+    font-size: 1.15rem;
+    letter-spacing: 0.3px;
+}
+
+.text-primary-dark {
+    color: var(--primary-dark);
+}
+
+/* ── Cards ────────────────────────────────────────────── */
+
+.card {
+    border-radius: var(--radius);
+    transition: box-shadow var(--transition), transform var(--transition);
+    overflow: hidden;
+}
+
+.card.shadow-sm {
+    box-shadow: var(--shadow-sm);
+}
+
+.card:hover {
+    box-shadow: var(--shadow-md);
+}
+
+.card-header {
+    border-radius: var(--radius) var(--radius) 0 0 !important;
+    padding: 0.875rem 1.25rem;
+}
+
+.card-header h5,
+.card-header h6 {
+    font-weight: 600;
+}
+
+.card-body {
+    padding: 1.25rem;
+}
+
+/* ── Shift badge colors ──────────────────────────────── */
+
+.bg-shift1 {
+    background-color: #27ae60 !important;
+    color: #fff !important;
+}
+
+.bg-shift2 {
+    background-color: #2980b9 !important;
+    color: #fff !important;
+}
+
+.bg-shift3 {
+    background-color: #e67e22 !important;
+    color: #fff !important;
+}
+
+/* ── Shift summary cards ─────────────────────────────── */
+
+.shift1-card {
+    border-left: 5px solid #27ae60 !important;
+    background: linear-gradient(135deg, #fff 80%, rgba(39, 174, 96, 0.06));
+}
+
+.shift2-card {
+    border-left: 5px solid #2980b9 !important;
+    background: linear-gradient(135deg, #fff 80%, rgba(41, 128, 185, 0.06));
+}
+
+.shift3-card {
+    border-left: 5px solid #e67e22 !important;
+    background: linear-gradient(135deg, #fff 80%, rgba(230, 126, 34, 0.06));
+}
+
+/* ── Roster table cells ──────────────────────────────── */
+
+.shift1-cell {
+    background-color: rgba(213, 245, 227, 0.25);
+}
+
+.shift2-cell {
+    background-color: rgba(214, 234, 248, 0.25);
+}
+
+.shift3-cell {
+    background-color: rgba(249, 231, 159, 0.25);
+}
+
+/* ── Roster employee items ───────────────────────────── */
+
+.roster-emp {
+    padding: 4px 8px;
+    margin: 2px 0;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 0.85rem;
+    transition: background-color var(--transition);
+}
+
+.roster-emp:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.badge-sm {
+    font-size: 0.6rem;
+    padding: 2px 6px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+/* ── Day checkboxes ──────────────────────────────────── */
+
+.day-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.day-checkboxes .form-check {
+    background: var(--surface);
+    border: 1.5px solid #dee2e6;
+    border-radius: var(--radius-sm);
+    padding: 8px 14px 8px 34px;
+    margin: 0;
+    transition: all var(--transition);
+    cursor: pointer;
+    user-select: none;
+}
+
+.day-checkboxes .form-check:hover {
+    border-color: #adb5bd;
+    background: #f8f9fa;
+}
+
+.day-checkboxes .form-check:has(input:checked) {
+    background: #dbeafe;
+    border-color: #2980b9;
+    box-shadow: 0 0 0 1px rgba(41, 128, 185, 0.15);
+}
+
+.day-checkboxes .form-check-label {
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 0.875rem;
+}
+
+/* ── Form controls ───────────────────────────────────── */
+
+.form-control,
+.form-select {
+    border-radius: var(--radius-sm);
+    border: 1.5px solid #dee2e6;
+    padding: 0.5rem 0.85rem;
+    transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: #0f3460;
+    box-shadow: 0 0 0 3px rgba(15, 52, 96, 0.1);
+}
+
+.form-label {
+    font-size: 0.875rem;
+    margin-bottom: 0.35rem;
+    color: var(--text-primary);
+}
+
+/* ── Buttons ─────────────────────────────────────────── */
+
+.btn {
+    border-radius: var(--radius-sm);
+    font-weight: 500;
+    transition: all var(--transition);
+    letter-spacing: 0.2px;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #0f3460 0%, #16213e 100%);
+    border-color: #0f3460;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #16213e 0%, #1a1a2e 100%);
+    border-color: #16213e;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(15, 52, 96, 0.3);
+}
+
+.btn-success {
+    background: linear-gradient(135deg, #27ae60 0%, #219a52 100%);
+    border-color: #27ae60;
+}
+
+.btn-success:hover {
+    background: linear-gradient(135deg, #219a52 0%, #1e8449 100%);
+    border-color: #219a52;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(39, 174, 96, 0.3);
+}
+
+.btn-outline-danger:hover {
+    transform: translateY(-1px);
+}
+
+.btn-outline-light:hover {
+    transform: translateY(-1px);
+}
+
+.btn-lg {
+    padding: 0.65rem 1.5rem;
+}
+
+/* ── Sticky first column for roster table ────────────── */
+
+.roster-table .sticky-col {
+    position: sticky;
+    left: 0;
+    background-color: #fff;
+    z-index: 1;
+    min-width: 150px;
+}
+
+.roster-table thead .sticky-col {
+    z-index: 2;
+}
+
+/* ── Table tweaks ────────────────────────────────────── */
+
+.roster-table th,
+.roster-table td {
+    vertical-align: middle;
+}
+
+.roster-table td {
+    min-width: 200px;
+}
+
+.roster-table .sticky-col {
+    min-width: 170px;
+    max-width: 170px;
+}
+
+.roster-table thead th {
+    font-weight: 600;
+    font-size: 0.85rem;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+}
+
+/* ── Employee table ──────────────────────────────────── */
+
+.table-hover tbody tr {
+    transition: background-color var(--transition);
+}
+
+.table thead th {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+/* ── Badges ──────────────────────────────────────────── */
+
+.badge {
+    font-weight: 500;
+    letter-spacing: 0.2px;
+}
+
+.badge.bg-light {
+    color: var(--text-primary) !important;
+}
+
+/* ── Empty state ─────────────────────────────────────── */
+
+.empty-state {
+    padding: 3rem 1rem;
+}
+
+.empty-state i {
+    opacity: 0.25;
+}
+
+.empty-state p {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+/* ── Alerts ──────────────────────────────────────────── */
+
+.alert {
+    border-radius: var(--radius);
+    border: none;
+}
+
+.alert-warning {
+    background-color: #fff8e1;
+    color: #7c6200;
+}
+
+.alert-warning .alert-heading {
+    color: #5c4900;
+}
+
+/* ── Footer ──────────────────────────────────────────── */
+
+.footer {
+    background-color: var(--surface);
+    border-top: 1px solid #e9ecef;
+    padding: 1rem 0;
+    margin-top: 2rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+/* ── Shift info table ────────────────────────────────── */
+
+.shift-info-table td {
+    padding: 0.5rem 0.75rem;
+    vertical-align: middle;
+}
+
+/* ── Page title ──────────────────────────────────────── */
+
+.page-title {
+    position: relative;
+    display: inline-block;
+}
+
+.page-title::after {
+    content: '';
+    position: absolute;
+    bottom: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 3px;
+    background: linear-gradient(90deg, #27ae60, #2980b9, #e67e22);
+    border-radius: 3px;
+}
+
+/* ── No-coverage badge ───────────────────────────────── */
+
+.no-coverage {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #dc3545;
+    font-size: 0.8rem;
+    padding: 4px 8px;
+    background: rgba(220, 53, 69, 0.08);
+    border-radius: 4px;
+}
+
+/* ── Weekend row highlight ───────────────────────────── */
+
+.roster-table tr.weekend-row {
+    background-color: rgba(0, 0, 0, 0.02);
+}
+
+.roster-table tr.weekend-row .sticky-col {
+    background-color: #fafafa;
+}
+
+/* ── Scroll shadow for table container ───────────────── */
+
+.table-responsive {
+    position: relative;
+}
+
+/* ── Generate section ────────────────────────────────── */
+
+.generate-card {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: 2px dashed #ced4da !important;
+}
+
+.generate-card:hover {
+    border-color: #27ae60 !important;
+}
+
+/* ── Animation for cards on load ─────────────────────── */
+
+@keyframes fadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-in {
+    animation: fadeUp 0.4s ease forwards;
+}
+
+.animate-in:nth-child(2) { animation-delay: 0.1s; }
+.animate-in:nth-child(3) { animation-delay: 0.2s; }
+
+/* ── Download button pulse ───────────────────────────── */
+
+@keyframes subtlePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(39, 174, 96, 0.3); }
+    50% { box-shadow: 0 0 0 8px rgba(39, 174, 96, 0); }
+}
+
+.btn-download-pulse {
+    animation: subtlePulse 2.5s infinite;
+}
+
+/* ── Responsive adjustments ──────────────────────────── */
+
+@media (max-width: 992px) {
+    .col-lg-5,
+    .col-lg-7 {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .container-fluid {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    .roster-table td {
+        min-width: 160px;
+    }
+
+    .day-checkboxes .form-check {
+        padding: 6px 10px 6px 30px;
+    }
+
+    .page-title {
+        font-size: 1.35rem;
+    }
+
+    .btn-lg {
+        font-size: 0.95rem;
+        padding: 0.55rem 1.25rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .navbar-brand {
+        font-size: 1rem;
+    }
+
+    .card-body {
+        padding: 1rem;
+    }
+
+    .shift-info-table {
+        font-size: 0.8rem;
+    }
+}
