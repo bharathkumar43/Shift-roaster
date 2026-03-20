@@ -189,6 +189,56 @@ main {
     font-size: 0.875rem;
 }
 
+/* ── Content type checkboxes ─────────────────────────── */
+
+.content-type-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.content-type-checkboxes .form-check {
+    background: var(--surface);
+    border: 1.5px solid #dee2e6;
+    border-radius: var(--radius-sm);
+    padding: 10px 16px 10px 36px;
+    margin: 0;
+    transition: all var(--transition);
+    cursor: pointer;
+    user-select: none;
+    flex: 1;
+    min-width: 140px;
+}
+
+.content-type-checkboxes .form-check:hover {
+    border-color: #adb5bd;
+    background: #f8f9fa;
+}
+
+.content-type-checkboxes .form-check:has(input:checked) {
+    background: #e8f8f5;
+    border-color: #27ae60;
+    box-shadow: 0 0 0 1px rgba(39, 174, 96, 0.15);
+}
+
+.content-type-checkboxes .form-check-label {
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 0.875rem;
+}
+
+/* ── Inline project rows ─────────────────────────────── */
+
+.project-row {
+    animation: fadeUp 0.2s ease forwards;
+}
+
+.project-row .form-control,
+.project-row .form-select {
+    font-size: 0.85rem;
+    padding: 0.35rem 0.65rem;
+}
+
 /* ── Form controls ───────────────────────────────────── */
 
 .form-control,
@@ -256,9 +306,10 @@ main {
     padding: 0.65rem 1.5rem;
 }
 
-/* ── Sticky first column for roster table ────────────── */
+/* ── Sticky first column for roster/project table ────── */
 
-.roster-table .sticky-col {
+.roster-table .sticky-col,
+.project-table .sticky-col {
     position: sticky;
     left: 0;
     background-color: #fff;
@@ -266,7 +317,8 @@ main {
     min-width: 150px;
 }
 
-.roster-table thead .sticky-col {
+.roster-table thead .sticky-col,
+.project-table thead .sticky-col {
     z-index: 2;
 }
 
@@ -286,11 +338,43 @@ main {
     max-width: 170px;
 }
 
-.roster-table thead th {
+.roster-table thead th,
+.project-table thead th {
     font-weight: 600;
     font-size: 0.85rem;
     letter-spacing: 0.3px;
     text-transform: uppercase;
+}
+
+/* ── Project table ───────────────────────────────────── */
+
+.project-table th,
+.project-table td {
+    vertical-align: middle;
+}
+
+.project-table td {
+    min-width: 160px;
+}
+
+.project-table .sticky-col {
+    min-width: 150px;
+    max-width: 150px;
+}
+
+/* ── Takeover & No-cover cells ───────────────────────── */
+
+.takeover-cell {
+    background-color: #fef9e7 !important;
+}
+
+.no-cover-cell {
+    background-color: #fdedec !important;
+}
+
+.bg-takeover-legend {
+    background-color: #f9e79f !important;
+    color: #7d6608 !important;
 }
 
 /* ── Employee table ──────────────────────────────────── */
@@ -401,11 +485,13 @@ main {
 
 /* ── Weekend row highlight ───────────────────────────── */
 
-.roster-table tr.weekend-row {
+.roster-table tr.weekend-row,
+.project-table tr.weekend-row {
     background-color: rgba(0, 0, 0, 0.02);
 }
 
-.roster-table tr.weekend-row .sticky-col {
+.roster-table tr.weekend-row .sticky-col,
+.project-table tr.weekend-row .sticky-col {
     background-color: #fafafa;
 }
 
@@ -473,7 +559,8 @@ main {
         padding-right: 12px;
     }
 
-    .roster-table td {
+    .roster-table td,
+    .project-table td {
         min-width: 160px;
     }
 
@@ -488,6 +575,10 @@ main {
     .btn-lg {
         font-size: 0.95rem;
         padding: 0.55rem 1.25rem;
+    }
+
+    .content-type-checkboxes .form-check {
+        min-width: 120px;
     }
 }
 
