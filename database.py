@@ -39,6 +39,15 @@ def init_db():
             FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
             UNIQUE(employee_id, year, month)
         );
+
+        CREATE TABLE IF NOT EXISTS saved_rosters (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            year INTEGER NOT NULL,
+            month INTEGER NOT NULL,
+            generated_at TEXT NOT NULL,
+            excel_blob BLOB NOT NULL,
+            UNIQUE(year, month)
+        );
     """)
     conn.commit()
     conn.close()
@@ -47,7 +56,6 @@ def init_db():
 # ── Employee CRUD ────────────────────────────────────────
 
 def add_employee(name, content_types, working_days):
-    """Add an employee. content_types and working_days are lists."""
     conn = get_db()
     try:
         conn.execute(
@@ -152,10 +160,6 @@ def save_rotation(employee_id, year, month, shift_assigned):
 
 
 def save_all_rotations(assignments, employees, year, month):
-    """Save shift assignments for all employees for a given month.
-    assignments: dict mapping employee_name -> shift_num
-    employees: list of employee dicts (must have 'id' and 'name')
-    """
     conn = get_db()
     name_to_id = {e["name"]: e["id"] for e in employees}
     for emp_name, shift in assignments.items():
@@ -170,7 +174,6 @@ def save_all_rotations(assignments, employees, year, month):
 
 
 def get_rotation_history():
-    """Return all rotation records, newest first."""
     conn = get_db()
     rows = conn.execute("""
         SELECT rh.employee_id, e.name AS employee_name, rh.year, rh.month, rh.shift_assigned
@@ -183,7 +186,6 @@ def get_rotation_history():
 
 
 def get_night_shift_counts():
-    """Return dict mapping employee_id -> count of months they were on night shift (shift 3)."""
     conn = get_db()
     rows = conn.execute("""
         SELECT employee_id, COUNT(*) as cnt
@@ -196,7 +198,6 @@ def get_night_shift_counts():
 
 
 def get_last_night_shift_month(employee_id):
-    """Return (year, month) of the last time this employee was on night shift, or None."""
     conn = get_db()
     row = conn.execute("""
         SELECT year, month FROM rotation_history
@@ -206,3 +207,71 @@ def get_last_night_shift_month(employee_id):
     """, (employee_id,)).fetchone()
     conn.close()
     return (row["year"], row["month"]) if row else None
+
+
+def get_rotation_for_employee(employee_id, year, month):
+    conn = get_db()
+    row = conn.execute("""
+        SELECT shift_assigned FROM rotation_history
+        WHERE employee_id = ? AND year = ? AND month = ?
+    """, (employee_id, year, month)).fetchone()
+    conn.close()
+    return row["shift_assigned"] if row else None
+
+
+# ── Saved Rosters ────────────────────────────────────────
+
+def save_roster_excel(year, month, excel_bytes):
+    conn = get_db()
+    conn.execute("""
+        INSERT OR REPLACE INTO saved_rosters (year, month, generated_at, excel_blob)
+        VALUES (?, ?, datetime('now'), ?)
+    """, (year, month, excel_bytes))
+    conn.commit()
+    conn.close()
+
+
+def get_saved_roster(year, month):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT excel_blob FROM saved_rosters WHERE year = ? AND month = ?",
+        (year, month)
+    ).fetchone()
+    conn.close()
+    return bytes(row["excel_blob"]) if row else None
+
+
+def list_saved_rosters():
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT year, month, generated_at
+        FROM saved_rosters
+        ORDER BY year DESC, month DESC
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# ── Search ───────────────────────────────────────────────
+
+def search_employees(query):
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM employees WHERE name LIKE ? ORDER BY name",
+        (f"%{query}%",)
+    ).fetchall()
+    conn.close()
+    return [_row_to_employee(r) for r in rows]
+
+
+def search_projects(query):
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT p.id, p.name, p.product_type, p.employee_id, e.name AS employee_name
+        FROM projects p
+        JOIN employees e ON p.employee_id = e.id
+        WHERE p.name LIKE ?
+        ORDER BY p.name
+    """, (f"%{query}%",)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

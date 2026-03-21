@@ -1,2 +1,5 @@
 Flask
 openpyxl
+pdfplumber
+pytesseract
+Pillow

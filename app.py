@@ -1,17 +1,21 @@
 import calendar
 from datetime import date
+from io import BytesIO
 
 from flask import (Flask, render_template, request, session,
-                   redirect, url_for, send_file, flash)
+                   redirect, url_for, send_file, flash, jsonify)
 
 from roster_engine import (generate_roster, get_roster_summary,
                            SHIFTS, DAY_NAMES, CONTENT_TYPES)
 from excel_export import generate_excel
 from project_engine import generate_project_coverage
+from file_parser import parse_file
 import database as db
 
 app = Flask(__name__)
 app.secret_key = "roster-automation-secret-key-change-in-production"
+
+APP_NAME = "Employee Work Load Distribution"
 
 db.init_db()
 
@@ -22,11 +26,14 @@ db.init_db()
 def index():
     employees = db.get_all_employees()
     all_projects = db.get_all_projects()
+    saved_rosters = db.list_saved_rosters()
     today = date.today()
     month_names = [calendar.month_name[m] for m in range(1, 13)]
     return render_template("index.html",
+                           app_name=APP_NAME,
                            employees=employees,
                            all_projects=all_projects,
+                           saved_rosters=saved_rosters,
                            day_names=DAY_NAMES,
                            content_types=CONTENT_TYPES,
                            now_month=today.month,
@@ -92,6 +99,18 @@ def generate():
 
     db.save_all_rotations(shift_assignments, employees, year, month)
 
+    all_projects = db.get_all_projects()
+    proj_coverage, proj_warnings = generate_project_coverage(
+        all_projects, employees, shift_assignments, year, month
+    )
+
+    excel_output = generate_excel(
+        roster, warnings, shift_assignments, employees, year, month,
+        proj_coverage, proj_warnings
+    )
+    db.save_roster_excel(year, month, excel_output.read())
+    excel_output.seek(0)
+
     summary = get_roster_summary(employees, shift_assignments)
     month_name = calendar.month_name[month]
     num_days = calendar.monthrange(year, month)[1]
@@ -122,6 +141,7 @@ def generate():
     session["last_roster"] = {"year": year, "month": month}
 
     return render_template("roster.html",
+                           app_name=APP_NAME,
                            roster_data=roster_data,
                            warnings=warnings,
                            summary=summary,
@@ -156,6 +176,7 @@ def projects():
     session["last_roster"] = {"year": year, "month": month}
 
     return render_template("projects.html",
+                           app_name=APP_NAME,
                            coverage=coverage,
                            warnings=proj_warnings,
                            month_name=month_name,
@@ -170,11 +191,27 @@ def projects():
 
 @app.route("/download", methods=["GET"])
 def download():
-    employees = db.get_all_employees()
-    last = session.get("last_roster", {})
-    year = last.get("year", date.today().year)
-    month = last.get("month", date.today().month)
+    year = request.args.get("year", type=int)
+    month = request.args.get("month", type=int)
 
+    if not year or not month:
+        last = session.get("last_roster", {})
+        year = last.get("year", date.today().year)
+        month = last.get("month", date.today().month)
+
+    saved = db.get_saved_roster(year, month)
+    if saved:
+        output = BytesIO(saved)
+        month_name = calendar.month_name[month]
+        filename = f"Workload_{month_name}_{year}.xlsx"
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=filename,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    employees = db.get_all_employees()
     night_counts = db.get_night_shift_counts()
     roster, warnings, shift_assignments = generate_roster(
         employees, year, month, night_counts
@@ -190,8 +227,11 @@ def download():
         proj_coverage, proj_warnings
     )
 
+    db.save_roster_excel(year, month, output.read())
+    output.seek(0)
+
     month_name = calendar.month_name[month]
-    filename = f"Shift_Roster_{month_name}_{year}.xlsx"
+    filename = f"Workload_{month_name}_{year}.xlsx"
 
     return send_file(
         output,
@@ -199,6 +239,133 @@ def download():
         download_name=filename,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+
+# ── File Upload ──────────────────────────────────────────
+
+@app.route("/upload", methods=["POST"])
+def upload():
+    if "file" not in request.files:
+        flash("No file selected.", "danger")
+        return redirect(url_for("index"))
+
+    file = request.files["file"]
+    if not file.filename:
+        flash("No file selected.", "danger")
+        return redirect(url_for("index"))
+
+    try:
+        employees = parse_file(file)
+    except ValueError as e:
+        flash(f"Upload failed: {e}", "danger")
+        return redirect(url_for("index"))
+    except Exception as e:
+        flash(f"Error processing file: {e}", "danger")
+        return redirect(url_for("index"))
+
+    db.clear_all_employees()
+
+    count = 0
+    for emp in employees:
+        emp_id = db.add_employee(emp["name"], emp["content_types"], emp["working_days"])
+        if emp_id:
+            count += 1
+
+    flash(
+        f"Successfully imported {count} employees from '{file.filename}'. "
+        f"Shifts will be redistributed when you generate a roster.",
+        "success"
+    )
+    return redirect(url_for("index"))
+
+
+# ── Search API ───────────────────────────────────────────
+
+@app.route("/search", methods=["GET"])
+def search():
+    q = request.args.get("q", "").strip()
+    year = request.args.get("year", date.today().year, type=int)
+    month = request.args.get("month", date.today().month, type=int)
+
+    if not q or len(q) < 1:
+        return jsonify({"employees": [], "projects": []})
+
+    employees = db.get_all_employees()
+    night_counts = db.get_night_shift_counts()
+
+    shift_assignments = {}
+    if employees:
+        _, _, shift_assignments = generate_roster(employees, year, month, night_counts)
+
+    emp_results = []
+    matched_emps = db.search_employees(q)
+    all_projects = db.get_all_projects()
+
+    for emp in matched_emps:
+        emp_projects = [p for p in all_projects if p["employee_id"] == emp["id"]]
+        shift = shift_assignments.get(emp["name"])
+        shift_info = None
+        if shift:
+            shift_info = {
+                "number": shift,
+                "name": SHIFTS[shift]["name"],
+                "time": SHIFTS[shift]["time"],
+                "strength": SHIFTS[shift]["strength"],
+            }
+
+        num_days = calendar.monthrange(year, month)[1]
+        working_count = 0
+        off_count = 0
+        for day in range(1, num_days + 1):
+            d = date(year, month, day)
+            day_name = DAY_NAMES[d.weekday()]
+            if day_name in emp["working_days"]:
+                working_count += 1
+            else:
+                off_count += 1
+
+        emp_results.append({
+            "name": emp["name"],
+            "content_types": emp["content_types"],
+            "working_days": emp["working_days"],
+            "projects": [{"name": p["name"], "product_type": p["product_type"]}
+                         for p in emp_projects],
+            "shift": shift_info,
+            "working_days_count": working_count,
+            "off_days_count": off_count,
+        })
+
+    proj_results = []
+    matched_projs = db.search_projects(q)
+    for proj in matched_projs:
+        owner = next((e for e in employees if e["name"] == proj["employee_name"]), None)
+        shift = shift_assignments.get(proj["employee_name"])
+
+        daily_handlers = []
+        if owner:
+            num_days = calendar.monthrange(year, month)[1]
+            for day in range(1, num_days + 1):
+                d = date(year, month, day)
+                day_name = DAY_NAMES[d.weekday()]
+                is_working = day_name in owner["working_days"]
+                daily_handlers.append({
+                    "day": day,
+                    "date": d.strftime("%b %d"),
+                    "day_abbr": d.strftime("%a"),
+                    "handler": proj["employee_name"] if is_working else None,
+                    "is_off": not is_working,
+                })
+
+        proj_results.append({
+            "name": proj["name"],
+            "product_type": proj["product_type"],
+            "owner": proj["employee_name"],
+            "shift": shift,
+            "shift_name": SHIFTS[shift]["name"] if shift else None,
+            "daily_handlers": daily_handlers,
+        })
+
+    return jsonify({"employees": emp_results, "projects": proj_results})
 
 
 if __name__ == "__main__":

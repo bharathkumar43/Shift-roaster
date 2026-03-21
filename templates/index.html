@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shift Roster Generator</title>
+    <title>{{ app_name }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
@@ -12,7 +12,7 @@
     <nav class="navbar navbar-dark bg-primary-gradient">
         <div class="container">
             <span class="navbar-brand fw-bold">
-                <i class="bi bi-calendar3"></i> Shift Roster Generator
+                <i class="bi bi-bar-chart-line"></i> {{ app_name }}
             </span>
         </div>
     </nav>
@@ -30,6 +30,83 @@
         {% endif %}
         {% endwith %}
 
+        <!-- Search Bar -->
+        <div class="card shadow-sm border-0 mb-4 animate-in">
+            <div class="card-body py-3">
+                <div class="row align-items-center g-2">
+                    <div class="col-md-6">
+                        <div class="input-group">
+                            <span class="input-group-text bg-white border-end-0">
+                                <i class="bi bi-search text-muted"></i>
+                            </span>
+                            <input type="text" class="form-control border-start-0 ps-0" id="searchInput"
+                                   placeholder="Search employee or project name..." autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select form-select-sm" id="search_month">
+                            {% for m in range(1, 13) %}
+                            <option value="{{ m }}" {% if m == now_month %}selected{% endif %}>
+                                {{ month_names[m - 1] }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select form-select-sm" id="search_year">
+                            {% for y in range(now_year - 1, now_year + 3) %}
+                            <option value="{{ y }}" {% if y == now_year %}selected{% endif %}>{{ y }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <!-- Search Results -->
+            <div id="searchResults" class="d-none">
+                <div class="card-body pt-0" id="searchResultsContent"></div>
+            </div>
+        </div>
+
+        <!-- Upload Section -->
+        <div class="card shadow-sm border-0 mb-4 animate-in">
+            <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="bi bi-cloud-arrow-up"></i> Import Employees from File
+                </h6>
+                <button class="btn btn-sm btn-outline-secondary" type="button"
+                        data-bs-toggle="collapse" data-bs-target="#uploadArea">
+                    <i class="bi bi-chevron-down"></i>
+                </button>
+            </div>
+            <div class="collapse" id="uploadArea">
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('upload') }}" enctype="multipart/form-data" id="uploadForm">
+                        <div class="upload-dropzone" id="dropzone">
+                            <i class="bi bi-file-earmark-arrow-up display-5 text-muted d-block mb-2"></i>
+                            <p class="mb-1 fw-medium">Drag & drop a file here, or click to browse</p>
+                            <p class="small text-muted mb-2">
+                                Supports <strong>.xlsx</strong>, <strong>.pdf</strong>, <strong>.png</strong>, <strong>.jpg</strong>
+                            </p>
+                            <input type="file" name="file" id="fileInput" class="d-none"
+                                   accept=".xlsx,.xls,.pdf,.png,.jpg,.jpeg,.bmp,.tiff">
+                            <span id="fileName" class="badge bg-light text-dark border d-none"></span>
+                        </div>
+                        <div class="mt-3 d-flex justify-content-between align-items-center">
+                            <div class="small text-muted">
+                                <i class="bi bi-info-circle"></i>
+                                File must have columns: <strong>Name</strong>, <strong>Shift</strong>,
+                                <strong>Working Days</strong>, <strong>Product Type</strong>.
+                                This will <strong>replace</strong> all existing employees.
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-sm" id="uploadBtn" disabled>
+                                <i class="bi bi-upload"></i> Upload & Import
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
         <div class="row g-4">
 
             <!-- Add Employee Form -->
@@ -46,7 +123,6 @@
                                        placeholder="Enter full name" required autocomplete="off">
                             </div>
 
-                            <!-- Content Types as Checkboxes -->
                             <div class="mb-3">
                                 <label class="form-label fw-semibold">Product Type(s)</label>
                                 <div class="content-type-checkboxes">
@@ -82,19 +158,16 @@
                                 <div class="form-text">Select the days this employee works.</div>
                             </div>
 
-                            <!-- Inline Project Assignment -->
                             <div class="mb-3">
                                 <label class="form-label fw-semibold">
                                     Projects <span class="text-muted fw-normal">(optional)</span>
                                 </label>
-                                <div id="projectList">
-                                    <!-- dynamic project rows added here -->
-                                </div>
+                                <div id="projectList"></div>
                                 <button type="button" class="btn btn-outline-secondary btn-sm mt-2"
                                         id="addProjectBtn">
                                     <i class="bi bi-plus-circle"></i> Add Project
                                 </button>
-                                <div class="form-text">Assign projects to this employee. Each project has a name and product type.</div>
+                                <div class="form-text">Assign projects to this employee.</div>
                             </div>
 
                             <button type="submit" class="btn btn-primary w-100">
@@ -132,7 +205,7 @@
                         <div class="mt-2 px-2">
                             <small class="text-muted">
                                 <i class="bi bi-arrow-repeat"></i>
-                                Night shift (Shift 3) rotates monthly &mdash; no one stays on nights two months in a row.
+                                Night shift (Shift 3) rotates monthly.
                             </small>
                         </div>
                     </div>
@@ -161,7 +234,7 @@
                         <div class="empty-state text-center">
                             <i class="bi bi-person-plus display-3 d-block mb-3"></i>
                             <p class="mb-1 fw-medium">No employees added yet</p>
-                            <p class="small text-muted">Use the form on the left to add employees to the roster.</p>
+                            <p class="small text-muted">Use the form on the left to add employees.</p>
                         </div>
                         {% else %}
                         <div class="table-responsive">
@@ -201,20 +274,16 @@
                                             {% set emp_projects = all_projects | selectattr('employee_id', 'equalto', emp.id) | list %}
                                             {% if emp_projects %}
                                                 {% for p in emp_projects %}
-                                                <span class="badge bg-light text-dark border" title="{{ p.product_type }}">
-                                                    {{ p.name }}
-                                                </span>
+                                                <span class="badge bg-light text-dark border" title="{{ p.product_type }}">{{ p.name }}</span>
                                                 {% endfor %}
                                             {% else %}
                                             <span class="text-muted small">None</span>
                                             {% endif %}
                                         </td>
                                         <td>
-                                            <form method="POST" action="{{ url_for('remove_employee', emp_id=emp.id) }}"
-                                                  class="d-inline">
-                                                <button type="submit" class="btn btn-sm btn-outline-danger"
-                                                        title="Remove employee"
-                                                        onclick="return confirm('Remove {{ emp.name }} and their projects?')">
+                                            <form method="POST" action="{{ url_for('remove_employee', emp_id=emp.id) }}" class="d-inline">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Remove"
+                                                        onclick="return confirm('Remove {{ emp.name }}?')">
                                                     <i class="bi bi-x-lg"></i>
                                                 </button>
                                             </form>
@@ -234,8 +303,8 @@
                     <div class="card-body">
                         <div class="row align-items-end g-3">
                             <div class="col-md-4">
-                                <label for="month" class="form-label fw-semibold">Month</label>
-                                <select class="form-select" name="month" id="gen_month">
+                                <label class="form-label fw-semibold">Month</label>
+                                <select class="form-select" id="gen_month">
                                     {% for m in range(1, 13) %}
                                     <option value="{{ m }}" {% if m == now_month %}selected{% endif %}>
                                         {{ month_names[m - 1] }}
@@ -244,12 +313,10 @@
                                 </select>
                             </div>
                             <div class="col-md-4">
-                                <label for="year" class="form-label fw-semibold">Year</label>
-                                <select class="form-select" name="year" id="gen_year">
+                                <label class="form-label fw-semibold">Year</label>
+                                <select class="form-select" id="gen_year">
                                     {% for y in range(now_year, now_year + 3) %}
-                                    <option value="{{ y }}" {% if y == now_year %}selected{% endif %}>
-                                        {{ y }}
-                                    </option>
+                                    <option value="{{ y }}" {% if y == now_year %}selected{% endif %}>{{ y }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
@@ -275,6 +342,42 @@
                     </div>
                 </div>
                 {% endif %}
+
+                <!-- Roster History -->
+                {% if saved_rosters|length > 0 %}
+                <div class="card shadow-sm border-0 mt-3 animate-in">
+                    <div class="card-header bg-white border-bottom">
+                        <h6 class="mb-0"><i class="bi bi-clock-history"></i> Previously Generated Rosters</h6>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm mb-0 align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Month</th>
+                                        <th>Generated On</th>
+                                        <th style="width:100px"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for r in saved_rosters %}
+                                    <tr>
+                                        <td class="fw-semibold">{{ month_names[r.month - 1] }} {{ r.year }}</td>
+                                        <td class="text-muted small">{{ r.generated_at }}</td>
+                                        <td>
+                                            <a href="{{ url_for('download', year=r.year, month=r.month) }}"
+                                               class="btn btn-sm btn-outline-success" title="Download">
+                                                <i class="bi bi-download"></i> Excel
+                                            </a>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
             </div>
 
         </div>
@@ -282,30 +385,26 @@
 
     <footer class="footer text-center">
         <div class="container">
-            Shift Roster Generator &middot; Designed for efficient team scheduling
+            {{ app_name }} &middot; Designed for efficient team scheduling
         </div>
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
     (function () {
-        // Day count
-        const checks = document.querySelectorAll('.day-check');
-        const counter = document.getElementById('dayCount');
+        var checks = document.querySelectorAll('.day-check');
+        var counter = document.getElementById('dayCount');
         function updateCount() {
-            const n = document.querySelectorAll('.day-check:checked').length;
+            var n = document.querySelectorAll('.day-check:checked').length;
             counter.textContent = '(' + n + ' selected)';
             counter.style.color = (n === 5) ? '#27ae60' : (n > 5) ? '#dc3545' : '';
         }
         checks.forEach(function (cb) { cb.addEventListener('change', updateCount); });
 
-        // Inline projects
-        const projectList = document.getElementById('projectList');
-        const addBtn = document.getElementById('addProjectBtn');
-        let projectIdx = 0;
-
+        var projectList = document.getElementById('projectList');
+        var addBtn = document.getElementById('addProjectBtn');
         addBtn.addEventListener('click', function () {
-            const row = document.createElement('div');
+            var row = document.createElement('div');
             row.className = 'project-row d-flex gap-2 mb-2 align-items-center';
             row.innerHTML =
                 '<input type="text" class="form-control form-control-sm" name="project_name" placeholder="Project name">' +
@@ -315,17 +414,11 @@
                 '  <option value="Message">Message</option>' +
                 '</select>' +
                 '<button type="button" class="btn btn-sm btn-outline-danger remove-project-btn" title="Remove">' +
-                '  <i class="bi bi-x"></i>' +
-                '</button>';
+                '  <i class="bi bi-x"></i></button>';
             projectList.appendChild(row);
-            projectIdx++;
-
-            row.querySelector('.remove-project-btn').addEventListener('click', function () {
-                row.remove();
-            });
+            row.querySelector('.remove-project-btn').addEventListener('click', function () { row.remove(); });
         });
 
-        // Sync month/year to hidden fields on submit
         function syncFields() {
             var m = document.getElementById('gen_month').value;
             var y = document.getElementById('gen_year').value;
@@ -336,16 +429,162 @@
             if (pm) pm.value = m;
             if (py) py.value = y;
         }
-
         document.getElementById('gen_month').addEventListener('change', syncFields);
         document.getElementById('gen_year').addEventListener('change', syncFields);
-
         var genRoster = document.getElementById('genRosterForm');
         if (genRoster) genRoster.addEventListener('submit', syncFields);
         var genProj = document.getElementById('genProjectsForm');
         if (genProj) genProj.addEventListener('submit', syncFields);
-
         syncFields();
+
+        // ── File Upload drag-drop ────────────────────────
+        var dropzone = document.getElementById('dropzone');
+        var fileInput = document.getElementById('fileInput');
+        var fileNameEl = document.getElementById('fileName');
+        var uploadBtn = document.getElementById('uploadBtn');
+
+        dropzone.addEventListener('click', function () { fileInput.click(); });
+
+        fileInput.addEventListener('change', function () {
+            if (fileInput.files.length > 0) {
+                fileNameEl.textContent = fileInput.files[0].name;
+                fileNameEl.classList.remove('d-none');
+                uploadBtn.disabled = false;
+            }
+        });
+
+        dropzone.addEventListener('dragover', function (e) {
+            e.preventDefault();
+            dropzone.classList.add('drag-over');
+        });
+        dropzone.addEventListener('dragleave', function () {
+            dropzone.classList.remove('drag-over');
+        });
+        dropzone.addEventListener('drop', function (e) {
+            e.preventDefault();
+            dropzone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length > 0) {
+                fileInput.files = e.dataTransfer.files;
+                fileNameEl.textContent = e.dataTransfer.files[0].name;
+                fileNameEl.classList.remove('d-none');
+                uploadBtn.disabled = false;
+            }
+        });
+
+        // ── Search ──────────────────────────────────────
+        var searchInput = document.getElementById('searchInput');
+        var searchResults = document.getElementById('searchResults');
+        var searchContent = document.getElementById('searchResultsContent');
+        var searchMonth = document.getElementById('search_month');
+        var searchYear = document.getElementById('search_year');
+        var debounceTimer;
+
+        function doSearch() {
+            var q = searchInput.value.trim();
+            if (q.length < 1) {
+                searchResults.classList.add('d-none');
+                searchContent.innerHTML = '';
+                return;
+            }
+            var m = searchMonth.value;
+            var y = searchYear.value;
+            fetch('/search?q=' + encodeURIComponent(q) + '&month=' + m + '&year=' + y)
+                .then(function(r) { return r.json(); })
+                .then(function(data) { renderResults(data, q); });
+        }
+
+        searchInput.addEventListener('input', function () {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(doSearch, 300);
+        });
+        searchMonth.addEventListener('change', doSearch);
+        searchYear.addEventListener('change', doSearch);
+
+        function typeBadge(ct) {
+            if (ct === 'Content') return '<span class="badge bg-info text-dark">CON</span>';
+            if (ct === 'Email') return '<span class="badge bg-primary">EML</span>';
+            return '<span class="badge bg-warning text-dark">MSG</span>';
+        }
+
+        function shiftBadge(s) {
+            if (!s) return '<span class="text-muted">N/A</span>';
+            var cls = 'bg-shift' + s.number;
+            return '<span class="badge ' + cls + '">' + s.name + '</span> <small class="text-muted">' + s.time + '</small>';
+        }
+
+        function renderResults(data, q) {
+            var html = '';
+            if (data.employees.length === 0 && data.projects.length === 0) {
+                html = '<p class="text-muted text-center mb-0">No results found for "' + q + '"</p>';
+                searchResults.classList.remove('d-none');
+                searchContent.innerHTML = html;
+                return;
+            }
+
+            if (data.employees.length > 0) {
+                html += '<h6 class="fw-bold mb-2"><i class="bi bi-person"></i> Employees</h6>';
+                data.employees.forEach(function(emp) {
+                    html += '<div class="search-result-card mb-3">';
+                    html += '<div class="d-flex justify-content-between align-items-center mb-2">';
+                    html += '<span class="fw-bold fs-6">' + emp.name + '</span>';
+                    html += '<span>' + (emp.shift ? shiftBadge(emp.shift) : '') + '</span>';
+                    html += '</div>';
+
+                    html += '<div class="mb-1"><small class="text-muted">Product Types:</small> ';
+                    emp.content_types.forEach(function(ct) { html += typeBadge(ct) + ' '; });
+                    html += '</div>';
+
+                    html += '<div class="mb-1"><small class="text-muted">Working Days:</small> ';
+                    emp.working_days.forEach(function(d) {
+                        html += '<span class="badge bg-light text-dark border">' + d.substring(0,3) + '</span> ';
+                    });
+                    html += '<small class="text-muted ms-1">(' + emp.working_days_count + ' days on / ' + emp.off_days_count + ' days off this month)</small>';
+                    html += '</div>';
+
+                    if (emp.projects.length > 0) {
+                        html += '<div class="mb-0"><small class="text-muted">Projects:</small> ';
+                        emp.projects.forEach(function(p) {
+                            html += '<span class="badge bg-light text-dark border" title="' + p.product_type + '">' + p.name + '</span> ';
+                        });
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                });
+            }
+
+            if (data.projects.length > 0) {
+                html += '<h6 class="fw-bold mb-2 mt-3"><i class="bi bi-kanban"></i> Projects</h6>';
+                data.projects.forEach(function(proj) {
+                    html += '<div class="search-result-card mb-3">';
+                    html += '<div class="d-flex justify-content-between align-items-center mb-2">';
+                    html += '<span class="fw-bold fs-6">' + proj.name + '</span>';
+                    html += typeBadge(proj.product_type);
+                    html += '</div>';
+                    html += '<div class="mb-1"><small class="text-muted">Owner:</small> <span class="fw-medium">' + proj.owner + '</span>';
+                    if (proj.shift_name) html += ' <span class="badge bg-shift' + proj.shift + '">' + proj.shift_name + '</span>';
+                    html += '</div>';
+
+                    if (proj.daily_handlers.length > 0) {
+                        html += '<div class="mt-2"><small class="text-muted">Daily Coverage:</small>';
+                        html += '<div class="d-flex flex-wrap gap-1 mt-1">';
+                        proj.daily_handlers.forEach(function(dh) {
+                            var cls = dh.is_off ? 'bg-light text-muted border' : 'bg-light text-dark border';
+                            var label = dh.day_abbr + ' ' + dh.day;
+                            var title = dh.is_off ? (proj.owner + ' off') : proj.owner;
+                            html += '<span class="badge ' + cls + '" title="' + title + '" style="font-size:0.65rem">';
+                            html += label;
+                            if (dh.is_off) html += ' <i class="bi bi-x-circle text-danger"></i>';
+                            html += '</span>';
+                        });
+                        html += '</div></div>';
+                    }
+                    html += '</div>';
+                });
+            }
+
+            searchResults.classList.remove('d-none');
+            searchContent.innerHTML = html;
+        }
     })();
     </script>
 </body>

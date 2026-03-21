@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Roster &mdash; {{ month_name }} {{ year }}</title>
+    <title>{{ app_name }} &mdash; {{ month_name }} {{ year }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
@@ -12,7 +12,7 @@
     <nav class="navbar navbar-dark bg-primary-gradient">
         <div class="container">
             <span class="navbar-brand fw-bold">
-                <i class="bi bi-calendar3"></i> Shift Roster Generator
+                <i class="bi bi-bar-chart-line"></i> {{ app_name }}
             </span>
             <div class="d-flex gap-2">
                 <a href="{{ url_for('index') }}" class="btn btn-outline-light btn-sm">
@@ -160,7 +160,7 @@
 
     <footer class="footer text-center">
         <div class="container">
-            Shift Roster Generator &middot; Designed for efficient team scheduling
+            {{ app_name }} &middot; Designed for efficient team scheduling
         </div>
     </footer>
 

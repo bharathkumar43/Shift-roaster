@@ -543,6 +543,58 @@ main {
     animation: subtlePulse 2.5s infinite;
 }
 
+/* ── File Upload ─────────────────────────────────────── */
+
+.upload-dropzone {
+    border: 2px dashed #ced4da;
+    border-radius: var(--radius);
+    padding: 2rem 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all var(--transition);
+    background: #fafbfc;
+}
+
+.upload-dropzone:hover {
+    border-color: #0f3460;
+    background: #f0f4fa;
+}
+
+.upload-dropzone.drag-over {
+    border-color: #27ae60;
+    background: #eafaf1;
+    transform: scale(1.01);
+}
+
+/* ── Search ──────────────────────────────────────────── */
+
+.search-result-card {
+    background: var(--surface);
+    border: 1px solid #e9ecef;
+    border-radius: var(--radius-sm);
+    padding: 0.875rem 1rem;
+    transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.search-result-card:hover {
+    border-color: #adb5bd;
+    box-shadow: var(--shadow-sm);
+}
+
+#searchInput {
+    font-size: 0.95rem;
+}
+
+#searchInput::placeholder {
+    color: #adb5bd;
+}
+
+#searchResults {
+    border-top: 1px solid #e9ecef;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
 /* ── Responsive adjustments ──────────────────────────── */
 
 @media (max-width: 992px) {

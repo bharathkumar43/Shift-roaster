@@ -71,7 +71,7 @@ def _create_roster_sheet(wb, roster, shift_assignments, employees, year, month):
     num_days = calendar.monthrange(year, month)[1]
 
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=num_days + 1)
-    title_cell = ws.cell(row=1, column=1, value=f"Shift Roster - {month_name} {year}")
+    title_cell = ws.cell(row=1, column=1, value=f"Employee Work Load Distribution - {month_name} {year}")
     title_cell.font = TITLE_FONT
     title_cell.alignment = Alignment(horizontal="center")
 
