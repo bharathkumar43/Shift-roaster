@@ -29,6 +29,9 @@ def index():
     saved_rosters = db.list_saved_rosters()
     today = date.today()
     month_names = [calendar.month_name[m] for m in range(1, 13)]
+    imported = request.args.get("imported", type=int)
+    if imported is not None:
+        flash(f"Successfully imported {imported} employee(s).", "success")
     return render_template("index.html",
                            app_name=APP_NAME,
                            employees=employees,
@@ -65,6 +68,24 @@ def add_employee():
 
     flash(f"Employee '{name}' added successfully.", "success")
     return redirect(url_for("index"))
+
+
+@app.route("/edit_employee/<int:emp_id>", methods=["POST"])
+def edit_employee(emp_id):
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid data"}), 400
+    content_types = data.get("content_types") or ["Content"]
+    working_days = data.get("working_days") or ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+    db.update_employee(emp_id, content_types, working_days)
+    # Replace projects
+    db.clear_projects_for_employee(emp_id)
+    for proj in (data.get("projects") or []):
+        name = (proj.get("name") or "").strip()
+        ptype = proj.get("product_type") or "Content"
+        if name:
+            db.add_project(name, ptype, emp_id)
+    return jsonify({"success": True})
 
 
 @app.route("/remove_employee/<int:emp_id>", methods=["POST"])
@@ -243,6 +264,51 @@ def download():
 
 # ── File Upload ──────────────────────────────────────────
 
+@app.route("/preview_upload", methods=["POST"])
+def preview_upload():
+    """Parse uploaded file and return employee list as JSON for the preview/edit modal."""
+    if "file" not in request.files:
+        return jsonify({"error": "No file selected"}), 400
+    file = request.files["file"]
+    if not file.filename:
+        return jsonify({"error": "No file selected"}), 400
+    try:
+        employees = parse_file(file)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"employees": employees})
+
+
+@app.route("/upload_confirm", methods=["POST"])
+def upload_confirm():
+    """Receive the (possibly edited) employee list as JSON and save to DB."""
+    data = request.get_json()
+    if not data or "employees" not in data:
+        return jsonify({"error": "Invalid data"}), 400
+    employees = data["employees"]
+    if not employees:
+        return jsonify({"error": "No employees provided"}), 400
+    db.clear_all_employees()
+    count = 0
+    for emp in employees:
+        name = (emp.get("name") or "").strip()
+        if not name:
+            continue
+        content_types = emp.get("content_types") or ["Content"]
+        working_days = emp.get("working_days") or ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+        emp_id = db.add_employee(name, content_types, working_days)
+        if emp_id:
+            count += 1
+            for proj in (emp.get("projects") or []):
+                proj_name = (proj.get("name") or "").strip()
+                proj_type = proj.get("product_type") or "Content"
+                if proj_name:
+                    db.add_project(proj_name, proj_type, emp_id)
+    return jsonify({"success": True, "count": count})
+
+
 @app.route("/upload", methods=["POST"])
 def upload():
     if "file" not in request.files:
@@ -309,7 +375,8 @@ def search():
             shift_info = {
                 "number": shift,
                 "name": SHIFTS[shift]["name"],
-                "time": SHIFTS[shift]["time"],
+                "time_ist": SHIFTS[shift]["time_ist"],
+                "time_est": SHIFTS[shift]["time_est"],
                 "strength": SHIFTS[shift]["strength"],
             }
 
@@ -369,4 +436,4 @@ def search():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5050)

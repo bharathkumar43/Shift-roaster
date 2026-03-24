@@ -78,7 +78,7 @@ def _create_roster_sheet(wb, roster, shift_assignments, employees, year, month):
     ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=num_days + 1)
     legend = ws.cell(
         row=2, column=1,
-        value="Shift 1: 6AM-2PM (Lean)  |  Shift 2: 1PM-10PM (Strong)  |  Shift 3: 9PM-6AM (Strong)"
+        value="Shift 1: 6AM-2PM IST / 7:30PM-3:30AM EST (Lean)  |  Shift 2: 1PM-10PM IST / 2:30AM-11:30AM EST (Strong)  |  Shift 3: 9PM-6AM IST / 10:30AM-7:30PM EST (Strong)"
     )
     legend.font = Font(size=9, italic=True, color="5D6D7E")
     legend.alignment = Alignment(horizontal="center")
@@ -110,7 +110,7 @@ def _create_roster_sheet(wb, roster, shift_assignments, employees, year, month):
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=num_days + 1)
         shift_header = ws.cell(
             row=row, column=1,
-            value=f"{shift_info['name']} ({shift_info['time']}) - {shift_info['strength'].upper()} team"
+            value=f"{shift_info['name']} ({shift_info['time_ist']} / {shift_info['time_est']}) - {shift_info['strength'].upper()} team"
         )
         shift_header.font = SUBHEADER_FONT
         shift_header.fill = SUBHEADER_FILL
@@ -172,7 +172,8 @@ def _create_summary_sheet(wb, shift_assignments, employees):
             shift_cell.fill = SHIFT_COLORS[shift_num]
             shift_cell.border = THIN_BORDER
 
-            ws.cell(row=row, column=5, value=SHIFTS[shift_num]["time"]).border = THIN_BORDER
+            ws.cell(row=row, column=5,
+                    value=f"{SHIFTS[shift_num]['time_ist']} / {SHIFTS[shift_num]['time_est']}").border = THIN_BORDER
             row += 1
 
     for col in range(1, 6):

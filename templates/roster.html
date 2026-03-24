@@ -33,11 +33,11 @@
                 Shift Roster &mdash; {{ month_name }} {{ year }}
             </h2>
             <p class="text-muted mt-3 mb-0">
-                <span class="badge bg-shift1 me-1">Shift 1</span> 6AM&ndash;2PM (Lean)
+                <span class="badge bg-shift1 me-1">Shift 1</span> 6AM&ndash;2PM IST / 7:30PM&ndash;3:30AM EST
                 <span class="mx-2 text-muted">|</span>
-                <span class="badge bg-shift2 me-1">Shift 2</span> 1PM&ndash;10PM (Strong)
+                <span class="badge bg-shift2 me-1">Shift 2</span> 1PM&ndash;10PM IST / 2:30AM&ndash;11:30AM EST
                 <span class="mx-2 text-muted">|</span>
-                <span class="badge bg-shift3 me-1">Shift 3</span> 9PM&ndash;6AM (Strong)
+                <span class="badge bg-shift3 me-1">Shift 3</span> 9PM&ndash;6AM IST / 10:30AM&ndash;7:30PM EST
             </p>
         </div>
 
@@ -65,7 +65,8 @@
                                 {{ shifts[shift_num].strength | upper }}
                             </span>
                         </h6>
-                        <p class="text-muted small mb-3">{{ shifts[shift_num].time }}</p>
+                        <p class="text-muted small mb-1">{{ shifts[shift_num].time_ist }}</p>
+                        <p class="text-muted small mb-3">{{ shifts[shift_num].time_est }}</p>
 
                         {% for ctype in ['Content', 'Email', 'Message'] %}
                         <div class="mb-2">
@@ -103,9 +104,9 @@
                         <thead>
                             <tr class="table-dark">
                                 <th class="sticky-col">Date</th>
-                                <th>Shift 1 (6AM&ndash;2PM)</th>
-                                <th>Shift 2 (1PM&ndash;10PM)</th>
-                                <th>Shift 3 (9PM&ndash;6AM)</th>
+                                <th>Shift 1<br><small>6AM&ndash;2PM IST<br>7:30PM&ndash;3:30AM EST</small></th>
+                                <th>Shift 2<br><small>1PM&ndash;10PM IST<br>2:30AM&ndash;11:30AM EST</small></th>
+                                <th>Shift 3<br><small>9PM&ndash;6AM IST<br>10:30AM&ndash;7:30PM EST</small></th>
                             </tr>
                         </thead>
                         <tbody>

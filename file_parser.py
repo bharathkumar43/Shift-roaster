@@ -53,10 +53,10 @@ def parse_excel(file_bytes):
         rows.append([str(c).strip() if c is not None else "" for c in row])
     wb.close()
 
-    if len(rows) < 2:
-        raise ValueError("Excel file has no data rows.")
+    if not rows:
+        raise ValueError("Excel file is empty.")
 
-    return _parse_table(rows)
+    return _extract_names(rows)
 
 
 def parse_pdf(file_bytes):
@@ -82,10 +82,10 @@ def parse_pdf(file_bytes):
                         if len(parts) >= 3:
                             rows.append(parts)
 
-    if len(rows) < 2:
-        raise ValueError("Could not extract enough data from the PDF.")
+    if not rows:
+        raise ValueError("Could not extract any data from the PDF.")
 
-    return _parse_table(rows)
+    return _extract_names(rows)
 
 
 def parse_image(file_bytes):
@@ -113,17 +113,70 @@ def parse_image(file_bytes):
             continue
         parts = re.split(r"\s{2,}|\t|\|", line)
         parts = [p.strip() for p in parts if p.strip()]
-        if len(parts) >= 3:
+        if parts:
             rows.append(parts)
 
-    if len(rows) < 2:
-        raise ValueError(
-            "Could not parse enough rows from the image. "
-            "Ensure the image contains a clear table with columns: "
-            "Name, Shift, Working Days, Product Type."
-        )
+    if not rows:
+        raise ValueError("Could not extract any text rows from the image.")
 
-    return _parse_table(rows)
+    return _extract_names(rows)
+
+
+def _extract_names(rows):
+    """
+    Extract employee names from raw rows.
+    Skips the first row if it looks like a header.
+    For each remaining row, takes the first cell that contains letters as the name.
+    Returns a list of employee dicts with default working_days and content_types.
+    """
+    _SKIP_VALS = {'none', 'nan', 'null', 'n/a', '-', ''}
+    _HEADER_HINTS = {'name', 'employee', 'staff', 'person', 'worker',
+                     'sno', 's.no', 'sl.no', '#', 'no', 'id', 'sr', 'sr.no', 'sl'}
+
+    # Decide where data rows start (skip header row if detected)
+    start = 0
+    if rows:
+        first_vals = [str(v).strip().lower() for v in rows[0] if str(v).strip()]
+        if any(v in _HEADER_HINTS or 'name' in v or 'employee' in v for v in first_vals):
+            start = 1
+
+    employees = []
+    for row in rows[start:]:
+        name = ""
+        project_names = []
+        name_found = False
+
+        for cell in row:
+            val = str(cell).strip() if cell is not None else ""
+            if not val or val.lower() in _SKIP_VALS:
+                continue
+            if re.match(r'^[\d\s.\-/#+@()]+$', val):
+                continue
+
+            if not name_found:
+                name = val
+                name_found = True
+            else:
+                # Any subsequent text cell is treated as project name(s)
+                for p in re.split(r'[,;]+', val):
+                    p = p.strip()
+                    if p and p.lower() not in _SKIP_VALS:
+                        project_names.append(p)
+
+        if not name or name.lower() in _SKIP_VALS:
+            continue
+
+        employees.append({
+            "name": name,
+            "content_types": ["Content"],
+            "working_days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+            "shift": None,
+            "projects": [{"name": p, "product_type": "Content"} for p in project_names],
+        })
+
+    if not employees:
+        raise ValueError("No employee names found in the file.")
+    return employees
 
 
 def _parse_table(rows):
@@ -242,3 +295,79 @@ def _parse_types(val):
                 types.append("Message")
 
     return types
+
+
+def get_excel_headers_info(file_bytes):
+    """
+    Returns (headers, sample_rows, auto_col_map) for the column mapping UI.
+    auto_col_map maps field names ('name','shift','days','type') to column indices.
+    """
+    wb = load_workbook(filename=BytesIO(file_bytes), read_only=True, data_only=True)
+    ws = wb.active
+    all_rows = []
+    for row in ws.iter_rows(values_only=True):
+        all_rows.append([str(c).strip() if c is not None else "" for c in row])
+        if len(all_rows) >= 6:
+            break
+    wb.close()
+
+    if not all_rows:
+        return [], [], {}
+
+    headers = all_rows[0]
+    sample_rows = all_rows[1:]
+    _, auto_map = _detect_headers(all_rows)
+    return headers, sample_rows, auto_map or {}
+
+
+def parse_excel_with_col_map(file_bytes, col_map):
+    """
+    Parse Excel using an explicit column mapping dict.
+    col_map keys: 'name' (required), 'shift', 'days', 'type' (all optional).
+    Values are integer column indices.
+    """
+    wb = load_workbook(filename=BytesIO(file_bytes), read_only=True, data_only=True)
+    ws = wb.active
+    rows = []
+    for row in ws.iter_rows(values_only=True):
+        rows.append([str(c).strip() if c is not None else "" for c in row])
+    wb.close()
+
+    if len(rows) < 2:
+        raise ValueError("Excel file has no data rows.")
+
+    employees = []
+    for i in range(1, len(rows)):
+        row = rows[i]
+        valid_indices = [v for v in col_map.values() if v is not None]
+        if valid_indices:
+            max_idx = max(valid_indices)
+            if len(row) <= max_idx:
+                row = row + [""] * (max_idx + 1 - len(row))
+
+        name_idx = col_map.get("name")
+        if name_idx is None:
+            continue
+        name = row[name_idx].strip()
+        if not name or name.lower() in ("none", "nan", ""):
+            continue
+
+        shift = _parse_shift(row[col_map["shift"]]) if col_map.get("shift") is not None else None
+        working_days = _parse_days(row[col_map["days"]]) if col_map.get("days") is not None else []
+        content_types = _parse_types(row[col_map["type"]]) if col_map.get("type") is not None else []
+
+        if not content_types:
+            content_types = ["Content"]
+        if not working_days:
+            working_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+
+        employees.append({
+            "name": name,
+            "content_types": content_types,
+            "working_days": working_days,
+            "shift": shift,
+        })
+
+    if not employees:
+        raise ValueError("No valid employee rows found in the file.")
+    return employees

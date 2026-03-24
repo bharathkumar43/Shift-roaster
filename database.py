@@ -84,6 +84,16 @@ def get_employee_by_id(emp_id):
     return _row_to_employee(row) if row else None
 
 
+def update_employee(emp_id, content_types, working_days):
+    conn = get_db()
+    conn.execute(
+        "UPDATE employees SET content_types = ?, working_days = ? WHERE id = ?",
+        (json.dumps(content_types), json.dumps(working_days), emp_id)
+    )
+    conn.commit()
+    conn.close()
+
+
 def remove_employee(emp_id):
     conn = get_db()
     conn.execute("DELETE FROM employees WHERE id = ?", (emp_id,))
@@ -143,6 +153,13 @@ def get_all_projects():
 def remove_project(project_id):
     conn = get_db()
     conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+    conn.commit()
+    conn.close()
+
+
+def clear_projects_for_employee(employee_id):
+    conn = get_db()
+    conn.execute("DELETE FROM projects WHERE employee_id = ?", (employee_id,))
     conn.commit()
     conn.close()
 

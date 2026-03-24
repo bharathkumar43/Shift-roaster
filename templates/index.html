@@ -94,8 +94,8 @@
                         <div class="mt-3 d-flex justify-content-between align-items-center">
                             <div class="small text-muted">
                                 <i class="bi bi-info-circle"></i>
-                                File must have columns: <strong>Name</strong>, <strong>Shift</strong>,
-                                <strong>Working Days</strong>, <strong>Product Type</strong>.
+                                Supports <strong>.xlsx</strong>, <strong>.pdf</strong>, <strong>.png</strong>, <strong>.jpg</strong>.
+                                Employees are read automatically — you can review and edit before confirming.
                                 This will <strong>replace</strong> all existing employees.
                             </div>
                             <button type="submit" class="btn btn-primary btn-sm" id="uploadBtn" disabled>
@@ -187,17 +187,17 @@
                             <tbody>
                                 <tr>
                                     <td><span class="badge bg-shift1">Shift 1</span></td>
-                                    <td>6:00 AM &ndash; 2:00 PM IST</td>
+                                    <td>6:00 AM &ndash; 2:00 PM IST<br><small class="text-muted">7:30 PM &ndash; 3:30 AM EST</small></td>
                                     <td class="text-end"><span class="badge bg-secondary rounded-pill">~20% Lean</span></td>
                                 </tr>
                                 <tr>
                                     <td><span class="badge bg-shift2">Shift 2</span></td>
-                                    <td>1:00 PM &ndash; 10:00 PM IST</td>
+                                    <td>1:00 PM &ndash; 10:00 PM IST<br><small class="text-muted">2:30 AM &ndash; 11:30 AM EST</small></td>
                                     <td class="text-end"><span class="badge bg-success rounded-pill">~40% Strong</span></td>
                                 </tr>
                                 <tr>
                                     <td><span class="badge bg-shift3">Shift 3</span></td>
-                                    <td>9:00 PM &ndash; 6:00 AM IST</td>
+                                    <td>9:00 PM &ndash; 6:00 AM IST<br><small class="text-muted">10:30 AM &ndash; 7:30 PM EST</small></td>
                                     <td class="text-end"><span class="badge bg-success rounded-pill">~40% Strong</span></td>
                                 </tr>
                             </tbody>
@@ -246,7 +246,7 @@
                                         <th>Product Types</th>
                                         <th>Working Days</th>
                                         <th>Projects</th>
-                                        <th style="width:48px"></th>
+                                        <th style="width:80px"></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -281,12 +281,24 @@
                                             {% endif %}
                                         </td>
                                         <td>
-                                            <form method="POST" action="{{ url_for('remove_employee', emp_id=emp.id) }}" class="d-inline">
-                                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Remove"
-                                                        onclick="return confirm('Remove {{ emp.name }}?')">
-                                                    <i class="bi bi-x-lg"></i>
+                                            <div class="d-flex gap-1">
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-secondary edit-emp-btn"
+                                                        title="Edit"
+                                                        data-emp-id="{{ emp.id }}"
+                                                        data-emp-name="{{ emp.name | e }}"
+                                                        data-content-types='{{ emp.content_types | tojson }}'
+                                                        data-working-days='{{ emp.working_days | tojson }}'
+                                                        data-projects='{{ (all_projects | selectattr("employee_id", "equalto", emp.id) | list) | tojson }}'>
+                                                    <i class="bi bi-pencil"></i>
                                                 </button>
-                                            </form>
+                                                <form method="POST" action="{{ url_for('remove_employee', emp_id=emp.id) }}" class="d-inline">
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Remove"
+                                                            onclick="return confirm('Remove {{ emp.name }}?')">
+                                                        <i class="bi bi-x-lg"></i>
+                                                    </button>
+                                                </form>
+                                            </div>
                                         </td>
                                     </tr>
                                     {% endfor %}
@@ -381,6 +393,99 @@
             </div>
 
         </div>
+    <!-- Edit Employee Modal -->
+    <div class="modal fade" id="editEmpModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-pencil"></i> Edit &mdash; <span id="editEmpName"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">Product Types</label>
+                        <div id="editTypeToggles" class="d-flex gap-2 flex-wrap"></div>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">Working Days</label>
+                        <div id="editDayToggles" class="d-flex gap-1 flex-wrap"></div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label fw-semibold">
+                            Projects <span class="text-muted fw-normal">(optional)</span>
+                        </label>
+                        <div id="editProjectList"></div>
+                        <button type="button" class="btn btn-outline-secondary btn-sm mt-2" id="editAddProjectBtn">
+                            <i class="bi bi-plus-circle"></i> Add Project
+                        </button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveEmpBtn">
+                        <i class="bi bi-check2"></i> Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Employee Preview & Edit Modal -->
+    <div class="modal fade" id="empPreviewModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-people"></i>
+                        Preview Employees &mdash; <span id="empPreviewCount">0</span> found
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <!-- Loading -->
+                    <div id="empPreviewLoading" class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <p class="mt-3 text-muted">Reading file&hellip;</p>
+                    </div>
+                    <!-- Error -->
+                    <div id="empPreviewError" class="alert alert-danger m-3 d-none"></div>
+                    <!-- Content -->
+                    <div id="empPreviewContent" class="d-none">
+                        <div class="px-3 py-2 border-bottom bg-light small text-muted">
+                            <i class="bi bi-pencil"></i>
+                            Edit names inline. Click the coloured buttons to toggle product types and working days.
+                            Use <strong>+ Add Row</strong> to add missing employees.
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0" style="min-width:780px">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width:190px" class="ps-3">Name</th>
+                                        <th style="width:140px">Product Types</th>
+                                        <th style="min-width:230px">Working Days</th>
+                                        <th style="width:200px">Projects <span class="text-muted fw-normal" style="font-size:.75rem">(comma-separated)</span></th>
+                                        <th style="width:44px"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="empPreviewBody"></tbody>
+                            </table>
+                        </div>
+                        <div class="px-3 py-2 border-top">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="addEmpRowBtn">
+                                <i class="bi bi-plus-circle"></i> Add Row
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" id="empPreviewConfirmBtn" disabled>
+                        <i class="bi bi-check2-all"></i> Confirm Import
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
     </main>
 
     <footer class="footer text-center">
@@ -437,38 +542,307 @@
         if (genProj) genProj.addEventListener('submit', syncFields);
         syncFields();
 
-        // ── File Upload drag-drop ────────────────────────
-        var dropzone = document.getElementById('dropzone');
+        // ── Employee Preview / Edit Modal ─────────────────
+        var dropzone  = document.getElementById('dropzone');
         var fileInput = document.getElementById('fileInput');
         var fileNameEl = document.getElementById('fileName');
         var uploadBtn = document.getElementById('uploadBtn');
+        var empModal  = new bootstrap.Modal(document.getElementById('empPreviewModal'));
 
-        dropzone.addEventListener('click', function () { fileInput.click(); });
+        var empBody       = document.getElementById('empPreviewBody');
+        var empCount      = document.getElementById('empPreviewCount');
+        var empLoading    = document.getElementById('empPreviewLoading');
+        var empError      = document.getElementById('empPreviewError');
+        var empContent    = document.getElementById('empPreviewContent');
+        var empConfirmBtn = document.getElementById('empPreviewConfirmBtn');
 
-        fileInput.addEventListener('change', function () {
-            if (fileInput.files.length > 0) {
-                fileNameEl.textContent = fileInput.files[0].name;
-                fileNameEl.classList.remove('d-none');
-                uploadBtn.disabled = false;
+        var ALL_TYPES   = ['Content','Email','Message'];
+        var TYPE_ABBR   = ['CON','EML','MSG'];
+        var TYPE_COLORS = ['info','primary','warning'];
+        var ALL_DAYS    = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+        var DAY_ABBR    = ['Mo','Tu','We','Th','Fr','Sa','Su'];
+
+        function esc(s) {
+            return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        function buildRow(emp) {
+            var h = '<tr>';
+            h += '<td class="ps-3"><input type="text" class="form-control form-control-sm emp-name" value="' + esc(emp.name) + '" placeholder="Name"></td>';
+            h += '<td><div class="d-flex gap-1 flex-wrap py-1">';
+            ALL_TYPES.forEach(function(ct, ci) {
+                var on = emp.content_types && emp.content_types.indexOf(ct) !== -1;
+                h += '<button type="button" class="btn btn-sm emp-toggle emp-type-btn ' +
+                     (on ? 'btn-' : 'btn-outline-') + TYPE_COLORS[ci] +
+                     '" data-val="' + ct + '" data-color="' + TYPE_COLORS[ci] + '" data-on="' + on + '">' + TYPE_ABBR[ci] + '</button>';
+            });
+            h += '</div></td>';
+            h += '<td><div class="d-flex gap-1 flex-wrap py-1">';
+            ALL_DAYS.forEach(function(day, di) {
+                var on = emp.working_days && emp.working_days.indexOf(day) !== -1;
+                h += '<button type="button" class="btn btn-sm emp-toggle emp-day-btn ' +
+                     (on ? 'btn-secondary' : 'btn-outline-secondary') +
+                     '" data-val="' + day + '" data-color="secondary" data-on="' + on + '">' + DAY_ABBR[di] + '</button>';
+            });
+            h += '</div></td>';
+            var projNames = (emp.projects || []).map(function(p) { return p.name; }).join(', ');
+            h += '<td><input type="text" class="form-control form-control-sm emp-projects" value="' + esc(projNames) + '" placeholder="e.g. Alpha, Beta"></td>';
+            h += '<td class="pe-2"><button type="button" class="btn btn-sm btn-outline-danger remove-emp-row" title="Remove"><i class="bi bi-x-lg"></i></button></td>';
+            h += '</tr>';
+            return h;
+        }
+
+        function refreshCount() {
+            var n = empBody.querySelectorAll('tr').length;
+            empCount.textContent = n;
+            empConfirmBtn.disabled = (n === 0);
+        }
+
+        document.getElementById('empPreviewModal').addEventListener('click', function(e) {
+            var tog = e.target.closest('.emp-toggle');
+            if (tog) {
+                var on = tog.dataset.on === 'true', col = tog.dataset.color;
+                tog.classList.toggle('btn-' + col, !on);
+                tog.classList.toggle('btn-outline-' + col, on);
+                tog.dataset.on = String(!on);
+                return;
             }
+            var rb = e.target.closest('.remove-emp-row');
+            if (rb) { rb.closest('tr').remove(); refreshCount(); }
         });
 
-        dropzone.addEventListener('dragover', function (e) {
-            e.preventDefault();
-            dropzone.classList.add('drag-over');
+        document.getElementById('addEmpRowBtn').addEventListener('click', function() {
+            empBody.insertAdjacentHTML('beforeend', buildRow({
+                name: '', content_types: ['Content'],
+                working_days: ['Monday','Tuesday','Wednesday','Thursday','Friday'],
+                projects: []
+            }));
+            refreshCount();
+            empBody.lastElementChild.querySelector('.emp-name').focus();
         });
-        dropzone.addEventListener('dragleave', function () {
-            dropzone.classList.remove('drag-over');
+
+        function collectEmps() {
+            var list = [];
+            empBody.querySelectorAll('tr').forEach(function(row) {
+                var name = row.querySelector('.emp-name').value.trim();
+                if (!name) return;
+                var cts = [], days = [], projs = [];
+                row.querySelectorAll('.emp-type-btn').forEach(function(b) { if (b.dataset.on==='true') cts.push(b.dataset.val); });
+                row.querySelectorAll('.emp-day-btn' ).forEach(function(b) { if (b.dataset.on==='true') days.push(b.dataset.val); });
+                var projText = row.querySelector('.emp-projects').value.trim();
+                if (projText) {
+                    projText.split(',').forEach(function(p) {
+                        p = p.trim();
+                        if (p) projs.push({name: p, product_type: 'Content'});
+                    });
+                }
+                if (!cts.length)  cts  = ['Content'];
+                if (!days.length) days = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+                list.push({name: name, content_types: cts, working_days: days, projects: projs});
+            });
+            return list;
+        }
+
+        empConfirmBtn.addEventListener('click', function() {
+            var emps = collectEmps();
+            if (!emps.length) return;
+            empConfirmBtn.disabled = true;
+            empConfirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Importing\u2026';
+            fetch('/upload_confirm', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({employees: emps})
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.error) {
+                    alert('Import failed: ' + d.error);
+                    empConfirmBtn.disabled = false;
+                    empConfirmBtn.innerHTML = '<i class="bi bi-check2-all"></i> Confirm Import';
+                    return;
+                }
+                empModal.hide();
+                window.location.href = '/?imported=' + d.count;
+            })
+            .catch(function() {
+                alert('Import failed. Please try again.');
+                empConfirmBtn.disabled = false;
+                empConfirmBtn.innerHTML = '<i class="bi bi-check2-all"></i> Confirm Import';
+            });
         });
-        dropzone.addEventListener('drop', function (e) {
+
+        function openPreview(file) {
+            fileNameEl.textContent = file.name;
+            fileNameEl.classList.remove('d-none');
+            uploadBtn.disabled = true;
+            empLoading.classList.remove('d-none');
+            empError.classList.add('d-none');
+            empContent.classList.add('d-none');
+            empConfirmBtn.disabled = true;
+            empConfirmBtn.innerHTML = '<i class="bi bi-check2-all"></i> Confirm Import';
+            empBody.innerHTML = '';
+            empCount.textContent = '0';
+            empModal.show();
+            var fd = new FormData();
+            fd.append('file', file);
+            fetch('/preview_upload', {method: 'POST', body: fd})
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    empLoading.classList.add('d-none');
+                    if (d.error) {
+                        empError.textContent = d.error;
+                        empError.classList.remove('d-none');
+                        return;
+                    }
+                    (d.employees || []).forEach(function(emp) {
+                        empBody.insertAdjacentHTML('beforeend', buildRow(emp));
+                    });
+                    refreshCount();
+                    empContent.classList.remove('d-none');
+                })
+                .catch(function() {
+                    empLoading.classList.add('d-none');
+                    empError.textContent = 'Failed to read the file. Please try again.';
+                    empError.classList.remove('d-none');
+                });
+        }
+
+        fileInput.addEventListener('change', function() {
+            if (fileInput.files.length > 0) openPreview(fileInput.files[0]);
+        });
+        dropzone.addEventListener('click', function() { fileInput.click(); });
+        dropzone.addEventListener('dragover', function(e) { e.preventDefault(); dropzone.classList.add('drag-over'); });
+        dropzone.addEventListener('dragleave', function() { dropzone.classList.remove('drag-over'); });
+        dropzone.addEventListener('drop', function(e) {
             e.preventDefault();
             dropzone.classList.remove('drag-over');
             if (e.dataTransfer.files.length > 0) {
                 fileInput.files = e.dataTransfer.files;
-                fileNameEl.textContent = e.dataTransfer.files[0].name;
-                fileNameEl.classList.remove('d-none');
-                uploadBtn.disabled = false;
+                openPreview(e.dataTransfer.files[0]);
             }
+        });
+
+        // ── Edit Employee Modal ────────────────────────────
+        var editEmpModal     = new bootstrap.Modal(document.getElementById('editEmpModal'));
+        var currentEditEmpId = null;
+
+        function makeProjectRow(name, ptype) {
+            var row = document.createElement('div');
+            row.className = 'project-row d-flex gap-2 mb-2 align-items-center';
+            row.innerHTML =
+                '<input type="text" class="form-control form-control-sm edit-proj-name"' +
+                ' placeholder="Project name" value="' + esc(name || '') + '">' +
+                '<select class="form-select form-select-sm edit-proj-type" style="max-width:160px">' +
+                '  <option value="Content"' + (ptype === 'Content' ? ' selected' : '') + '>Content</option>' +
+                '  <option value="Email"'   + (ptype === 'Email'   ? ' selected' : '') + '>Email</option>' +
+                '  <option value="Message"' + (ptype === 'Message' ? ' selected' : '') + '>Message</option>' +
+                '</select>' +
+                '<button type="button" class="btn btn-sm btn-outline-danger remove-proj-row" title="Remove">' +
+                '  <i class="bi bi-x"></i></button>';
+            row.querySelector('.remove-proj-row').addEventListener('click', function() { row.remove(); });
+            return row;
+        }
+
+        document.getElementById('editAddProjectBtn').addEventListener('click', function() {
+            document.getElementById('editProjectList').appendChild(makeProjectRow('', 'Content'));
+        });
+
+        document.querySelectorAll('.edit-emp-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                currentEditEmpId = btn.dataset.empId;
+                document.getElementById('editEmpName').textContent = btn.dataset.empName;
+                var cts      = JSON.parse(btn.dataset.contentTypes);
+                var days     = JSON.parse(btn.dataset.workingDays);
+                var projects = JSON.parse(btn.dataset.projects || '[]');
+
+                // Product type toggles
+                var typeDiv = document.getElementById('editTypeToggles');
+                typeDiv.innerHTML = '';
+                ALL_TYPES.forEach(function(ct, ci) {
+                    var on = cts.indexOf(ct) !== -1;
+                    var b = document.createElement('button');
+                    b.type = 'button';
+                    b.className = 'btn edit-toggle edit-type-btn ' +
+                                  (on ? 'btn-' : 'btn-outline-') + TYPE_COLORS[ci];
+                    b.dataset.val = ct; b.dataset.color = TYPE_COLORS[ci]; b.dataset.on = String(on);
+                    b.textContent = TYPE_ABBR[ci];
+                    typeDiv.appendChild(b);
+                });
+
+                // Working day toggles
+                var dayDiv = document.getElementById('editDayToggles');
+                dayDiv.innerHTML = '';
+                ALL_DAYS.forEach(function(day, di) {
+                    var on = days.indexOf(day) !== -1;
+                    var b = document.createElement('button');
+                    b.type = 'button';
+                    b.className = 'btn edit-toggle edit-day-btn ' +
+                                  (on ? 'btn-secondary' : 'btn-outline-secondary');
+                    b.dataset.val = day; b.dataset.color = 'secondary'; b.dataset.on = String(on);
+                    b.textContent = DAY_ABBR[di];
+                    dayDiv.appendChild(b);
+                });
+
+                // Existing projects
+                var projList = document.getElementById('editProjectList');
+                projList.innerHTML = '';
+                projects.forEach(function(p) {
+                    projList.appendChild(makeProjectRow(p.name, p.product_type));
+                });
+
+                editEmpModal.show();
+            });
+        });
+
+        document.getElementById('editEmpModal').addEventListener('click', function(e) {
+            var tog = e.target.closest('.edit-toggle');
+            if (tog) {
+                var on = tog.dataset.on === 'true', col = tog.dataset.color;
+                tog.classList.toggle('btn-' + col, !on);
+                tog.classList.toggle('btn-outline-' + col, on);
+                tog.dataset.on = String(!on);
+            }
+        });
+
+        document.getElementById('saveEmpBtn').addEventListener('click', function() {
+            var cts = [], days = [], projs = [];
+            document.querySelectorAll('#editTypeToggles .edit-type-btn').forEach(function(b) {
+                if (b.dataset.on === 'true') cts.push(b.dataset.val);
+            });
+            document.querySelectorAll('#editDayToggles .edit-day-btn').forEach(function(b) {
+                if (b.dataset.on === 'true') days.push(b.dataset.val);
+            });
+            document.querySelectorAll('#editProjectList .project-row').forEach(function(row) {
+                var name  = row.querySelector('.edit-proj-name').value.trim();
+                var ptype = row.querySelector('.edit-proj-type').value;
+                if (name) projs.push({name: name, product_type: ptype});
+            });
+            if (!cts.length)  cts  = ['Content'];
+            if (!days.length) days = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+
+            var saveBtn = document.getElementById('saveEmpBtn');
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving\u2026';
+
+            fetch('/edit_employee/' + currentEditEmpId, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({content_types: cts, working_days: days, projects: projs})
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.success) { editEmpModal.hide(); window.location.reload(); }
+                else {
+                    alert('Save failed.');
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = '<i class="bi bi-check2"></i> Save Changes';
+                }
+            })
+            .catch(function() {
+                alert('Save failed. Please try again.');
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="bi bi-check2"></i> Save Changes';
+            });
         });
 
         // ── Search ──────────────────────────────────────
@@ -509,7 +883,7 @@
         function shiftBadge(s) {
             if (!s) return '<span class="text-muted">N/A</span>';
             var cls = 'bg-shift' + s.number;
-            return '<span class="badge ' + cls + '">' + s.name + '</span> <small class="text-muted">' + s.time + '</small>';
+            return '<span class="badge ' + cls + '">' + s.name + '</span> <small class="text-muted">' + s.time_ist + ' / ' + s.time_est + '</small>';
         }
 
         function renderResults(data, q) {
