@@ -68,8 +68,14 @@
                     <div class="fw-bold fs-5">{{ user.full_name or user.username }}</div>
                     <div class="text-muted">@{{ user.username }}</div>
                     <span class="badge {{ 'bg-danger' if user.role == 'admin' else 'bg-secondary' }} mt-1">
+                        <i class="bi {{ 'bi-shield-fill' if user.role == 'admin' else 'bi-person' }} me-1"></i>
                         {{ user.role | capitalize }}
                     </span>
+                    {% if user.role != 'admin' %}
+                    <div class="mt-2 small text-muted">
+                        <i class="bi bi-eye me-1"></i> View-only access. Contact an admin for edit permissions.
+                    </div>
+                    {% endif %}
                 </div>
             </div>
 

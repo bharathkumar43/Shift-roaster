@@ -38,6 +38,23 @@ def login_required(f):
     return decorated
 
 
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "user_id" not in session:
+            if request.is_json:
+                return jsonify({"error": "Authentication required"}), 401
+            flash("Please log in to continue.", "warning")
+            return redirect(url_for("login", next=request.path))
+        if not g.user or g.user.get("role") != "admin":
+            if request.is_json:
+                return jsonify({"error": "Admin access required"}), 403
+            flash("You don't have permission to perform this action.", "danger")
+            return redirect(url_for("index"))
+        return f(*args, **kwargs)
+    return decorated
+
+
 @app.before_request
 def load_logged_in_user():
     user_id = session.get("user_id")
@@ -47,6 +64,12 @@ def load_logged_in_user():
 @app.context_processor
 def inject_user():
     return {"current_user": g.user}
+
+
+def _predefined(year, month):
+    """Return saved shift assignments for a month, or None if none saved."""
+    saved = db.get_shift_assignments_for_month(year, month)
+    return saved if saved else None
 
 
 # ── Index / Employee Management ──────────────────────────
@@ -78,7 +101,7 @@ def index():
 
 
 @app.route("/add_employee", methods=["POST"])
-@login_required
+@admin_required
 def add_employee():
     name = request.form.get("name", "").strip()
     content_types = request.form.getlist("content_types")
@@ -105,7 +128,7 @@ def add_employee():
 
 
 @app.route("/edit_employee/<int:emp_id>", methods=["POST"])
-@login_required
+@admin_required
 def edit_employee(emp_id):
     data = request.get_json()
     if not data:
@@ -124,14 +147,14 @@ def edit_employee(emp_id):
 
 
 @app.route("/remove_employee/<int:emp_id>", methods=["POST"])
-@login_required
+@admin_required
 def remove_employee(emp_id):
     db.remove_employee(emp_id)
     return redirect(url_for("index"))
 
 
 @app.route("/clear_all", methods=["POST"])
-@login_required
+@admin_required
 def clear_all():
     db.clear_all_employees()
     flash("All employees cleared.", "success")
@@ -153,7 +176,7 @@ def generate():
 
     night_counts = db.get_night_shift_counts()
     roster, warnings, shift_assignments = generate_roster(
-        employees, year, month, night_counts
+        employees, year, month, night_counts, _predefined(year, month)
     )
 
     db.save_all_rotations(shift_assignments, employees, year, month)
@@ -226,7 +249,7 @@ def projects():
     month = int(request.form.get("month", date.today().month))
 
     night_counts = db.get_night_shift_counts()
-    _, _, shift_assignments = generate_roster(employees, year, month, night_counts)
+    _, _, shift_assignments = generate_roster(employees, year, month, night_counts, _predefined(year, month))
 
     coverage, proj_warnings = generate_project_coverage(
         all_projects, employees, shift_assignments, year, month
@@ -275,7 +298,7 @@ def download():
     employees = db.get_all_employees()
     night_counts = db.get_night_shift_counts()
     roster, warnings, shift_assignments = generate_roster(
-        employees, year, month, night_counts
+        employees, year, month, night_counts, _predefined(year, month)
     )
 
     all_projects = db.get_all_projects()
@@ -305,7 +328,7 @@ def download():
 # ── File Upload ──────────────────────────────────────────
 
 @app.route("/preview_upload", methods=["POST"])
-@login_required
+@admin_required
 def preview_upload():
     """Parse uploaded file and return employee list as JSON for the preview/edit modal."""
     if "file" not in request.files:
@@ -323,7 +346,7 @@ def preview_upload():
 
 
 @app.route("/upload_confirm", methods=["POST"])
-@login_required
+@admin_required
 def upload_confirm():
     """Receive the (possibly edited) employee list as JSON and save to DB."""
     data = request.get_json()
@@ -352,7 +375,7 @@ def upload_confirm():
 
 
 @app.route("/upload", methods=["POST"])
-@login_required
+@admin_required
 def upload():
     if "file" not in request.files:
         flash("No file selected.", "danger")
@@ -405,7 +428,7 @@ def search():
 
     shift_assignments = {}
     if employees:
-        _, _, shift_assignments = generate_roster(employees, year, month, night_counts)
+        _, _, shift_assignments = generate_roster(employees, year, month, night_counts, _predefined(year, month))
 
     emp_results = []
     matched_emps = db.search_employees(q)
@@ -499,7 +522,7 @@ def summary():
 
     if employees:
         night_counts = db.get_night_shift_counts()
-        _, _, shift_assignments = generate_roster(employees, year, month, night_counts)
+        _, _, shift_assignments = generate_roster(employees, year, month, night_counts, _predefined(year, month))
 
         if all_projects:
             proj_coverage, proj_warnings = generate_project_coverage(
@@ -524,6 +547,49 @@ def summary():
                            now_year=next_year)
 
 
+# ── Manual Shift Editing ─────────────────────────────────
+
+@app.route("/get_shifts", methods=["GET"])
+@admin_required
+def get_shifts():
+    year = request.args.get("year", type=int)
+    month = request.args.get("month", type=int)
+    if not year or not month:
+        return jsonify({"error": "year and month required"}), 400
+    assignments = db.get_shift_assignments_for_month(year, month)
+    return jsonify({"assignments": assignments})
+
+
+@app.route("/save_shifts", methods=["POST"])
+@admin_required
+def save_shifts():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid data"}), 400
+    year = data.get("year")
+    month = data.get("month")
+    assignments = data.get("assignments", {})
+    if not year or not month:
+        return jsonify({"error": "year and month required"}), 400
+    # Convert shift values to int
+    assignments = {k: int(v) for k, v in assignments.items() if v}
+    employees = db.get_all_employees()
+    db.save_all_rotations(assignments, employees, year, month)
+    return jsonify({"success": True})
+
+
+@app.route("/clear_shifts", methods=["POST"])
+@admin_required
+def clear_shifts():
+    data = request.get_json()
+    year = data.get("year")
+    month = data.get("month")
+    if not year or not month:
+        return jsonify({"error": "year and month required"}), 400
+    db.clear_shifts_for_month(year, month)
+    return jsonify({"success": True})
+
+
 # ── Authentication ───────────────────────────────────────
 
 @app.route("/login", methods=["GET", "POST"])
@@ -542,6 +608,33 @@ def login():
         flash("Invalid username or password.", "danger")
     return render_template("login.html", app_name=APP_NAME,
                            next=request.args.get("next", ""))
+
+
+@app.route("/signup", methods=["GET", "POST"])
+def signup():
+    if g.user:
+        return redirect(url_for("index"))
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        full_name = request.form.get("full_name", "").strip()
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm_password", "")
+        error = None
+        if not username or len(username) < 3:
+            error = "Username must be at least 3 characters."
+        elif not password or len(password) < 6:
+            error = "Password must be at least 6 characters."
+        elif password != confirm:
+            error = "Passwords do not match."
+        elif db.get_user_by_username(username):
+            error = f"Username '{username}' is already taken."
+        if error:
+            flash(error, "danger")
+        else:
+            db.add_user(username, generate_password_hash(password), full_name, role="user")
+            flash("Account created! You can now sign in.", "success")
+            return redirect(url_for("login"))
+    return render_template("signup.html", app_name=APP_NAME)
 
 
 @app.route("/logout", methods=["POST"])

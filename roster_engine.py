@@ -211,16 +211,27 @@ def _fix_daily_gaps(assignments, employees):
                     break
 
 
-def generate_roster(employees, year, month, night_shift_counts=None):
+def generate_roster(employees, year, month, night_shift_counts=None, predefined_shifts=None):
     """
     Generate a full monthly roster.
+
+    If predefined_shifts ({emp_name: shift_num}) is provided, those assignments
+    are used directly. Any employees not in predefined_shifts are auto-assigned.
 
     Returns:
         roster: dict mapping date -> {shift_num: [employee_names]}
         warnings: list of warning strings for coverage gaps
         shift_assignments: dict mapping employee_name -> shift_num
     """
-    shift_assignments = assign_shifts(employees, night_shift_counts)
+    if predefined_shifts:
+        missing = [e for e in employees if e["name"] not in predefined_shifts]
+        if missing:
+            auto = assign_shifts(missing, night_shift_counts)
+            shift_assignments = {**predefined_shifts, **auto}
+        else:
+            shift_assignments = dict(predefined_shifts)
+    else:
+        shift_assignments = assign_shifts(employees, night_shift_counts)
     emp_lookup = {emp["name"]: emp for emp in employees}
 
     num_days = calendar.monthrange(year, month)[1]

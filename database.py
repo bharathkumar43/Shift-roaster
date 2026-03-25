@@ -320,6 +320,32 @@ def get_last_night_shift_month(employee_id):
     return (row["year"], row["month"]) if row else None
 
 
+def get_shift_assignments_for_month(year, month):
+    """Return {emp_name: shift_num} for all saved assignments in a month."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT e.name, rh.shift_assigned
+        FROM rotation_history rh
+        JOIN employees e ON rh.employee_id = e.id
+        WHERE rh.year = %s AND rh.month = %s
+    """, (year, month))
+    rows = _fetchall(cur)
+    cur.close()
+    conn.close()
+    return {r["name"]: r["shift_assigned"] for r in rows}
+
+
+def clear_shifts_for_month(year, month):
+    """Delete all rotation_history rows for a given month (revert to auto)."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM rotation_history WHERE year = %s AND month = %s", (year, month))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
 def get_rotation_for_employee(employee_id, year, month):
     conn = get_db()
     cur = conn.cursor()
