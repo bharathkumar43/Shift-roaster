@@ -2,7 +2,6 @@ import calendar
 from datetime import date
 from math import ceil
 from collections import defaultdict
-from itertools import combinations
 
 SHIFTS = {
     1: {"name": "Shift 1", "time_ist": "6:00 AM - 2:00 PM IST", "time_est": "7:30 PM - 3:30 AM EST", "strength": "lean"},
@@ -21,25 +20,14 @@ def assign_shifts(employees, night_shift_counts=None):
     Assign each employee to a shift (1, 2, or 3).
 
     Strategy:
-      1. Calculate target sizes (~20% Shift 1, ~40% Shift 2, ~40% Shift 3)
-      2. Sort employees by night shift history for round-robin rotation
-      3. Assign employees to shifts while trying to stagger off-days
-         so every shift has at least 1 person working every day of the week
-      4. Ensure content type coverage across shifts
+      1. Guarantee: place at least 1 employee of each product type in each shift
+      2. Distribute remaining employees per product type in 20/40/40 ratio
+      3. Night shift rotation via round-robin
+      4. Fix daily gaps from off-day overlaps
     """
     n = len(employees)
     if n == 0:
         return {}
-
-    n_shift3 = max(1, round(n * 0.4))
-    n_shift2 = max(1, round(n * 0.4))
-    n_shift1 = max(1, n - n_shift3 - n_shift2)
-
-    if n_shift1 + n_shift2 + n_shift3 != n:
-        diff = n - (n_shift1 + n_shift2 + n_shift3)
-        n_shift2 += diff
-
-    targets = {3: n_shift3, 2: n_shift2, 1: n_shift1}
 
     if night_shift_counts:
         sorted_emps = sorted(
@@ -49,100 +37,144 @@ def assign_shifts(employees, night_shift_counts=None):
     else:
         sorted_emps = list(employees)
 
-    assignments = _assign_with_staggered_offs(sorted_emps, targets)
+    total = len(sorted_emps)
+    target_s1 = max(1, round(total * 0.2))
+    target_s3 = max(1, round(total * 0.4))
+    target_s2 = max(1, total - target_s1 - target_s3)
+    if target_s1 + target_s2 + target_s3 != total:
+        target_s2 += total - (target_s1 + target_s2 + target_s3)
+    targets = {1: target_s1, 2: target_s2, 3: target_s3}
 
-    _ensure_content_type_coverage(assignments, employees)
-    _fix_daily_gaps(assignments, employees)
+    assignments = {}
+    assigned = set()
+
+    _guarantee_type_coverage(sorted_emps, assignments, assigned, night_shift_counts)
+    _distribute_remaining(sorted_emps, assignments, assigned, targets, night_shift_counts)
+    _fix_daily_gaps(assignments, sorted_emps)
 
     return assignments
+
+
+def _guarantee_type_coverage(sorted_emps, assignments, assigned, night_shift_counts):
+    """
+    For each product type, ensure at least 1 employee is placed in each shift.
+    Prioritizes employees who handle fewer product types (specialists first),
+    so multi-type employees remain available for flexible placement later.
+    """
+    emp_lookup = {e["name"]: e for e in sorted_emps}
+
+    for ct in CONTENT_TYPES:
+        candidates = [e for e in sorted_emps if ct in e["content_types"]]
+        if not candidates:
+            continue
+
+        for shift_num in [1, 2, 3]:
+            already_covered = any(
+                assignments.get(e["name"]) == shift_num and ct in emp_lookup[e["name"]]["content_types"]
+                for e in sorted_emps if e["name"] in assigned
+            )
+            if already_covered:
+                continue
+
+            unassigned = [e for e in candidates if e["name"] not in assigned]
+
+            unassigned.sort(key=lambda e: len(e["content_types"]))
+
+            placed = False
+            for emp in unassigned:
+                assignments[emp["name"]] = shift_num
+                assigned.add(emp["name"])
+                placed = True
+                break
+
+            if not placed:
+                for emp in candidates:
+                    if emp["name"] in assigned and assignments[emp["name"]] != shift_num:
+                        continue
+                    if emp["name"] not in assigned:
+                        assignments[emp["name"]] = shift_num
+                        assigned.add(emp["name"])
+                        break
+
+
+def _distribute_remaining(sorted_emps, assignments, assigned, targets, night_shift_counts):
+    """
+    Distribute unassigned employees across shifts respecting 20/40/40 targets
+    and per-product-type balance.
+    """
+    shift_counts = {1: 0, 2: 0, 3: 0}
+    for s in assignments.values():
+        shift_counts[s] += 1
+
+    remaining = [e for e in sorted_emps if e["name"] not in assigned]
+
+    type_shift_counts = defaultdict(lambda: {1: 0, 2: 0, 3: 0})
+    emp_lookup = {e["name"]: e for e in sorted_emps}
+    for name, shift in assignments.items():
+        for ct in emp_lookup[name]["content_types"]:
+            type_shift_counts[ct][shift] += 1
+
+    type_totals = defaultdict(int)
+    for emp in sorted_emps:
+        for ct in emp["content_types"]:
+            type_totals[ct] += 1
+
+    type_targets = {}
+    for ct in CONTENT_TYPES:
+        t = type_totals[ct]
+        if t == 0:
+            continue
+        s1 = max(1, round(t * 0.2))
+        s3 = max(1, round(t * 0.4))
+        s2 = max(1, t - s1 - s3)
+        if s1 + s2 + s3 != t:
+            s2 += t - (s1 + s2 + s3)
+        type_targets[ct] = {1: s1, 2: s2, 3: s3}
+
+    if night_shift_counts:
+        remaining.sort(key=lambda e: night_shift_counts.get(e.get("id", 0), 0))
+
+    for emp in remaining:
+        best_shift = _pick_best_shift(emp, shift_counts, targets, type_shift_counts, type_targets)
+        assignments[emp["name"]] = best_shift
+        assigned.add(emp["name"])
+        shift_counts[best_shift] += 1
+        for ct in emp["content_types"]:
+            type_shift_counts[ct][best_shift] += 1
+
+
+def _pick_best_shift(emp, shift_counts, targets, type_shift_counts, type_targets):
+    """
+    Pick the best shift for an employee considering:
+      1. Which shifts still need more people (overall targets)
+      2. Which shifts need this employee's product type(s) most
+    """
+    scores = {}
+    for s in [1, 2, 3]:
+        if shift_counts[s] >= targets[s]:
+            scores[s] = -100
+            continue
+
+        score = targets[s] - shift_counts[s]
+
+        for ct in emp["content_types"]:
+            if ct in type_targets:
+                needed = type_targets[ct][s] - type_shift_counts[ct][s]
+                score += needed * 2
+
+        scores[s] = score
+
+    return max(scores, key=scores.get)
 
 
 def _get_off_days(emp):
-    """Return the set of days this employee is NOT working."""
     return set(DAY_NAMES) - set(emp["working_days"])
-
-
-def _assign_with_staggered_offs(sorted_emps, targets):
-    """
-    Assign employees to shifts such that off-days within each shift
-    are staggered (minimizing days where all shift members are off).
-    """
-    shift_members = {1: [], 2: [], 3: []}
-    assigned = set()
-
-    for shift_num in [3, 2, 1]:
-        target = targets[shift_num]
-        available = [e for e in sorted_emps if e["name"] not in assigned]
-
-        if not available:
-            break
-
-        if target == 1:
-            shift_members[shift_num].append(available[0])
-            assigned.add(available[0]["name"])
-            continue
-
-        best_combo = _find_best_stagger_combo(available, target)
-        for emp in best_combo:
-            shift_members[shift_num].append(emp)
-            assigned.add(emp["name"])
-
-    for emp in sorted_emps:
-        if emp["name"] not in assigned:
-            for shift_num in [2, 3, 1]:
-                if len(shift_members[shift_num]) < targets[shift_num]:
-                    shift_members[shift_num].append(emp)
-                    assigned.add(emp["name"])
-                    break
-
-    assignments = {}
-    for shift_num, members in shift_members.items():
-        for emp in members:
-            assignments[emp["name"]] = shift_num
-
-    return assignments
-
-
-def _find_best_stagger_combo(available, target):
-    """
-    Among available employees, find the combination of `target` people
-    whose off-days overlap the least (best stagger).
-    """
-    if len(available) <= target:
-        return available[:target]
-
-    best_score = -1
-    best_combo = available[:target]
-
-    candidates = available[:min(len(available), 10)]
-
-    for combo in combinations(candidates, min(target, len(candidates))):
-        score = _stagger_score(combo)
-        if score > best_score:
-            best_score = score
-            best_combo = list(combo)
-
-    return best_combo
-
-
-def _stagger_score(group):
-    """
-    Score a group of employees by how well their off-days are staggered.
-    Higher = better (more days of the week covered by at least 1 person).
-    """
-    coverage = 0
-    for day in DAY_NAMES:
-        working = sum(1 for emp in group if day in emp["working_days"])
-        if working > 0:
-            coverage += 1
-    return coverage
 
 
 def _fix_daily_gaps(assignments, employees):
     """
-    After initial assignment, check each day of the week.
-    If a shift has zero working employees on a given day,
-    try to swap someone from another shift to fill the gap.
+    Final pass: for each day, if a shift has zero people working,
+    try to move someone from a shift with 2+ people that day.
     """
     emp_lookup = {e["name"]: e for e in employees}
 
@@ -154,7 +186,7 @@ def _fix_daily_gaps(assignments, employees):
             if len(working_today) > 0:
                 continue
 
-            for donor_shift in [1, 2, 3]:
+            for donor_shift in [2, 3, 1]:
                 if donor_shift == shift_num:
                     continue
                 donor_names = [n for n, s in assignments.items() if s == donor_shift]
@@ -168,49 +200,15 @@ def _fix_daily_gaps(assignments, employees):
                     continue
 
                 candidate = donors_working_today[-1]
-
-                would_break = False
                 remaining_donors = [n for n in donor_names if n != candidate]
-                for check_day in DAY_NAMES:
-                    still_covered = any(
-                        check_day in emp_lookup[n]["working_days"]
-                        for n in remaining_donors
-                    )
-                    if not still_covered:
-                        would_break = True
-                        break
+                would_break = any(
+                    not any(d in emp_lookup[n]["working_days"] for n in remaining_donors)
+                    for d in DAY_NAMES
+                )
 
                 if not would_break:
                     assignments[candidate] = shift_num
                     break
-
-
-def _ensure_content_type_coverage(assignments, employees):
-    """Try to ensure each shift has at least one employee covering each content type."""
-    emp_lookup = {e["name"]: e for e in employees}
-
-    for shift_num in [1, 2, 3]:
-        shift_names = [n for n, s in assignments.items() if s == shift_num]
-        types_covered = set()
-        for name in shift_names:
-            for ct in emp_lookup[name]["content_types"]:
-                types_covered.add(ct)
-
-        for ct in CONTENT_TYPES:
-            if ct not in types_covered:
-                for other_shift in [1, 2, 3]:
-                    if other_shift == shift_num:
-                        continue
-                    other_names = [n for n, s in assignments.items() if s == other_shift]
-                    if len(other_names) <= 1:
-                        continue
-                    for candidate in other_names:
-                        if ct in emp_lookup[candidate]["content_types"]:
-                            assignments[candidate] = shift_num
-                            break
-                    if any(ct in emp_lookup[n]["content_types"]
-                           for n in assignments if assignments[n] == shift_num):
-                        break
 
 
 def generate_roster(employees, year, month, night_shift_counts=None):
@@ -231,6 +229,9 @@ def generate_roster(employees, year, month, night_shift_counts=None):
 
     off_day_warnings = _check_off_day_overlaps(shift_assignments, employees)
     warnings.extend(off_day_warnings)
+
+    type_dist_warnings = _check_type_distribution(shift_assignments, employees)
+    warnings.extend(type_dist_warnings)
 
     for day in range(1, num_days + 1):
         d = date(year, month, day)
@@ -270,10 +271,6 @@ def generate_roster(employees, year, month, night_shift_counts=None):
 
 
 def _check_off_day_overlaps(assignments, employees):
-    """
-    Check if employees in the same shift share off-days that leave
-    the shift uncovered on certain days.
-    """
     emp_lookup = {e["name"]: e for e in employees}
     warnings = []
 
@@ -299,6 +296,29 @@ def _check_off_day_overlaps(assignments, employees):
                     f"({off_people}) are off on {day}. "
                     f"Consider staggering off-days or adding more employees."
                 )
+
+    return warnings
+
+
+def _check_type_distribution(assignments, employees):
+    emp_lookup = {e["name"]: e for e in employees}
+    warnings = []
+
+    for shift_num in [1, 2, 3]:
+        shift_names = [n for n, s in assignments.items() if s == shift_num]
+        type_counts = defaultdict(int)
+        for name in shift_names:
+            for ct in emp_lookup[name]["content_types"]:
+                type_counts[ct] += 1
+
+        for ct in CONTENT_TYPES:
+            if type_counts[ct] == 0:
+                has_any = any(ct in emp_lookup[n]["content_types"] for n in assignments)
+                if has_any:
+                    warnings.append(
+                        f"DISTRIBUTION: {SHIFTS[shift_num]['name']} has no "
+                        f"'{ct}' employees. Consider adding more '{ct}' workers."
+                    )
 
     return warnings
 

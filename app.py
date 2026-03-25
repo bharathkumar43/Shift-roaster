@@ -1,9 +1,15 @@
 import calendar
+import os
 from datetime import date
+from functools import wraps
 from io import BytesIO
 
-from flask import (Flask, render_template, request, session,
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+
+from flask import (Flask, render_template, request, session, g,
                    redirect, url_for, send_file, flash, jsonify)
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from roster_engine import (generate_roster, get_roster_summary,
                            SHIFTS, DAY_NAMES, CONTENT_TYPES)
@@ -20,14 +26,40 @@ APP_NAME = "Employee Work Load Distribution"
 db.init_db()
 
 
+# ── Auth helpers ─────────────────────────────────────────
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "user_id" not in session:
+            flash("Please log in to continue.", "warning")
+            return redirect(url_for("login", next=request.path))
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.before_request
+def load_logged_in_user():
+    user_id = session.get("user_id")
+    g.user = db.get_user_by_id(user_id) if user_id else None
+
+
+@app.context_processor
+def inject_user():
+    return {"current_user": g.user}
+
+
 # ── Index / Employee Management ──────────────────────────
 
 @app.route("/", methods=["GET"])
+@login_required
 def index():
     employees = db.get_all_employees()
     all_projects = db.get_all_projects()
     saved_rosters = db.list_saved_rosters()
     today = date.today()
+    next_month = today.month % 12 + 1
+    next_year = today.year + (1 if today.month == 12 else 0)
     month_names = [calendar.month_name[m] for m in range(1, 13)]
     imported = request.args.get("imported", type=int)
     if imported is not None:
@@ -39,12 +71,14 @@ def index():
                            saved_rosters=saved_rosters,
                            day_names=DAY_NAMES,
                            content_types=CONTENT_TYPES,
-                           now_month=today.month,
-                           now_year=today.year,
+                           now_month=next_month,
+                           now_year=next_year,
+                           current_year=today.year,
                            month_names=month_names)
 
 
 @app.route("/add_employee", methods=["POST"])
+@login_required
 def add_employee():
     name = request.form.get("name", "").strip()
     content_types = request.form.getlist("content_types")
@@ -71,6 +105,7 @@ def add_employee():
 
 
 @app.route("/edit_employee/<int:emp_id>", methods=["POST"])
+@login_required
 def edit_employee(emp_id):
     data = request.get_json()
     if not data:
@@ -89,12 +124,14 @@ def edit_employee(emp_id):
 
 
 @app.route("/remove_employee/<int:emp_id>", methods=["POST"])
+@login_required
 def remove_employee(emp_id):
     db.remove_employee(emp_id)
     return redirect(url_for("index"))
 
 
 @app.route("/clear_all", methods=["POST"])
+@login_required
 def clear_all():
     db.clear_all_employees()
     flash("All employees cleared.", "success")
@@ -104,6 +141,7 @@ def clear_all():
 # ── Roster Generation ────────────────────────────────────
 
 @app.route("/generate", methods=["POST"])
+@login_required
 def generate():
     employees = db.get_all_employees()
     if len(employees) < 2:
@@ -175,6 +213,7 @@ def generate():
 # ── Project Coverage ─────────────────────────────────────
 
 @app.route("/projects", methods=["POST"])
+@login_required
 def projects():
     employees = db.get_all_employees()
     all_projects = db.get_all_projects()
@@ -211,6 +250,7 @@ def projects():
 # ── Download Excel ───────────────────────────────────────
 
 @app.route("/download", methods=["GET"])
+@login_required
 def download():
     year = request.args.get("year", type=int)
     month = request.args.get("month", type=int)
@@ -265,6 +305,7 @@ def download():
 # ── File Upload ──────────────────────────────────────────
 
 @app.route("/preview_upload", methods=["POST"])
+@login_required
 def preview_upload():
     """Parse uploaded file and return employee list as JSON for the preview/edit modal."""
     if "file" not in request.files:
@@ -282,6 +323,7 @@ def preview_upload():
 
 
 @app.route("/upload_confirm", methods=["POST"])
+@login_required
 def upload_confirm():
     """Receive the (possibly edited) employee list as JSON and save to DB."""
     data = request.get_json()
@@ -310,6 +352,7 @@ def upload_confirm():
 
 
 @app.route("/upload", methods=["POST"])
+@login_required
 def upload():
     if "file" not in request.files:
         flash("No file selected.", "danger")
@@ -348,6 +391,7 @@ def upload():
 # ── Search API ───────────────────────────────────────────
 
 @app.route("/search", methods=["GET"])
+@login_required
 def search():
     q = request.args.get("q", "").strip()
     year = request.args.get("year", date.today().year, type=int)
@@ -433,6 +477,108 @@ def search():
         })
 
     return jsonify({"employees": emp_results, "projects": proj_results})
+
+
+# ── Summary ──────────────────────────────────────────────
+
+@app.route("/summary", methods=["GET"])
+@login_required
+def summary():
+    employees = db.get_all_employees()
+    all_projects = db.get_all_projects()
+
+    today = date.today()
+    next_month = today.month % 12 + 1
+    next_year = today.year + (1 if today.month == 12 else 0)
+    year = request.args.get("year", next_year, type=int)
+    month = request.args.get("month", next_month, type=int)
+
+    shift_assignments = {}
+    proj_coverage = []
+    proj_warnings = []
+
+    if employees:
+        night_counts = db.get_night_shift_counts()
+        _, _, shift_assignments = generate_roster(employees, year, month, night_counts)
+
+        if all_projects:
+            proj_coverage, proj_warnings = generate_project_coverage(
+                all_projects, employees, shift_assignments, year, month
+            )
+
+    month_name = calendar.month_name[month]
+    month_names = [calendar.month_name[m] for m in range(1, 13)]
+
+    return render_template("summary.html",
+                           app_name=APP_NAME,
+                           employees=employees,
+                           all_projects=all_projects,
+                           proj_coverage=proj_coverage,
+                           shift_assignments=shift_assignments,
+                           month_name=month_name,
+                           month_names=month_names,
+                           year=year,
+                           month=month,
+                           current_year=today.year,
+                           now_month=next_month,
+                           now_year=next_year)
+
+
+# ── Authentication ───────────────────────────────────────
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if g.user:
+        return redirect(url_for("index"))
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        user = db.get_user_by_username(username)
+        if user and check_password_hash(user["password_hash"], password):
+            session.clear()
+            session["user_id"] = user["id"]
+            next_page = request.form.get("next") or url_for("index")
+            return redirect(next_page)
+        flash("Invalid username or password.", "danger")
+    return render_template("login.html", app_name=APP_NAME,
+                           next=request.args.get("next", ""))
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    flash("You have been logged out.", "info")
+    return redirect(url_for("login"))
+
+
+@app.route("/profile", methods=["GET", "POST"])
+@login_required
+def profile():
+    user = g.user
+    if request.method == "POST":
+        action = request.form.get("action")
+        if action == "update_profile":
+            full_name = request.form.get("full_name", "").strip()
+            db.update_user_profile(user["id"], full_name)
+            flash("Profile updated.", "success")
+            return redirect(url_for("profile"))
+        elif action == "change_password":
+            current_pw = request.form.get("current_password", "")
+            new_pw = request.form.get("new_password", "")
+            confirm_pw = request.form.get("confirm_password", "")
+            if not check_password_hash(user["password_hash"], current_pw):
+                flash("Current password is incorrect.", "danger")
+            elif len(new_pw) < 6:
+                flash("New password must be at least 6 characters.", "danger")
+            elif new_pw != confirm_pw:
+                flash("Passwords do not match.", "danger")
+            else:
+                db.update_user_password(user["id"], generate_password_hash(new_pw))
+                flash("Password changed successfully.", "success")
+            return redirect(url_for("profile"))
+    # Refresh user from DB to show latest data
+    user = db.get_user_by_id(user["id"])
+    return render_template("profile.html", app_name=APP_NAME, user=user)
 
 
 if __name__ == "__main__":

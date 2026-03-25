@@ -41,9 +41,16 @@ main {
     padding: 0.75rem 0;
 }
 
+.navbar > .container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
 .navbar-brand {
     font-size: 1.15rem;
     letter-spacing: 0.3px;
+    margin-right: auto;
 }
 
 .text-primary-dark {
@@ -237,6 +244,18 @@ main {
 .project-row .form-select {
     font-size: 0.85rem;
     padding: 0.35rem 0.65rem;
+}
+
+/* ── Generate card layout ────────────────────────────── */
+
+.generate-card .form-select,
+.generate-card .btn {
+    height: 42px;
+}
+
+.generate-card .form-select {
+    padding-right: 2.25rem;
+    min-width: 90px;
 }
 
 /* ── Form controls ───────────────────────────────────── */
@@ -593,6 +612,54 @@ main {
     border-top: 1px solid #e9ecef;
     max-height: 500px;
     overflow-y: auto;
+}
+
+/* ── Upload section ──────────────────────────────────── */
+
+.upload-dropzone + .mt-3 {
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+/* ── Modal alignment ────────────────────────────────── */
+
+.modal .btn {
+    white-space: nowrap;
+}
+
+.modal-footer {
+    gap: 8px;
+}
+
+/* ── Employee table action column ───────────────────── */
+
+.table td .d-flex.gap-1 {
+    flex-wrap: nowrap;
+}
+
+/* ── Roster table header alignment ──────────────────── */
+
+.roster-table thead th {
+    vertical-align: middle;
+    line-height: 1.3;
+    padding: 10px 8px;
+}
+
+.roster-table thead th small {
+    display: block;
+    font-size: 0.7rem;
+    opacity: 0.85;
+    line-height: 1.4;
+}
+
+/* ── Search bar alignment ───────────────────────────── */
+
+.input-group .input-group-text {
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.input-group .form-control {
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 
 /* ── Responsive adjustments ──────────────────────────── */

@@ -3,3 +3,5 @@ openpyxl
 pdfplumber
 pytesseract
 Pillow
+psycopg2-binary
+python-dotenv
