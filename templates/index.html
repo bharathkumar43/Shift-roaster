@@ -207,8 +207,7 @@
                 </div>
                 {% endif %}
 
-                <!-- Shift Info Card (admin only) -->
-                {% if current_user and current_user.role == 'admin' %}
+                <!-- Shift Info Card (visible to all users) -->
                 <div class="card shadow-sm border-0 mt-3 animate-in">
                     <div class="card-header bg-white border-bottom">
                         <h6 class="mb-0"><i class="bi bi-info-circle"></i> Shift Information</h6>
@@ -241,7 +240,6 @@
                         </div>
                     </div>
                 </div>
-                {% endif %}
 
                 <!-- Generate Roster & Project Coverage -->
                 {% if employees|length >= 2 %}
@@ -274,9 +272,11 @@
                             <form method="POST" action="{{ url_for('generate') }}" id="genRosterForm">
                                 <input type="hidden" name="month" id="roster_month">
                                 <input type="hidden" name="year" id="roster_year">
+                                {% if current_user and current_user.role == 'admin' %}
                                 <button type="submit" class="btn btn-success w-100">
                                     <i class="bi bi-calendar-check"></i> Shift Roster
                                 </button>
+                                {% endif %}
                             </form>
                             {% if all_projects|length > 0 %}
                             <form method="POST" action="{{ url_for('projects') }}" id="genProjectsForm">
@@ -291,6 +291,11 @@
                             <button type="button" class="btn btn-outline-warning w-100"
                                     id="editShiftsBtn" title="Manually set shifts for this month">
                                 <i class="bi bi-pencil-square"></i> Edit Shifts
+                            </button>
+                            {% else %}
+                            <button type="button" class="btn btn-outline-secondary w-100"
+                                    id="viewShiftsBtn" title="View shift assignments for this month">
+                                <i class="bi bi-eye"></i> View Shifts
                             </button>
                             {% endif %}
                         </div>
@@ -410,8 +415,8 @@
                     </div>
                 </div>
 
-                <!-- Roster History -->
-                {% if saved_rosters|length > 0 %}
+                <!-- Roster History (admin only) -->
+                {% if current_user and current_user.role == 'admin' and saved_rosters|length > 0 %}
                 <div class="card shadow-sm border-0 mt-3 animate-in">
                     <div class="card-header bg-white border-bottom">
                         <h6 class="mb-0"><i class="bi bi-clock-history"></i> Previously Generated Rosters</h6>
@@ -547,7 +552,11 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">
+                        {% if current_user and current_user.role == 'admin' %}
                         <i class="bi bi-pencil-square"></i> Edit Shifts &mdash;
+                        {% else %}
+                        <i class="bi bi-eye"></i> Shift Assignments &mdash;
+                        {% endif %}
                         <span id="shiftModalTitle"></span>
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -560,8 +569,12 @@
                     <div id="shiftModalContent" class="d-none">
                         <div class="px-3 py-2 border-bottom bg-light small text-muted">
                             <i class="bi bi-info-circle"></i>
+                            {% if current_user and current_user.role == 'admin' %}
                             Assign each employee to a shift. These assignments will be used when generating
                             the roster for this month instead of the automatic distribution.
+                            {% else %}
+                            Shift assignments for this month.
+                            {% endif %}
                         </div>
                         <div class="table-responsive">
                             <table class="table table-hover align-middle mb-0">
@@ -578,6 +591,7 @@
                     </div>
                 </div>
                 <div class="modal-footer justify-content-between">
+                    {% if current_user and current_user.role == 'admin' %}
                     <button type="button" class="btn btn-outline-danger btn-sm" id="clearShiftsBtn">
                         <i class="bi bi-arrow-counterclockwise"></i> Reset to Auto
                     </button>
@@ -587,6 +601,10 @@
                             <i class="bi bi-check2"></i> Save Shifts
                         </button>
                     </div>
+                    {% else %}
+                    <div></div>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -1080,10 +1098,11 @@
         }
     })();
 
-    // ── Edit Shifts Modal ────────────────────────────────────
+    // ── Edit/View Shifts Modal ───────────────────────────────
     (function () {
         var employees = {{ employees | tojson }};
         var monthNames = {{ month_names | tojson }};
+        var isAdmin = {{ ('true' if current_user and current_user.role == 'admin' else 'false') }};
         var shiftsModal = new bootstrap.Modal(document.getElementById('editShiftsModal'));
         var shiftLoading = document.getElementById('shiftModalLoading');
         var shiftContent = document.getElementById('shiftModalContent');
@@ -1104,12 +1123,21 @@
             h += '<td class="ps-3 fw-semibold">' + emp.name + '</td>';
             h += '<td>' + (emp.content_types || []).map(typeBadge).join(' ') + '</td>';
             h += '<td><div class="d-flex gap-1">';
-            [1, 2, 3].forEach(function (s) {
-                var on = savedShift === s;
-                h += '<button type="button" class="btn btn-sm shift-pick-btn ' +
-                     (on ? SHIFT_COLORS[s] + ' text-white' : 'btn-outline-secondary') +
-                     '" data-shift="' + s + '" data-on="' + on + '">' + SHIFTS[s] + '</button>';
-            });
+            if (isAdmin) {
+                [1, 2, 3].forEach(function (s) {
+                    var on = savedShift === s;
+                    h += '<button type="button" class="btn btn-sm shift-pick-btn ' +
+                         (on ? SHIFT_COLORS[s] + ' text-white' : 'btn-outline-secondary') +
+                         '" data-shift="' + s + '" data-on="' + on + '">' + SHIFTS[s] + '</button>';
+                });
+            } else {
+                // Read-only: show assigned shift as a badge, or "Not set" if none
+                if (savedShift) {
+                    h += '<span class="badge ' + SHIFT_COLORS[savedShift] + ' px-3 py-2">' + SHIFTS[savedShift] + '</span>';
+                } else {
+                    h += '<span class="text-muted small">Not set</span>';
+                }
+            }
             h += '</div></td></tr>';
             return h;
         }
@@ -1143,9 +1171,12 @@
 
         document.getElementById('editShiftsBtn') &&
             document.getElementById('editShiftsBtn').addEventListener('click', openEditShifts);
+        document.getElementById('viewShiftsBtn') &&
+            document.getElementById('viewShiftsBtn').addEventListener('click', openEditShifts);
 
-        // Toggle shift buttons within modal
+        // Toggle shift buttons within modal (admin only)
         document.getElementById('editShiftsModal').addEventListener('click', function (e) {
+            if (!isAdmin) return;
             var btn = e.target.closest('.shift-pick-btn');
             if (!btn) return;
             var row = btn.closest('tr');

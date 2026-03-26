@@ -550,7 +550,7 @@ def summary():
 # ── Manual Shift Editing ─────────────────────────────────
 
 @app.route("/get_shifts", methods=["GET"])
-@admin_required
+@login_required
 def get_shifts():
     year = request.args.get("year", type=int)
     month = request.args.get("month", type=int)
