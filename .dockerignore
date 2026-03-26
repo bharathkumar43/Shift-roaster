@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+.env
+roster.db
+*.db
+.cursor/
+assets/
+*.md

@@ -91,7 +91,7 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
                         "is_takeover": True,
                     })
                     warnings.append(
-                        f"{d.strftime('%b %d')} ({day_name}): No takeover available for "
+                        f"{d.strftime('%b %d')} ({day_name}): No secondary available for "
                         f"project '{proj['name']}' (owner {owner_name} is off)"
                     )
 

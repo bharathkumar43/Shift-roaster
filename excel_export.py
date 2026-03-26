@@ -188,7 +188,7 @@ def _create_project_coverage_sheet(wb, proj_coverage, year, month):
     ws.cell(row=1, column=1).font = TITLE_FONT
 
     ws.cell(row=2, column=1,
-            value="Yellow = Takeover (owner is off)  |  Red = No coverage available")
+            value="Yellow = Secondary (owner is off)  |  Red = No coverage available")
     ws.cell(row=2, column=1).font = Font(size=9, italic=True, color="5D6D7E")
 
     if not proj_coverage or not proj_coverage[0]["projects"]:
@@ -240,7 +240,7 @@ def _create_project_coverage_sheet(wb, proj_coverage, year, month):
                 cell.value = p["handler"]
                 cell.font = Font(size=10)
             elif p["handler"]:
-                cell.value = f"{p['handler']} (covering)"
+                cell.value = f"{p['handler']} (secondary)"
                 cell.fill = TAKEOVER_FILL
                 cell.font = TAKEOVER_FONT
             else:

@@ -315,7 +315,7 @@
                     if (!d.handler) {
                         html += '<span class="badge bg-danger">Uncovered</span>';
                     } else if (d.is_takeover) {
-                        html += '<span class="badge bg-warning text-dark">Takeover</span>';
+                        html += '<span class="badge bg-warning text-dark">Secondary</span>';
                     } else {
                         html += '<span class="badge bg-success">Owner</span>';
                     }
@@ -380,7 +380,7 @@
                         html += '<td>' + typeBadge(p.type) + '</td>';
                         html += '<td>';
                         if (p.is_takeover) {
-                            html += '<span class="badge bg-warning text-dark">Takeover</span>';
+                            html += '<span class="badge bg-warning text-dark">Secondary</span>';
                             html += '<small class="text-muted ms-1">(own: ' + p.owner + ')</small>';
                         } else {
                             html += '<span class="badge bg-success">Owner</span>';

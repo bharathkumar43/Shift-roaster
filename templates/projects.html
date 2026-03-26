@@ -52,7 +52,7 @@
             <p class="text-muted mt-3 mb-0">
                 When a project owner is on week-off, a teammate from the same shift and product type takes over.
                 <br>
-                <span class="badge bg-takeover-legend me-1 mt-1">Yellow</span> = Takeover
+                <span class="badge bg-takeover-legend me-1 mt-1">Yellow</span> = Secondary
                 <span class="mx-1">|</span>
                 <span class="badge bg-danger me-1">Red</span> = No coverage
             </p>
@@ -189,7 +189,7 @@
                                     <td class="text-center takeover-cell">
                                         <span class="fw-medium">{{ proj_entry.data.handler }}</span>
                                         <br>
-                                        <span class="badge bg-takeover-legend badge-sm">covering for {{ proj_entry.data.owner }}</span>
+                                        <span class="badge bg-takeover-legend badge-sm">secondary for {{ proj_entry.data.owner }}</span>
                                     </td>
                                     {% else %}
                                     <td class="text-center no-cover-cell">
