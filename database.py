@@ -90,12 +90,13 @@ def init_db():
             created_at TIMESTAMP NOT NULL DEFAULT NOW()
         )
     """)
-    # Seed default admin if no users exist
     cur.execute("SELECT COUNT(*) FROM users")
     if cur.fetchone()[0] == 0:
+        admin_user = os.getenv("ADMIN_USER", "admin")
+        admin_pass = os.getenv("ADMIN_PASSWORD", "admin123")
         cur.execute(
             "INSERT INTO users (username, password_hash, full_name, role) VALUES (%s, %s, %s, %s)",
-            ("admin", generate_password_hash("admin123"), "Administrator", "admin")
+            (admin_user, generate_password_hash(admin_pass), "Administrator", "admin")
         )
     conn.commit()
     cur.close()

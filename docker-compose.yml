@@ -6,8 +6,6 @@ services:
       POSTGRES_USER: ${PG_USER:-postgres}
       POSTGRES_PASSWORD: ${PG_PASSWORD:-postgres}
       POSTGRES_DB: ${PG_DATABASE:-roster_db}
-    ports:
-      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -20,14 +18,12 @@ services:
     build: .
     restart: always
     ports:
-      - "5050:5050"
+      - "${APP_PORT:-5050}:5050"
+    env_file:
+      - .env
     environment:
       PG_HOST: db
       PG_PORT: 5432
-      PG_USER: ${PG_USER:-postgres}
-      PG_PASSWORD: ${PG_PASSWORD:-postgres}
-      PG_DATABASE: ${PG_DATABASE:-roster_db}
-      SECRET_KEY: ${SECRET_KEY:-change-this-to-a-random-secret-key}
     depends_on:
       db:
         condition: service_healthy

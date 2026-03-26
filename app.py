@@ -19,7 +19,7 @@ from file_parser import parse_file
 import database as db
 
 app = Flask(__name__)
-app.secret_key = "roster-automation-secret-key-change-in-production"
+app.secret_key = os.getenv("SECRET_KEY", "roster-automation-secret-key-change-in-production")
 
 APP_NAME = "Employee Work Load Distribution"
 
