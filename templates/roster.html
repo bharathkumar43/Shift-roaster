@@ -49,6 +49,22 @@
                 <i class="bi bi-calendar-month"></i>
                 Shift Roster &mdash; {{ month_name }} {{ year }}
             </h2>
+            {% if is_saved %}
+            <div class="mt-2">
+                <span class="badge bg-success fs-6 px-3 py-2">
+                    <i class="bi bi-check-circle"></i> Saved Roster
+                </span>
+                {% if saved_at %}
+                <br><small class="text-muted">Saved on {{ saved_at }}</small>
+                {% endif %}
+            </div>
+            {% elif is_draft %}
+            <div class="mt-2">
+                <span class="badge bg-warning text-dark fs-6 px-3 py-2">
+                    <i class="bi bi-pencil-square"></i> Draft &mdash; Not yet saved
+                </span>
+            </div>
+            {% endif %}
             <div class="d-flex flex-wrap justify-content-center gap-3 mt-3 mb-0">
                 <span class="text-muted small">
                     <span class="badge bg-shift1 me-1">Shift 1</span>
@@ -173,11 +189,29 @@
 
         <!-- Bottom Actions -->
         <div class="text-center my-4 d-flex justify-content-center gap-3 flex-wrap">
+            {% if is_draft %}
+            <form method="POST" action="{{ url_for('save_roster') }}">
+                <button type="submit" class="btn btn-primary btn-lg">
+                    <i class="bi bi-save"></i> Save Roster
+                </button>
+            </form>
+            {% endif %}
+            {% if is_saved %}
             <a href="{{ url_for('download') }}" class="btn btn-success btn-lg btn-download-pulse">
-                <i class="bi bi-file-earmark-excel"></i> Download Roster as Excel
+                <i class="bi bi-file-earmark-excel"></i> Download Excel
             </a>
+            <form method="POST" action="{{ url_for('generate') }}">
+                <input type="hidden" name="year" value="{{ year }}">
+                <input type="hidden" name="month" value="{{ month }}">
+                <input type="hidden" name="regenerate" value="1">
+                <button type="submit" class="btn btn-outline-warning btn-lg"
+                        onclick="return confirm('This will regenerate a new draft and replace the saved roster if you save it. Continue?')">
+                    <i class="bi bi-arrow-repeat"></i> Regenerate
+                </button>
+            </form>
+            {% endif %}
             <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-lg">
-                <i class="bi bi-arrow-left"></i> Back to Employees
+                <i class="bi bi-arrow-left"></i> Back
             </a>
         </div>
 

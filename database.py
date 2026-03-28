@@ -81,6 +81,16 @@ def init_db():
         )
     """)
     cur.execute("""
+        CREATE TABLE IF NOT EXISTS saved_roster_data (
+            id SERIAL PRIMARY KEY,
+            year INTEGER NOT NULL,
+            month INTEGER NOT NULL,
+            roster_json TEXT NOT NULL,
+            saved_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            UNIQUE(year, month)
+        )
+    """)
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY,
             username TEXT NOT NULL UNIQUE,
@@ -395,6 +405,49 @@ def list_saved_rosters():
     cur.execute("""
         SELECT year, month, generated_at
         FROM saved_rosters
+        ORDER BY year DESC, month DESC
+    """)
+    rows = _fetchall(cur)
+    cur.close()
+    conn.close()
+    return rows
+
+
+# ── Saved Roster Data (finalized rosters) ────────────────
+
+def save_roster_data(year, month, roster_json_str):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO saved_roster_data (year, month, roster_json, saved_at)
+        VALUES (%s, %s, %s, NOW())
+        ON CONFLICT (year, month)
+        DO UPDATE SET roster_json = EXCLUDED.roster_json, saved_at = NOW()
+    """, (year, month, roster_json_str))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def get_saved_roster_data(year, month):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT roster_json, saved_at FROM saved_roster_data WHERE year = %s AND month = %s",
+        (year, month)
+    )
+    row = _fetchone(cur)
+    cur.close()
+    conn.close()
+    return row
+
+
+def list_finalized_rosters():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT year, month, saved_at
+        FROM saved_roster_data
         ORDER BY year DESC, month DESC
     """)
     rows = _fetchall(cur)

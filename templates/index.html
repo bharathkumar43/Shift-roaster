@@ -415,11 +415,11 @@
                     </div>
                 </div>
 
-                <!-- Roster History (admin only) -->
-                {% if current_user and current_user.role == 'admin' and saved_rosters|length > 0 %}
+                <!-- Saved Rosters -->
+                {% if finalized_rosters|length > 0 %}
                 <div class="card shadow-sm border-0 mt-3 animate-in">
                     <div class="card-header bg-white border-bottom">
-                        <h6 class="mb-0"><i class="bi bi-clock-history"></i> Previously Generated Rosters</h6>
+                        <h6 class="mb-0"><i class="bi bi-clock-history"></i> Saved Rosters</h6>
                     </div>
                     <div class="card-body p-0">
                         <div class="table-responsive">
@@ -427,20 +427,26 @@
                                 <thead class="table-light">
                                     <tr>
                                         <th>Month</th>
-                                        <th>Generated On</th>
-                                        <th style="width:100px"></th>
+                                        <th>Saved On</th>
+                                        <th style="width:160px"></th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% for r in saved_rosters %}
+                                    {% for r in finalized_rosters %}
                                     <tr>
                                         <td class="fw-semibold">{{ month_names[r.month - 1] }} {{ r.year }}</td>
-                                        <td class="text-muted small">{{ r.generated_at }}</td>
+                                        <td class="text-muted small">{{ r.saved_at }}</td>
                                         <td>
-                                            <a href="{{ url_for('download', year=r.year, month=r.month) }}"
-                                               class="btn btn-sm btn-outline-success" title="Download">
-                                                <i class="bi bi-download"></i> Excel
-                                            </a>
+                                            <div class="d-flex gap-1">
+                                                <a href="{{ url_for('view_roster', year=r.year, month=r.month) }}"
+                                                   class="btn btn-sm btn-outline-primary" title="View">
+                                                    <i class="bi bi-eye"></i> View
+                                                </a>
+                                                <a href="{{ url_for('download', year=r.year, month=r.month) }}"
+                                                   class="btn btn-sm btn-outline-success" title="Download">
+                                                    <i class="bi bi-download"></i> Excel
+                                                </a>
+                                            </div>
                                         </td>
                                     </tr>
                                     {% endfor %}

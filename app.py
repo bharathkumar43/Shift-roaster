@@ -1,4 +1,5 @@
 import calendar
+import json
 import os
 from datetime import date
 from functools import wraps
@@ -80,6 +81,7 @@ def index():
     employees = db.get_all_employees()
     all_projects = db.get_all_projects()
     saved_rosters = db.list_saved_rosters()
+    finalized_rosters = db.list_finalized_rosters()
     today = date.today()
     next_month = today.month % 12 + 1
     next_year = today.year + (1 if today.month == 12 else 0)
@@ -92,6 +94,7 @@ def index():
                            employees=employees,
                            all_projects=all_projects,
                            saved_rosters=saved_rosters,
+                           finalized_rosters=finalized_rosters,
                            day_names=DAY_NAMES,
                            content_types=CONTENT_TYPES,
                            now_month=next_month,
@@ -163,40 +166,9 @@ def clear_all():
 
 # ── Roster Generation ────────────────────────────────────
 
-@app.route("/generate", methods=["POST"])
-@login_required
-def generate():
-    employees = db.get_all_employees()
-    if len(employees) < 2:
-        flash("Add at least 2 employees to generate a roster.", "warning")
-        return redirect(url_for("index"))
-
-    year = int(request.form.get("year", date.today().year))
-    month = int(request.form.get("month", date.today().month))
-
-    night_counts = db.get_night_shift_counts()
-    roster, warnings, shift_assignments = generate_roster(
-        employees, year, month, night_counts, _predefined(year, month)
-    )
-
-    db.save_all_rotations(shift_assignments, employees, year, month)
-
-    all_projects = db.get_all_projects()
-    proj_coverage, proj_warnings = generate_project_coverage(
-        all_projects, employees, shift_assignments, year, month
-    )
-
-    excel_output = generate_excel(
-        roster, warnings, shift_assignments, employees, year, month,
-        proj_coverage, proj_warnings
-    )
-    db.save_roster_excel(year, month, excel_output.read())
-    excel_output.seek(0)
-
-    summary = get_roster_summary(employees, shift_assignments)
-    month_name = calendar.month_name[month]
+def _build_roster_data(employees, roster, shift_assignments, year, month):
+    """Build the roster_data list used by the template."""
     num_days = calendar.monthrange(year, month)[1]
-
     roster_data = []
     for day in range(1, num_days + 1):
         d = date(year, month, day)
@@ -219,8 +191,42 @@ def generate():
                 })
             day_info["shifts"][shift_num] = emp_details
         roster_data.append(day_info)
+    return roster_data
+
+
+@app.route("/generate", methods=["POST"])
+@login_required
+def generate():
+    employees = db.get_all_employees()
+    if len(employees) < 2:
+        flash("Add at least 2 employees to generate a roster.", "warning")
+        return redirect(url_for("index"))
+
+    year = int(request.form.get("year", date.today().year))
+    month = int(request.form.get("month", date.today().month))
+
+    saved = db.get_saved_roster_data(year, month)
+    if saved and not request.form.get("regenerate"):
+        return _render_saved_roster(year, month, saved)
+
+    night_counts = db.get_night_shift_counts()
+    roster, warnings, shift_assignments = generate_roster(
+        employees, year, month, night_counts, _predefined(year, month)
+    )
+
+    summary = get_roster_summary(employees, shift_assignments)
+    month_name = calendar.month_name[month]
+    roster_data = _build_roster_data(employees, roster, shift_assignments, year, month)
 
     session["last_roster"] = {"year": year, "month": month}
+    session["draft_roster"] = {
+        "year": year,
+        "month": month,
+        "roster_data": roster_data,
+        "warnings": warnings,
+        "summary": {str(k): v for k, v in summary.items()},
+        "shift_assignments": shift_assignments,
+    }
 
     return render_template("roster.html",
                            app_name=APP_NAME,
@@ -230,7 +236,94 @@ def generate():
                            shifts=SHIFTS,
                            month_name=month_name,
                            year=year,
-                           month=month)
+                           month=month,
+                           is_draft=True,
+                           is_saved=False)
+
+
+@app.route("/save_roster", methods=["POST"])
+@login_required
+def save_roster():
+    draft = session.get("draft_roster")
+    if not draft:
+        flash("No draft roster to save.", "warning")
+        return redirect(url_for("index"))
+
+    year = draft["year"]
+    month = draft["month"]
+
+    employees = db.get_all_employees()
+    shift_assignments = draft["shift_assignments"]
+
+    db.save_all_rotations(shift_assignments, employees, year, month)
+
+    all_projects = db.get_all_projects()
+    night_counts = db.get_night_shift_counts()
+    roster, _, _ = generate_roster(
+        employees, year, month, night_counts, _predefined(year, month)
+    )
+    proj_coverage, proj_warnings = generate_project_coverage(
+        all_projects, employees, shift_assignments, year, month
+    )
+
+    excel_output = generate_excel(
+        roster, draft["warnings"], shift_assignments, employees, year, month,
+        proj_coverage, proj_warnings
+    )
+    db.save_roster_excel(year, month, excel_output.read())
+
+    roster_json = json.dumps({
+        "roster_data": draft["roster_data"],
+        "warnings": draft["warnings"],
+        "summary": draft["summary"],
+        "shift_assignments": shift_assignments,
+    })
+    db.save_roster_data(year, month, roster_json)
+
+    session.pop("draft_roster", None)
+
+    month_name = calendar.month_name[month]
+    flash(f"Roster for {month_name} {year} has been saved.", "success")
+    return redirect(url_for("view_roster", year=year, month=month))
+
+
+@app.route("/view_roster")
+@login_required
+def view_roster():
+    year = request.args.get("year", type=int)
+    month = request.args.get("month", type=int)
+    if not year or not month:
+        flash("Please specify a month and year.", "warning")
+        return redirect(url_for("index"))
+
+    saved = db.get_saved_roster_data(year, month)
+    if not saved:
+        flash(f"No saved roster found for {calendar.month_name[month]} {year}.", "warning")
+        return redirect(url_for("index"))
+
+    return _render_saved_roster(year, month, saved)
+
+
+def _render_saved_roster(year, month, saved):
+    data = json.loads(saved["roster_json"])
+    summary_raw = data["summary"]
+    summary = {int(k): v for k, v in summary_raw.items()}
+    month_name = calendar.month_name[month]
+
+    session["last_roster"] = {"year": year, "month": month}
+
+    return render_template("roster.html",
+                           app_name=APP_NAME,
+                           roster_data=data["roster_data"],
+                           warnings=data["warnings"],
+                           summary=summary,
+                           shifts=SHIFTS,
+                           month_name=month_name,
+                           year=year,
+                           month=month,
+                           is_draft=False,
+                           is_saved=True,
+                           saved_at=saved["saved_at"])
 
 
 # ── Project Coverage ─────────────────────────────────────
