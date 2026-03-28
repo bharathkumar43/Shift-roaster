@@ -188,7 +188,7 @@ def _create_project_coverage_sheet(wb, proj_coverage, year, month):
     ws.cell(row=1, column=1).font = TITLE_FONT
 
     ws.cell(row=2, column=1,
-            value="Yellow = Secondary (owner is off)  |  Red = No coverage available")
+            value="All 3 shifts shown per project  |  Yellow = Secondary (owner off)  |  Red = No coverage")
     ws.cell(row=2, column=1).font = Font(size=9, italic=True, color="5D6D7E")
 
     if not proj_coverage or not proj_coverage[0]["projects"]:
@@ -205,17 +205,30 @@ def _create_project_coverage_sheet(wb, proj_coverage, year, month):
                 project_names.append(key)
 
     row = 4
+
     ws.cell(row=row, column=1, value="Date")
     _style_header(ws.cell(row=row, column=1))
+    ws.merge_cells(start_row=row, start_column=1, end_row=row + 1, end_column=1)
     ws.column_dimensions["A"].width = 18
 
-    for col_idx, (pname, ptype) in enumerate(project_names, 2):
-        cell = ws.cell(row=row, column=col_idx, value=f"{pname}\n({ptype})")
+    col = 2
+    for pname, ptype in project_names:
+        ws.merge_cells(start_row=row, start_column=col, end_row=row, end_column=col + 2)
+        cell = ws.cell(row=row, column=col, value=f"{pname} ({ptype})")
         _style_header(cell)
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        ws.column_dimensions[get_column_letter(col_idx)].width = 22
 
-    row += 1
+        for s_idx, s_label in enumerate(["S1", "S2", "S3"]):
+            c = ws.cell(row=row + 1, column=col + s_idx, value=s_label)
+            c.font = Font(bold=True, size=9, color="5D6D7E")
+            c.fill = PatternFill(start_color="E8E8E8", end_color="E8E8E8", fill_type="solid")
+            c.border = THIN_BORDER
+            c.alignment = Alignment(horizontal="center")
+            ws.column_dimensions[get_column_letter(col + s_idx)].width = 16
+
+        col += 3
+
+    row += 2
 
     for day_data in proj_coverage:
         date_cell = ws.cell(row=row, column=1,
@@ -227,26 +240,45 @@ def _create_project_coverage_sheet(wb, proj_coverage, year, month):
         for p in day_data["projects"]:
             proj_map[(p["project_name"], p["product_type"])] = p
 
-        for col_idx, key in enumerate(project_names, 2):
-            cell = ws.cell(row=row, column=col_idx)
-            cell.border = THIN_BORDER
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-
+        col = 2
+        for key in project_names:
             p = proj_map.get(key)
-            if not p:
-                cell.value = "-"
-                cell.font = OFF_FONT
-            elif not p["is_takeover"]:
-                cell.value = p["handler"]
-                cell.font = Font(size=10)
-            elif p["handler"]:
-                cell.value = f"{p['handler']} (secondary)"
-                cell.fill = TAKEOVER_FILL
-                cell.font = TAKEOVER_FONT
-            else:
-                cell.value = "NO COVER"
-                cell.fill = NO_COVER_FILL
-                cell.font = NO_COVER_FONT
+            for sn in [1, 2, 3]:
+                cell = ws.cell(row=row, column=col)
+                cell.border = THIN_BORDER
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+
+                if not p:
+                    cell.value = "-"
+                    cell.font = OFF_FONT
+                else:
+                    sh = p["shifts"].get(sn, {})
+                    handler = sh.get("handler")
+                    is_secondary = sh.get("is_secondary", False)
+                    is_owner_shift = sh.get("is_owner_shift", False)
+
+                    if handler:
+                        if is_owner_shift and not is_secondary:
+                            cell.value = handler
+                            cell.fill = SHIFT_COLORS.get(sn, PatternFill())
+                            cell.font = Font(bold=True, size=9)
+                        elif is_secondary:
+                            cell.value = f"{handler} (sec)"
+                            cell.fill = TAKEOVER_FILL
+                            cell.font = TAKEOVER_FONT
+                        else:
+                            cell.value = handler
+                            cell.font = Font(size=9)
+                    else:
+                        if is_owner_shift and is_secondary:
+                            cell.value = "NO COVER"
+                            cell.fill = NO_COVER_FILL
+                            cell.font = NO_COVER_FONT
+                        else:
+                            cell.value = "-"
+                            cell.font = OFF_FONT
+
+                col += 1
 
         row += 1
 

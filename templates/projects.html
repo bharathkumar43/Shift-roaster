@@ -50,9 +50,11 @@
                 Project Coverage &mdash; {{ month_name }} {{ year }}
             </h2>
             <p class="text-muted mt-3 mb-0">
-                When a project owner is on week-off, a teammate from the same shift and product type takes over.
+                Each project shows its handler across all 3 shifts.
                 <br>
-                <span class="badge bg-takeover-legend me-1 mt-1">Yellow</span> = Secondary
+                <span class="badge bg-shift1 me-1 mt-1">S1</span> Owner's shift
+                <span class="mx-1">|</span>
+                <span class="badge bg-takeover-legend me-1">Yellow</span> = Secondary (owner off)
                 <span class="mx-1">|</span>
                 <span class="badge bg-danger me-1">Red</span> = No coverage
             </p>
@@ -60,7 +62,7 @@
 
         {% if warnings %}
         <div class="alert alert-warning alert-dismissible fade show" role="alert">
-            <h6 class="alert-heading fw-bold"><i class="bi bi-exclamation-triangle"></i> Project Coverage Warnings</h6>
+            <h6 class="alert-heading fw-bold"><i class="bi bi-exclamation-triangle"></i> Coverage Warnings</h6>
             <ul class="mb-0 small">
                 {% for w in warnings %}
                 <li>{{ w }}</li>
@@ -72,12 +74,6 @@
 
         <!-- Project Summary -->
         <div class="row g-3 mb-4">
-            {% set unique_projects = [] %}
-            {% for p in projects %}
-                {% if p.name not in unique_projects %}
-                    {% if unique_projects.append(p.name) %}{% endif %}
-                {% endif %}
-            {% endfor %}
             <div class="col-12 animate-in">
                 <div class="card border-0 shadow-sm">
                     <div class="card-header bg-white border-bottom">
@@ -125,38 +121,44 @@
         </div>
 
         <!-- Daily Project Coverage Grid -->
+        {% set all_proj_keys = [] %}
+        {% for day in coverage %}
+            {% for p in day.projects %}
+                {% set key = p.project_name + '|' + p.product_type %}
+                {% if key not in all_proj_keys %}
+                    {% if all_proj_keys.append(key) %}{% endif %}
+                {% endif %}
+            {% endfor %}
+        {% endfor %}
+
         <div class="card border-0 shadow-sm animate-in">
             <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                <h5 class="mb-0"><i class="bi bi-table"></i> Daily Project Coverage</h5>
+                <h5 class="mb-0"><i class="bi bi-table"></i> Daily Project Coverage (All Shifts)</h5>
                 <a href="{{ url_for('download') }}" class="btn btn-success btn-sm">
                     <i class="bi bi-file-earmark-excel"></i> Download Excel
                 </a>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
-                    {% set all_proj_keys = [] %}
-                    {% for day in coverage %}
-                        {% for p in day.projects %}
-                            {% set key = p.project_name + '|' + p.product_type %}
-                            {% if key not in all_proj_keys %}
-                                {% if all_proj_keys.append(key) %}{% endif %}
-                            {% endif %}
-                        {% endfor %}
-                    {% endfor %}
-
                     <table class="table table-bordered table-hover mb-0 project-table">
                         <thead>
                             <tr class="table-dark">
-                                <th class="sticky-col">Date</th>
+                                <th class="sticky-col" rowspan="2" style="vertical-align:middle">Date</th>
                                 {% for key in all_proj_keys %}
                                 {% set parts = key.split('|') %}
-                                <th class="text-center">
+                                <th class="text-center" colspan="3">
                                     {{ parts[0] }}
-                                    <br>
-                                    <span class="badge {{ 'bg-info text-dark' if parts[1] == 'Content' else ('bg-primary' if parts[1] == 'Email' else 'bg-warning text-dark') }} badge-sm">
+                                    <span class="badge {{ 'bg-info text-dark' if parts[1] == 'Content' else ('bg-primary' if parts[1] == 'Email' else 'bg-warning text-dark') }} badge-sm ms-1">
                                         {{ parts[1][:3] | upper }}
                                     </span>
                                 </th>
+                                {% endfor %}
+                            </tr>
+                            <tr class="table-secondary">
+                                {% for key in all_proj_keys %}
+                                <th class="text-center small px-1" style="font-size:0.7rem">S1</th>
+                                <th class="text-center small px-1" style="font-size:0.7rem">S2</th>
+                                <th class="text-center small px-1" style="font-size:0.7rem">S3</th>
                                 {% endfor %}
                             </tr>
                         </thead>
@@ -181,25 +183,33 @@
                                 {% endfor %}
 
                                 {% if proj_entry.found %}
-                                    {% if not proj_entry.data.is_takeover %}
-                                    <td class="text-center">
-                                        <span class="fw-medium">{{ proj_entry.data.handler }}</span>
-                                    </td>
-                                    {% elif proj_entry.data.handler %}
-                                    <td class="text-center takeover-cell">
-                                        <span class="fw-medium">{{ proj_entry.data.handler }}</span>
-                                        <br>
-                                        <span class="badge bg-takeover-legend badge-sm">secondary for {{ proj_entry.data.owner }}</span>
-                                    </td>
+                                    {% for sn in [1, 2, 3] %}
+                                    {% set sh = proj_entry.data.shifts[sn] %}
+                                    {% if sh.handler %}
+                                        {% if sh.is_owner_shift and not sh.is_secondary %}
+                                        <td class="text-center shift{{ sn }}-cell px-1">
+                                            <small class="fw-medium">{{ sh.handler }}</small>
+                                        </td>
+                                        {% elif sh.is_secondary %}
+                                        <td class="text-center takeover-cell px-1">
+                                            <small class="fw-medium">{{ sh.handler }}</small>
+                                            <br><span class="badge bg-takeover-legend" style="font-size:0.55rem">sec</span>
+                                        </td>
+                                        {% else %}
+                                        <td class="text-center px-1">
+                                            <small>{{ sh.handler }}</small>
+                                        </td>
+                                        {% endif %}
                                     {% else %}
-                                    <td class="text-center no-cover-cell">
-                                        <span class="no-coverage"><i class="bi bi-exclamation-circle"></i> No cover</span>
-                                        <br>
-                                        <span class="text-muted small">{{ proj_entry.data.owner }} off</span>
-                                    </td>
+                                        <td class="text-center no-cover-cell px-1">
+                                            <small class="no-coverage" style="font-size:0.65rem"><i class="bi bi-x-circle"></i></small>
+                                        </td>
                                     {% endif %}
+                                    {% endfor %}
                                 {% else %}
-                                <td class="text-center text-muted">-</td>
+                                    <td class="text-center text-muted px-1">-</td>
+                                    <td class="text-center text-muted px-1">-</td>
+                                    <td class="text-center text-muted px-1">-</td>
                                 {% endif %}
                                 {% endfor %}
                             </tr>

@@ -234,12 +234,15 @@
         coverage.forEach(function (day) {
             (day.projects || []).forEach(function (p) {
                 if (pd[p.project_name]) {
+                    var ownerShift = p.owner_shift || 1;
+                    var sh = (p.shifts && (p.shifts[ownerShift] || p.shifts[String(ownerShift)])) || {};
                     pd[p.project_name].days.push({
                         day_num:    day.day_num,
                         date:       day.date,
                         day_abbr:   day.day_abbr,
-                        handler:    p.handler,
-                        is_takeover: p.is_takeover,
+                        handler:    sh.handler || null,
+                        is_takeover: sh.is_secondary || false,
+                        shifts:     p.shifts || {},
                     });
                 }
             });
@@ -259,16 +262,20 @@
         });
         coverage.forEach(function (day) {
             (day.projects || []).forEach(function (p) {
-                var h = p.handler;
-                if (!h || !ed[h]) return;
-                if (!ed[h].days[day.day_num]) {
-                    ed[h].days[day.day_num] = {
-                        date: day.date, day_abbr: day.day_abbr, projects: []
-                    };
-                }
-                ed[h].days[day.day_num].projects.push({
-                    name: p.project_name, type: p.product_type,
-                    is_takeover: p.is_takeover, owner: p.owner
+                var shifts = p.shifts || {};
+                [1,2,3].forEach(function(sn) {
+                    var sh = shifts[sn] || shifts[String(sn)];
+                    if (!sh || !sh.handler || !ed[sh.handler]) return;
+                    var h = sh.handler;
+                    if (!ed[h].days[day.day_num]) {
+                        ed[h].days[day.day_num] = {
+                            date: day.date, day_abbr: day.day_abbr, projects: []
+                        };
+                    }
+                    ed[h].days[day.day_num].projects.push({
+                        name: p.project_name, type: p.product_type,
+                        is_takeover: sh.is_secondary || false, owner: p.owner
+                    });
                 });
             });
         });
