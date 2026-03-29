@@ -1059,11 +1059,42 @@
                     html += '</div>';
 
                     if (emp.projects.length > 0) {
-                        html += '<div class="mb-0"><small class="text-muted">Projects:</small> ';
+                        html += '<div class="mb-2"><small class="text-muted">Assigned Projects:</small> ';
                         emp.projects.forEach(function(p) {
                             html += '<span class="badge bg-light text-dark border" title="' + p.product_type + '">' + p.name + '</span> ';
                         });
                         html += '</div>';
+                    }
+
+                    var dp = emp.daily_projects || {};
+                    var dayNums = Object.keys(dp).sort(function(a,b){ return parseInt(a)-parseInt(b); });
+                    if (dayNums.length > 0) {
+                        html += '<div class="mt-2">';
+                        html += '<small class="text-muted fw-semibold">Daily Project Handling:</small>';
+                        html += '<div class="table-responsive mt-1"><table class="table table-sm table-hover align-middle mb-0">';
+                        html += '<thead class="table-light"><tr><th>Date</th><th>Day</th><th>Project</th><th>Type</th><th>Status</th></tr></thead><tbody>';
+                        dayNums.forEach(function(dn) {
+                            var dd = dp[dn];
+                            dd.projects.forEach(function(p, pi) {
+                                var rowCls = p.is_secondary ? 'table-warning' : '';
+                                html += '<tr class="' + rowCls + '">';
+                                if (pi === 0) {
+                                    html += '<td class="text-muted small" rowspan="' + dd.projects.length + '">' + dd.date + '</td>';
+                                    html += '<td rowspan="' + dd.projects.length + '"><span class="badge bg-light text-dark border">' + dd.day_abbr + '</span></td>';
+                                }
+                                html += '<td class="fw-medium">' + p.name + '</td>';
+                                html += '<td>' + typeBadge(p.product_type) + '</td>';
+                                html += '<td>';
+                                if (p.is_secondary) {
+                                    html += '<span class="badge bg-warning text-dark">Secondary</span>';
+                                    html += '<small class="text-muted ms-1">(own: ' + p.owner + ')</small>';
+                                } else {
+                                    html += '<span class="badge bg-success">Owner</span>';
+                                }
+                                html += '</td></tr>';
+                            });
+                        });
+                        html += '</tbody></table></div></div>';
                     }
                     html += '</div>';
                 });
@@ -1077,23 +1108,35 @@
                     html += '<span class="fw-bold fs-6">' + proj.name + '</span>';
                     html += typeBadge(proj.product_type);
                     html += '</div>';
-                    html += '<div class="mb-1"><small class="text-muted">Owner:</small> <span class="fw-medium">' + proj.owner + '</span>';
+                    html += '<div class="mb-2"><small class="text-muted">Owner:</small> <span class="fw-medium">' + proj.owner + '</span>';
                     if (proj.shift_name) html += ' <span class="badge bg-shift' + proj.shift + '">' + proj.shift_name + '</span>';
                     html += '</div>';
 
-                    if (proj.daily_handlers.length > 0) {
-                        html += '<div class="mt-2"><small class="text-muted">Daily Coverage:</small>';
-                        html += '<div class="d-flex flex-wrap gap-1 mt-1">';
-                        proj.daily_handlers.forEach(function(dh) {
-                            var cls = dh.is_off ? 'bg-light text-muted border' : 'bg-light text-dark border';
-                            var label = dh.day_abbr + ' ' + dh.day;
-                            var title = dh.is_off ? (proj.owner + ' off') : proj.owner;
-                            html += '<span class="badge ' + cls + '" title="' + title + '" style="font-size:0.65rem">';
-                            html += label;
-                            if (dh.is_off) html += ' <i class="bi bi-x-circle text-danger"></i>';
-                            html += '</span>';
+                    if (proj.daily && proj.daily.length > 0) {
+                        html += '<small class="text-muted fw-semibold">Daily Coverage (All Shifts):</small>';
+                        html += '<div class="table-responsive mt-1"><table class="table table-sm table-bordered table-hover align-middle mb-0">';
+                        html += '<thead class="table-light"><tr><th>Date</th><th>Day</th>';
+                        html += '<th class="text-center">S1</th><th class="text-center">S2</th><th class="text-center">S3</th>';
+                        html += '</tr></thead><tbody>';
+                        proj.daily.forEach(function(d) {
+                            html += '<tr>';
+                            html += '<td class="text-muted small">' + d.date + '</td>';
+                            html += '<td><span class="badge bg-light text-dark border">' + d.day_abbr + '</span></td>';
+                            [1,2,3].forEach(function(sn) {
+                                var sh = (d.shifts && (d.shifts[sn] || d.shifts[String(sn)])) || {};
+                                if (sh.handler) {
+                                    var cls = sh.is_secondary ? 'table-warning' : '';
+                                    html += '<td class="text-center small ' + cls + '">';
+                                    html += sh.handler;
+                                    if (sh.is_secondary) html += ' <span class="badge bg-warning text-dark" style="font-size:0.55rem">sec</span>';
+                                    html += '</td>';
+                                } else {
+                                    html += '<td class="text-center text-muted small">—</td>';
+                                }
+                            });
+                            html += '</tr>';
                         });
-                        html += '</div></div>';
+                        html += '</tbody></table></div>';
                     }
                     html += '</div>';
                 });

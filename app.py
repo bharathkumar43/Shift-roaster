@@ -562,26 +562,42 @@ def search():
             "off_days_count": off_count,
         })
 
+    all_projects = db.get_all_projects()
+    proj_coverage = []
+    if employees and shift_assignments:
+        proj_coverage_data, _ = generate_project_coverage(
+            all_projects, employees, shift_assignments, year, month
+        )
+        proj_coverage = proj_coverage_data
+
     proj_results = []
     matched_projs = db.search_projects(q)
     for proj in matched_projs:
         owner = next((e for e in employees if e["name"] == proj["employee_name"]), None)
         shift = shift_assignments.get(proj["employee_name"])
 
-        daily_handlers = []
-        if owner:
-            num_days = calendar.monthrange(year, month)[1]
-            for day in range(1, num_days + 1):
-                d = date(year, month, day)
-                day_name = DAY_NAMES[d.weekday()]
-                is_working = day_name in owner["working_days"]
-                daily_handlers.append({
-                    "day": day,
-                    "date": d.strftime("%b %d"),
-                    "day_abbr": d.strftime("%a"),
-                    "handler": proj["employee_name"] if is_working else None,
-                    "is_off": not is_working,
-                })
+        daily = []
+        for day_data in proj_coverage:
+            for p in day_data.get("projects", []):
+                if p["project_name"] == proj["name"] and p["product_type"] == proj["product_type"]:
+                    shift_info = {}
+                    for sn in [1, 2, 3]:
+                        sh = p["shifts"].get(sn, {})
+                        shift_info[sn] = {
+                            "handler": sh.get("handler"),
+                            "is_secondary": sh.get("is_secondary", False),
+                        }
+                    owner_shift = p.get("owner_shift", shift)
+                    os_data = shift_info.get(owner_shift, {})
+                    daily.append({
+                        "day_num": day_data["day_num"],
+                        "date": day_data["date"],
+                        "day_abbr": day_data["day_abbr"],
+                        "handler": os_data.get("handler"),
+                        "is_secondary": os_data.get("is_secondary", False),
+                        "shifts": shift_info,
+                    })
+                    break
 
         proj_results.append({
             "name": proj["name"],
@@ -589,8 +605,35 @@ def search():
             "owner": proj["employee_name"],
             "shift": shift,
             "shift_name": SHIFTS[shift]["name"] if shift else None,
-            "daily_handlers": daily_handlers,
+            "daily": daily,
         })
+
+    emp_project_data = {}
+    for emp in matched_emps:
+        emp_daily = {}
+        for day_data in proj_coverage:
+            for p in day_data.get("projects", []):
+                for sn in [1, 2, 3]:
+                    sh = p["shifts"].get(sn, {})
+                    if sh.get("handler") == emp["name"]:
+                        day_num = day_data["day_num"]
+                        if day_num not in emp_daily:
+                            emp_daily[day_num] = {
+                                "date": day_data["date"],
+                                "day_abbr": day_data["day_abbr"],
+                                "projects": [],
+                            }
+                        emp_daily[day_num]["projects"].append({
+                            "name": p["project_name"],
+                            "product_type": p["product_type"],
+                            "is_secondary": sh.get("is_secondary", False),
+                            "owner": p["owner"],
+                            "shift": sn,
+                        })
+        emp_project_data[emp["name"]] = emp_daily
+
+    for er in emp_results:
+        er["daily_projects"] = emp_project_data.get(er["name"], {})
 
     return jsonify({"employees": emp_results, "projects": proj_results})
 
