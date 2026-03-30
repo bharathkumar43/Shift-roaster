@@ -188,7 +188,7 @@ def _create_project_coverage_sheet(wb, proj_coverage, year, month):
     ws.cell(row=1, column=1).font = TITLE_FONT
 
     ws.cell(row=2, column=1,
-            value="All 3 shifts shown per project  |  Yellow = Secondary (owner off)  |  Red = No coverage")
+            value="All 3 shifts shown per project")
     ws.cell(row=2, column=1).font = Font(size=9, italic=True, color="5D6D7E")
 
     if not proj_coverage or not proj_coverage[0]["projects"]:
@@ -258,25 +258,11 @@ def _create_project_coverage_sheet(wb, proj_coverage, year, month):
                     is_owner_shift = sh.get("is_owner_shift", False)
 
                     if handler:
-                        if is_owner_shift and not is_secondary:
-                            cell.value = handler
-                            cell.fill = SHIFT_COLORS.get(sn, PatternFill())
-                            cell.font = Font(bold=True, size=9)
-                        elif is_secondary:
-                            cell.value = f"{handler} (sec)"
-                            cell.fill = TAKEOVER_FILL
-                            cell.font = TAKEOVER_FONT
-                        else:
-                            cell.value = handler
-                            cell.font = Font(size=9)
+                        cell.value = handler
+                        cell.font = Font(size=9)
                     else:
-                        if is_owner_shift and is_secondary:
-                            cell.value = "NO COVER"
-                            cell.fill = NO_COVER_FILL
-                            cell.font = NO_COVER_FONT
-                        else:
-                            cell.value = "-"
-                            cell.font = OFF_FONT
+                        cell.value = "-"
+                        cell.font = OFF_FONT
 
                 col += 1
 

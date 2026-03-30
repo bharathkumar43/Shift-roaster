@@ -303,7 +303,7 @@
             html += '<div class="card-header bg-white border-bottom d-flex align-items-center gap-2 flex-wrap">';
             html += '<span class="fw-bold">' + pname + '</span>';
             html += typeBadge(p.product_type);
-            html += '<small class="text-muted">Owner: <strong>' + p.owner + '</strong></small>';
+            html += '<small class="text-muted"><strong>' + p.owner + '</strong></small>';
             html += '</div>';
             html += '<div class="card-body p-0">';
 
@@ -311,22 +311,13 @@
                 html += '<p class="text-muted small p-3 mb-0">No coverage data for selected period.</p>';
             } else {
                 html += '<div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">';
-                html += '<thead class="table-light"><tr><th>Date</th><th>Day</th><th>Handler</th><th>Status</th></tr></thead><tbody>';
+                html += '<thead class="table-light"><tr><th>Date</th><th>Day</th><th>Employee</th></tr></thead><tbody>';
                 days.forEach(function (d) {
-                    var rowCls = d.is_takeover ? 'table-warning' : '';
-                    html += '<tr class="' + rowCls + '">';
+                    html += '<tr>';
                     html += '<td class="text-muted small">' + d.date + '</td>';
                     html += '<td><span class="badge bg-light text-dark border">' + d.day_abbr + '</span></td>';
-                    html += '<td class="fw-medium">' + (d.handler || '<span class="text-danger">—</span>') + '</td>';
-                    html += '<td>';
-                    if (!d.handler) {
-                        html += '<span class="badge bg-danger">Uncovered</span>';
-                    } else if (d.is_takeover) {
-                        html += '<span class="badge bg-warning text-dark">Secondary</span>';
-                    } else {
-                        html += '<span class="badge bg-success">Owner</span>';
-                    }
-                    html += '</td></tr>';
+                    html += '<td class="fw-medium">' + (d.handler || '<span class="text-muted">—</span>') + '</td>';
+                    html += '</tr>';
                 });
                 html += '</tbody></table></div>';
             }
@@ -373,26 +364,18 @@
                 html += '<p class="text-muted small p-3 mb-0">No project assignments for selected period.</p>';
             } else {
                 html += '<div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">';
-                html += '<thead class="table-light"><tr><th>Date</th><th>Day</th><th>Project</th><th>Type</th><th>Status</th></tr></thead><tbody>';
+                html += '<thead class="table-light"><tr><th>Date</th><th>Day</th><th>Project</th><th>Type</th></tr></thead><tbody>';
                 relevantNums.forEach(function (dayNum) {
                     var dd = e.days[dayNum];
                     dd.projects.forEach(function (p, pi) {
-                        var rowCls = p.is_takeover ? 'table-warning' : '';
-                        html += '<tr class="' + rowCls + '">';
+                        html += '<tr>';
                         if (pi === 0) {
                             html += '<td class="text-muted small" rowspan="' + dd.projects.length + '">' + dd.date + '</td>';
                             html += '<td rowspan="' + dd.projects.length + '"><span class="badge bg-light text-dark border">' + dd.day_abbr + '</span></td>';
                         }
                         html += '<td class="fw-medium">' + p.name + '</td>';
                         html += '<td>' + typeBadge(p.type) + '</td>';
-                        html += '<td>';
-                        if (p.is_takeover) {
-                            html += '<span class="badge bg-warning text-dark">Secondary</span>';
-                            html += '<small class="text-muted ms-1">(own: ' + p.owner + ')</small>';
-                        } else {
-                            html += '<span class="badge bg-success">Owner</span>';
-                        }
-                        html += '</td></tr>';
+                        html += '</tr>';
                     });
                 });
                 html += '</tbody></table></div>';

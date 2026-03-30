@@ -50,13 +50,7 @@
                 Project Coverage &mdash; {{ month_name }} {{ year }}
             </h2>
             <p class="text-muted mt-3 mb-0">
-                Each project shows its handler across all 3 shifts.
-                <br>
-                <span class="badge bg-shift1 me-1 mt-1">S1</span> Owner's shift
-                <span class="mx-1">|</span>
-                <span class="badge bg-takeover-legend me-1">Yellow</span> = Secondary (owner off)
-                <span class="mx-1">|</span>
-                <span class="badge bg-danger me-1">Red</span> = No coverage
+                Each project shows who handles it across all 3 shifts.
             </p>
         </div>
 
@@ -86,8 +80,8 @@
                                     <tr>
                                         <th>Project</th>
                                         <th>Product Type</th>
-                                        <th>Owner</th>
-                                        <th>Owner's Shift</th>
+                                        <th>Employee</th>
+                                        <th>Shift</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -186,23 +180,12 @@
                                     {% for sn in [1, 2, 3] %}
                                     {% set sh = proj_entry.data.shifts[sn] %}
                                     {% if sh.handler %}
-                                        {% if sh.is_owner_shift and not sh.is_secondary %}
-                                        <td class="text-center shift{{ sn }}-cell px-1">
-                                            <small class="fw-medium">{{ sh.handler }}</small>
-                                        </td>
-                                        {% elif sh.is_secondary %}
-                                        <td class="text-center takeover-cell px-1">
-                                            <small class="fw-medium">{{ sh.handler }}</small>
-                                            <br><span class="badge bg-takeover-legend" style="font-size:0.55rem">sec</span>
-                                        </td>
-                                        {% else %}
                                         <td class="text-center px-1">
-                                            <small>{{ sh.handler }}</small>
+                                            <small class="fw-medium">{{ sh.handler }}</small>
                                         </td>
-                                        {% endif %}
                                     {% else %}
-                                        <td class="text-center no-cover-cell px-1">
-                                            <small class="no-coverage" style="font-size:0.65rem"><i class="bi bi-x-circle"></i></small>
+                                        <td class="text-center text-muted px-1">
+                                            <small>—</small>
                                         </td>
                                     {% endif %}
                                     {% endfor %}

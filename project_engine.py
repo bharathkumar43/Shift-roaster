@@ -93,7 +93,7 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
                             warnings.append(
                                 f"{d.strftime('%b %d')} ({day_name}): No handler in "
                                 f"{SHIFTS[shift_num]['name']} for project '{proj['name']}' "
-                                f"(owner {owner_name} is off)"
+                                f"({owner_name} is off)"
                             )
                 else:
                     handler = _find_handler(
