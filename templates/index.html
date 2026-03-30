@@ -137,15 +137,16 @@
 
         <div class="row g-4">
 
-            <!-- Add Employee Form (admin only) -->
+            <!-- Add Forms (admin only) -->
             <div class="col-lg-5">
                 {% if current_user and current_user.role == 'admin' %}
                 <div class="card shadow-sm border-0 animate-in">
                     <div class="card-header bg-white border-bottom">
-                        <h5 class="mb-0"><i class="bi bi-person-plus"></i> Add Employee</h5>
+                        <h5 class="mb-0"><i class="bi bi-person-plus"></i> Add Migration Engineer</h5>
                     </div>
                     <div class="card-body">
                         <form method="POST" action="{{ url_for('add_employee') }}" id="addEmployeeForm">
+                            <input type="hidden" name="emp_role" value="engineer">
                             <div class="mb-3">
                                 <label for="name" class="form-label fw-semibold">Employee Name</label>
                                 <input type="text" class="form-control" id="name" name="name"
@@ -200,7 +201,57 @@
                             </div>
 
                             <button type="submit" class="btn btn-primary w-100">
-                                <i class="bi bi-plus-circle"></i> Add Employee
+                                <i class="bi bi-plus-circle"></i> Add Migration Engineer
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Add Shift Lead Form -->
+                <div class="card shadow-sm border-0 mt-3 animate-in">
+                    <div class="card-header bg-white border-bottom">
+                        <h6 class="mb-0"><i class="bi bi-person-badge"></i> Add Shift Lead</h6>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ url_for('add_employee') }}">
+                            <input type="hidden" name="emp_role" value="shift_lead">
+                            <div class="mb-2">
+                                <input type="text" class="form-control form-control-sm" name="name" placeholder="Name" required autocomplete="off">
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label small fw-semibold mb-1">Projects <span class="text-muted fw-normal">(optional)</span></label>
+                                <div id="slProjectList"></div>
+                                <button type="button" class="btn btn-outline-secondary btn-sm mt-1 sl-add-proj-btn">
+                                    <i class="bi bi-plus-circle"></i> Add Project
+                                </button>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-sm w-100">
+                                <i class="bi bi-plus-circle"></i> Add Shift Lead
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Add Migration Manager Form -->
+                <div class="card shadow-sm border-0 mt-3 animate-in">
+                    <div class="card-header bg-white border-bottom">
+                        <h6 class="mb-0"><i class="bi bi-briefcase"></i> Add Migration Manager</h6>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ url_for('add_employee') }}">
+                            <input type="hidden" name="emp_role" value="manager">
+                            <div class="mb-2">
+                                <input type="text" class="form-control form-control-sm" name="name" placeholder="Name" required autocomplete="off">
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label small fw-semibold mb-1">Projects <span class="text-muted fw-normal">(optional)</span></label>
+                                <div id="mgrProjectList"></div>
+                                <button type="button" class="btn btn-outline-secondary btn-sm mt-1 mgr-add-proj-btn">
+                                    <i class="bi bi-plus-circle"></i> Add Project
+                                </button>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-sm w-100">
+                                <i class="bi bi-plus-circle"></i> Add Migration Manager
                             </button>
                         </form>
                     </div>
@@ -242,7 +293,7 @@
                 </div>
 
                 <!-- Generate Roster & Project Coverage -->
-                {% if employees|length >= 2 %}
+                {% if engineers|length >= 2 %}
                 <div class="card shadow-sm border-0 mt-3 generate-card animate-in">
                     <div class="card-header bg-white border-bottom">
                         <h6 class="mb-0"><i class="bi bi-calendar-check"></i> Generate Roster</h6>
@@ -321,8 +372,8 @@
                 <div class="card shadow-sm border-0 animate-in">
                     <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
                         <h5 class="mb-0">
-                            <i class="bi bi-people"></i> Employees
-                            <span class="badge bg-primary rounded-pill ms-2">{{ employees|length }}</span>
+                            <i class="bi bi-people"></i> Migration Engineers
+                            <span class="badge bg-primary rounded-pill ms-2">{{ engineers|length }}</span>
                         </h5>
                         {% if employees|length > 0 and current_user and current_user.role == 'admin' %}
                         <form method="POST" action="{{ url_for('clear_all') }}" class="d-inline">
@@ -337,8 +388,8 @@
                         {% if employees|length == 0 %}
                         <div class="empty-state text-center">
                             <i class="bi bi-person-plus display-3 d-block mb-3"></i>
-                            <p class="mb-1 fw-medium">No employees added yet</p>
-                            <p class="small text-muted">Use the form on the left to add employees.</p>
+                            <p class="mb-1 fw-medium">No migration engineers added yet</p>
+                            <p class="small text-muted">Use the form on the left to add engineers.</p>
                         </div>
                         {% else %}
                         <div class="table-responsive">
@@ -392,6 +443,141 @@
                                                         title="Edit"
                                                         data-emp-id="{{ emp.id }}"
                                                         data-emp-name="{{ emp.name | e }}"
+                                                        data-emp-role="{{ emp.emp_role }}"
+                                                        data-content-types='{{ emp.content_types | tojson }}'
+                                                        data-working-days='{{ emp.working_days | tojson }}'
+                                                        data-projects='{{ (all_projects | selectattr("employee_id", "equalto", emp.id) | list) | tojson }}'>
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <form method="POST" action="{{ url_for('remove_employee', emp_id=emp.id) }}" class="d-inline">
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Remove"
+                                                            onclick="return confirm('Remove {{ emp.name }}?')">
+                                                        <i class="bi bi-x-lg"></i>
+                                                    </button>
+                                                </form>
+                                            </div>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Shift Leads -->
+                <div class="card shadow-sm border-0 mt-3 animate-in">
+                    <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0">
+                            <i class="bi bi-person-badge"></i> Shift Leads
+                            <span class="badge bg-primary rounded-pill ms-2">{{ shift_leads|length }}</span>
+                        </h6>
+                    </div>
+                    <div class="card-body p-0">
+                        {% if shift_leads|length == 0 %}
+                        <div class="text-center text-muted py-3">
+                            <small>No shift leads added yet.</small>
+                        </div>
+                        {% else %}
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm mb-0 align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Name</th>
+                                        <th>Projects</th>
+                                        <th style="width:80px"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for emp in shift_leads %}
+                                    <tr>
+                                        <td class="text-muted">{{ loop.index }}</td>
+                                        <td class="fw-semibold">{{ emp.name }}</td>
+                                        <td>
+                                            {% set sl_projects = all_projects | selectattr('employee_id', 'equalto', emp.id) | list %}
+                                            {% if sl_projects %}
+                                                {% for p in sl_projects %}<span class="badge bg-light text-dark border" title="{{ p.product_type }}">{{ p.name }}</span> {% endfor %}
+                                            {% else %}<span class="text-muted small">None</span>{% endif %}
+                                        </td>
+                                        <td>
+                                            {% if current_user and current_user.role == 'admin' %}
+                                            <div class="d-flex gap-1">
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-secondary edit-emp-btn"
+                                                        title="Edit"
+                                                        data-emp-id="{{ emp.id }}"
+                                                        data-emp-name="{{ emp.name | e }}"
+                                                        data-emp-role="{{ emp.emp_role }}"
+                                                        data-content-types='{{ emp.content_types | tojson }}'
+                                                        data-working-days='{{ emp.working_days | tojson }}'
+                                                        data-projects='{{ (all_projects | selectattr("employee_id", "equalto", emp.id) | list) | tojson }}'>
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <form method="POST" action="{{ url_for('remove_employee', emp_id=emp.id) }}" class="d-inline">
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Remove"
+                                                            onclick="return confirm('Remove {{ emp.name }}?')">
+                                                        <i class="bi bi-x-lg"></i>
+                                                    </button>
+                                                </form>
+                                            </div>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Migration Managers -->
+                <div class="card shadow-sm border-0 mt-3 animate-in">
+                    <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0">
+                            <i class="bi bi-briefcase"></i> Migration Managers
+                            <span class="badge bg-primary rounded-pill ms-2">{{ managers|length }}</span>
+                        </h6>
+                    </div>
+                    <div class="card-body p-0">
+                        {% if managers|length == 0 %}
+                        <div class="text-center text-muted py-3">
+                            <small>No migration managers added yet.</small>
+                        </div>
+                        {% else %}
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm mb-0 align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Name</th>
+                                        <th>Projects</th>
+                                        <th style="width:80px"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for emp in managers %}
+                                    <tr>
+                                        <td class="text-muted">{{ loop.index }}</td>
+                                        <td class="fw-semibold">{{ emp.name }}</td>
+                                        <td>
+                                            {% set mgr_projects = all_projects | selectattr('employee_id', 'equalto', emp.id) | list %}
+                                            {% if mgr_projects %}
+                                                {% for p in mgr_projects %}<span class="badge bg-light text-dark border" title="{{ p.product_type }}">{{ p.name }}</span> {% endfor %}
+                                            {% else %}<span class="text-muted small">None</span>{% endif %}
+                                        </td>
+                                        <td>
+                                            {% if current_user and current_user.role == 'admin' %}
+                                            <div class="d-flex gap-1">
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-secondary edit-emp-btn"
+                                                        title="Edit"
+                                                        data-emp-id="{{ emp.id }}"
+                                                        data-emp-name="{{ emp.name | e }}"
+                                                        data-emp-role="{{ emp.emp_role }}"
                                                         data-content-types='{{ emp.content_types | tojson }}'
                                                         data-working-days='{{ emp.working_days | tojson }}'
                                                         data-projects='{{ (all_projects | selectattr("employee_id", "equalto", emp.id) | list) | tojson }}'>
@@ -469,10 +655,14 @@
                 </div>
                 <div class="modal-body">
                     <div class="mb-4">
+                        <label class="form-label fw-semibold">Employee Name</label>
+                        <input type="text" class="form-control" id="editEmpNameInput" placeholder="Employee name">
+                    </div>
+                    <div class="mb-4" id="editTypeSection">
                         <label class="form-label fw-semibold">Product Types</label>
                         <div id="editTypeToggles" class="d-flex gap-2 flex-wrap"></div>
                     </div>
-                    <div class="mb-4">
+                    <div class="mb-4" id="editDaySection">
                         <label class="form-label fw-semibold">Working Days</label>
                         <div id="editDayToggles" class="d-flex gap-1 flex-wrap"></div>
                     </div>
@@ -576,23 +766,69 @@
                         <div class="px-3 py-2 border-bottom bg-light small text-muted">
                             <i class="bi bi-info-circle"></i>
                             {% if current_user and current_user.role == 'admin' %}
-                            Assign each employee to a shift. These assignments will be used when generating
-                            the roster for this month instead of the automatic distribution.
+                            Assign shifts to team members. Engineer shifts are used for roster generation.
                             {% else %}
                             Shift assignments for this month.
                             {% endif %}
                         </div>
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle mb-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th class="ps-3">Employee</th>
-                                        <th>Product Types</th>
-                                        <th style="min-width:260px">Shift Assignment</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="shiftTableBody"></tbody>
-                            </table>
+                        <ul class="nav nav-tabs px-3 pt-2" id="shiftTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#shiftEngineers" type="button">
+                                    Migration Engineers
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#shiftLeads" type="button">
+                                    Shift Leads
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#shiftManagers" type="button">
+                                    Migration Managers
+                                </button>
+                            </li>
+                        </ul>
+                        <div class="tab-content">
+                            <div class="tab-pane fade show active" id="shiftEngineers">
+                                <div class="table-responsive">
+                                    <table class="table table-hover align-middle mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th class="ps-3">Name</th>
+                                                <th>Product Types</th>
+                                                <th style="min-width:260px">Shift</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="shiftTableBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="tab-pane fade" id="shiftLeads">
+                                <div class="table-responsive">
+                                    <table class="table table-hover align-middle mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th class="ps-3">Name</th>
+                                                <th style="min-width:260px">Shift</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="shiftLeadsBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="tab-pane fade" id="shiftManagers">
+                                <div class="table-responsive">
+                                    <table class="table table-hover align-middle mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th class="ps-3">Name</th>
+                                                <th style="min-width:260px">Shift</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="shiftManagersBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -658,6 +894,29 @@
                 row.querySelector('.remove-project-btn').addEventListener('click', function () { row.remove(); });
             });
         }
+
+        function makeProjectRow(listId) {
+            var row = document.createElement('div');
+            row.className = 'project-row d-flex gap-2 mb-2 align-items-center';
+            row.innerHTML =
+                '<input type="text" class="form-control form-control-sm" name="project_name" placeholder="Project name">' +
+                '<select class="form-select form-select-sm" name="project_type" style="max-width:160px">' +
+                '  <option value="Content">Content</option>' +
+                '  <option value="Email">Email</option>' +
+                '  <option value="Message">Message</option>' +
+                '</select>' +
+                '<button type="button" class="btn btn-sm btn-outline-danger remove-project-btn" title="Remove">' +
+                '  <i class="bi bi-x"></i></button>';
+            document.getElementById(listId).appendChild(row);
+            row.querySelector('.remove-project-btn').addEventListener('click', function () { row.remove(); });
+        }
+
+        document.querySelectorAll('.sl-add-proj-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() { makeProjectRow('slProjectList'); });
+        });
+        document.querySelectorAll('.mgr-add-proj-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() { makeProjectRow('mgrProjectList'); });
+        });
 
         // ── Month/year sync (requires ≥2 employees for generate card) ──
         if (document.getElementById('gen_month')) {
@@ -893,7 +1152,14 @@
         document.querySelectorAll('.edit-emp-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
                 currentEditEmpId = btn.dataset.empId;
+                var empRole = btn.dataset.empRole || 'engineer';
                 document.getElementById('editEmpName').textContent = btn.dataset.empName;
+                document.getElementById('editEmpNameInput').value = btn.dataset.empName;
+
+                var hideFields = (empRole === 'manager' || empRole === 'shift_lead');
+                document.getElementById('editTypeSection').style.display = hideFields ? 'none' : '';
+                document.getElementById('editDaySection').style.display = hideFields ? 'none' : '';
+
                 var cts      = JSON.parse(btn.dataset.contentTypes);
                 var days     = JSON.parse(btn.dataset.workingDays);
                 var projects = JSON.parse(btn.dataset.projects || '[]');
@@ -967,10 +1233,12 @@
             saveBtn.disabled = true;
             saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving\u2026';
 
+            var editedName = document.getElementById('editEmpNameInput').value.trim();
+
             fetch('/edit_employee/' + currentEditEmpId, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({content_types: cts, working_days: days, projects: projs})
+                body: JSON.stringify({name: editedName, content_types: cts, working_days: days, projects: projs})
             })
             .then(function(r) { return r.json(); })
             .then(function(d) {
@@ -1139,13 +1407,17 @@
 
     // ── Edit/View Shifts Modal ───────────────────────────────
     (function () {
-        var employees = {{ employees | tojson }};
-        var monthNames = {{ month_names | tojson }};
+        var engineers   = {{ engineers | tojson }};
+        var shiftLeads  = {{ shift_leads | tojson }};
+        var mgrList     = {{ managers | tojson }};
+        var monthNames  = {{ month_names | tojson }};
         var isAdmin = {{ ('true' if current_user and current_user.role == 'admin' else 'false') }};
         var shiftsModal = new bootstrap.Modal(document.getElementById('editShiftsModal'));
         var shiftLoading = document.getElementById('shiftModalLoading');
         var shiftContent = document.getElementById('shiftModalContent');
         var shiftBody    = document.getElementById('shiftTableBody');
+        var shiftLeadsBody = document.getElementById('shiftLeadsBody');
+        var shiftMgrsBody  = document.getElementById('shiftManagersBody');
         var shiftTitle   = document.getElementById('shiftModalTitle');
 
         var SHIFTS = {1: 'Shift 1', 2: 'Shift 2', 3: 'Shift 3'};
@@ -1157,10 +1429,12 @@
             return '<span class="badge bg-warning text-dark">MSG</span>';
         }
 
-        function buildShiftRow(emp, savedShift) {
+        function buildShiftRow(emp, savedShift, showTypes) {
             var h = '<tr data-emp="' + emp.name.replace(/"/g,'&quot;') + '">';
             h += '<td class="ps-3 fw-semibold">' + emp.name + '</td>';
-            h += '<td>' + (emp.content_types || []).map(typeBadge).join(' ') + '</td>';
+            if (showTypes) {
+                h += '<td>' + (emp.content_types || []).map(typeBadge).join(' ') + '</td>';
+            }
             h += '<td><div class="d-flex gap-1">';
             if (isAdmin) {
                 [1, 2, 3].forEach(function (s) {
@@ -1170,7 +1444,6 @@
                          '" data-shift="' + s + '" data-on="' + on + '">' + SHIFTS[s] + '</button>';
                 });
             } else {
-                // Read-only: show assigned shift as a badge, or "Not set" if none
                 if (savedShift) {
                     h += '<span class="badge ' + SHIFT_COLORS[savedShift] + ' px-3 py-2">' + SHIFTS[savedShift] + '</span>';
                 } else {
@@ -1194,11 +1467,25 @@
                 .then(function (d) {
                     shiftLoading.classList.add('d-none');
                     var saved = d.assignments || {};
+
                     var rows = '';
-                    employees.forEach(function (emp) {
-                        rows += buildShiftRow(emp, saved[emp.name] || null);
+                    engineers.forEach(function (emp) {
+                        rows += buildShiftRow(emp, saved[emp.name] || null, true);
                     });
                     shiftBody.innerHTML = rows;
+
+                    var slRows = '';
+                    shiftLeads.forEach(function (emp) {
+                        slRows += buildShiftRow(emp, saved[emp.name] || null, false);
+                    });
+                    shiftLeadsBody.innerHTML = slRows || '<tr><td colspan="2" class="text-center text-muted py-3">No shift leads added.</td></tr>';
+
+                    var mgrRows = '';
+                    mgrList.forEach(function (emp) {
+                        mgrRows += buildShiftRow(emp, saved[emp.name] || null, false);
+                    });
+                    shiftMgrsBody.innerHTML = mgrRows || '<tr><td colspan="2" class="text-center text-muted py-3">No managers added.</td></tr>';
+
                     shiftContent.classList.remove('d-none');
                 })
                 .catch(function () {
@@ -1241,10 +1528,13 @@
             var month = parseInt(document.getElementById('gen_month').value);
             var year  = parseInt(document.getElementById('gen_year').value);
             var assignments = {};
-            shiftBody.querySelectorAll('tr').forEach(function (row) {
-                var empName = row.dataset.emp;
-                var active = row.querySelector('.shift-pick-btn[data-on="true"]');
-                if (active) assignments[empName] = parseInt(active.dataset.shift);
+            [shiftBody, shiftLeadsBody, shiftMgrsBody].forEach(function(tbody) {
+                tbody.querySelectorAll('tr').forEach(function (row) {
+                    var empName = row.dataset.emp;
+                    if (!empName) return;
+                    var active = row.querySelector('.shift-pick-btn[data-on="true"]');
+                    if (active) assignments[empName] = parseInt(active.dataset.shift);
+                });
             });
             var btn = document.getElementById('saveShiftsBtn');
             btn.disabled = true;

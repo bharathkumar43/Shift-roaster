@@ -49,9 +49,15 @@ def init_db():
             id SERIAL PRIMARY KEY,
             name TEXT NOT NULL UNIQUE,
             content_types TEXT NOT NULL,
-            working_days TEXT NOT NULL
+            working_days TEXT NOT NULL,
+            emp_role TEXT NOT NULL DEFAULT 'engineer'
         )
     """)
+    try:
+        cur.execute("ALTER TABLE employees ADD COLUMN emp_role TEXT NOT NULL DEFAULT 'engineer'")
+        conn.commit()
+    except psycopg2.errors.DuplicateColumn:
+        conn.rollback()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS projects (
             id SERIAL PRIMARY KEY,
@@ -115,13 +121,13 @@ def init_db():
 
 # ── Employee CRUD ────────────────────────────────────────
 
-def add_employee(name, content_types, working_days):
+def add_employee(name, content_types, working_days, emp_role="engineer"):
     conn = get_db()
     cur = conn.cursor()
     try:
         cur.execute(
-            "INSERT INTO employees (name, content_types, working_days) VALUES (%s, %s, %s) RETURNING id",
-            (name, json.dumps(content_types), json.dumps(working_days))
+            "INSERT INTO employees (name, content_types, working_days, emp_role) VALUES (%s, %s, %s, %s) RETURNING id",
+            (name, json.dumps(content_types), json.dumps(working_days), emp_role)
         )
         emp_id = cur.fetchone()[0]
         conn.commit()
@@ -154,13 +160,19 @@ def get_employee_by_id(emp_id):
     return _row_to_employee(row) if row else None
 
 
-def update_employee(emp_id, content_types, working_days):
+def update_employee(emp_id, content_types, working_days, name=None):
     conn = get_db()
     cur = conn.cursor()
-    cur.execute(
-        "UPDATE employees SET content_types = %s, working_days = %s WHERE id = %s",
-        (json.dumps(content_types), json.dumps(working_days), emp_id)
-    )
+    if name:
+        cur.execute(
+            "UPDATE employees SET name = %s, content_types = %s, working_days = %s WHERE id = %s",
+            (name, json.dumps(content_types), json.dumps(working_days), emp_id)
+        )
+    else:
+        cur.execute(
+            "UPDATE employees SET content_types = %s, working_days = %s WHERE id = %s",
+            (json.dumps(content_types), json.dumps(working_days), emp_id)
+        )
     conn.commit()
     cur.close()
     conn.close()
@@ -192,7 +204,18 @@ def _row_to_employee(row):
         "name": row["name"],
         "content_types": json.loads(ct) if isinstance(ct, str) else ct,
         "working_days": json.loads(wd) if isinstance(wd, str) else wd,
+        "emp_role": row.get("emp_role", "engineer") if isinstance(row, dict) else "engineer",
     }
+
+
+def get_employees_by_role(role):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM employees WHERE emp_role = %s ORDER BY id", (role,))
+    rows = _fetchall(cur)
+    cur.close()
+    conn.close()
+    return [_row_to_employee(r) for r in rows]
 
 
 # ── Project CRUD ─────────────────────────────────────────

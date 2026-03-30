@@ -78,7 +78,9 @@ def _predefined(year, month):
 @app.route("/", methods=["GET"])
 @login_required
 def index():
-    employees = db.get_all_employees()
+    engineers = db.get_employees_by_role("engineer")
+    shift_leads = db.get_employees_by_role("shift_lead")
+    managers = db.get_employees_by_role("manager")
     all_projects = db.get_all_projects()
     saved_rosters = db.list_saved_rosters()
     finalized_rosters = db.list_finalized_rosters()
@@ -91,7 +93,10 @@ def index():
         flash(f"Successfully imported {imported} employee(s).", "success")
     return render_template("index.html",
                            app_name=APP_NAME,
-                           employees=employees,
+                           engineers=engineers,
+                           shift_leads=shift_leads,
+                           managers=managers,
+                           employees=engineers,
                            all_projects=all_projects,
                            saved_rosters=saved_rosters,
                            finalized_rosters=finalized_rosters,
@@ -103,22 +108,42 @@ def index():
                            month_names=month_names)
 
 
+ROLE_LABELS = {
+    "engineer": "Migration Engineer",
+    "shift_lead": "Shift Lead",
+    "manager": "Migration Manager",
+}
+
+
 @app.route("/add_employee", methods=["POST"])
 @admin_required
 def add_employee():
     name = request.form.get("name", "").strip()
     content_types = request.form.getlist("content_types")
     working_days = request.form.getlist("working_days")
+    emp_role = request.form.get("emp_role", "engineer")
     project_names = request.form.getlist("project_name")
     project_types = request.form.getlist("project_type")
 
-    if not name or not content_types or len(working_days) == 0:
+    if emp_role not in ROLE_LABELS:
+        emp_role = "engineer"
+
+    if emp_role in ("manager", "shift_lead"):
+        if not content_types:
+            content_types = ["Content"]
+        if not working_days:
+            working_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+    elif not name or not content_types or len(working_days) == 0:
         flash("Please fill in all required fields.", "danger")
         return redirect(url_for("index"))
 
-    emp_id = db.add_employee(name, content_types, working_days)
+    if not name:
+        flash("Please enter a name.", "danger")
+        return redirect(url_for("index"))
+
+    emp_id = db.add_employee(name, content_types, working_days, emp_role=emp_role)
     if emp_id is None:
-        flash(f"Employee '{name}' already exists.", "warning")
+        flash(f"'{name}' already exists.", "warning")
         return redirect(url_for("index"))
 
     for pname, ptype in zip(project_names, project_types):
@@ -126,7 +151,8 @@ def add_employee():
         if pname and ptype:
             db.add_project(pname, ptype, emp_id)
 
-    flash(f"Employee '{name}' added successfully.", "success")
+    label = ROLE_LABELS.get(emp_role, "Employee")
+    flash(f"{label} '{name}' added successfully.", "success")
     return redirect(url_for("index"))
 
 
@@ -136,9 +162,10 @@ def edit_employee(emp_id):
     data = request.get_json()
     if not data:
         return jsonify({"error": "Invalid data"}), 400
+    new_name = (data.get("name") or "").strip() or None
     content_types = data.get("content_types") or ["Content"]
     working_days = data.get("working_days") or ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
-    db.update_employee(emp_id, content_types, working_days)
+    db.update_employee(emp_id, content_types, working_days, name=new_name)
     # Replace projects
     db.clear_projects_for_employee(emp_id)
     for proj in (data.get("projects") or []):
@@ -197,7 +224,7 @@ def _build_roster_data(employees, roster, shift_assignments, year, month):
 @app.route("/generate", methods=["POST"])
 @login_required
 def generate():
-    employees = db.get_all_employees()
+    employees = db.get_employees_by_role("engineer")
     if len(employees) < 2:
         flash("Add at least 2 employees to generate a roster.", "warning")
         return redirect(url_for("index"))
@@ -252,7 +279,7 @@ def save_roster():
     year = draft["year"]
     month = draft["month"]
 
-    employees = db.get_all_employees()
+    employees = db.get_employees_by_role("engineer")
     shift_assignments = draft["shift_assignments"]
 
     db.save_all_rotations(shift_assignments, employees, year, month)
@@ -331,7 +358,7 @@ def _render_saved_roster(year, month, saved):
 @app.route("/projects", methods=["POST"])
 @login_required
 def projects():
-    employees = db.get_all_employees()
+    employees = db.get_employees_by_role("engineer")
     all_projects = db.get_all_projects()
 
     if not employees or not all_projects:
@@ -388,7 +415,7 @@ def download():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-    employees = db.get_all_employees()
+    employees = db.get_employees_by_role("engineer")
     night_counts = db.get_night_shift_counts()
     roster, warnings, shift_assignments = generate_roster(
         employees, year, month, night_counts, _predefined(year, month)
@@ -516,7 +543,7 @@ def search():
     if not q or len(q) < 1:
         return jsonify({"employees": [], "projects": []})
 
-    employees = db.get_all_employees()
+    employees = db.get_employees_by_role("engineer")
     night_counts = db.get_night_shift_counts()
 
     shift_assignments = {}
@@ -643,7 +670,7 @@ def search():
 @app.route("/summary", methods=["GET"])
 @login_required
 def summary():
-    employees = db.get_all_employees()
+    employees = db.get_employees_by_role("engineer")
     all_projects = db.get_all_projects()
 
     today = date.today()
@@ -709,8 +736,8 @@ def save_shifts():
         return jsonify({"error": "year and month required"}), 400
     # Convert shift values to int
     assignments = {k: int(v) for k, v in assignments.items() if v}
-    employees = db.get_all_employees()
-    db.save_all_rotations(assignments, employees, year, month)
+    all_emps = db.get_all_employees()
+    db.save_all_rotations(assignments, all_emps, year, month)
     return jsonify({"success": True})
 
 
