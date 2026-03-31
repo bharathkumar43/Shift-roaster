@@ -187,11 +187,14 @@
 
         <!-- Daily Project Coverage Grid -->
         {% set all_proj_keys = [] %}
+        {% set all_proj_keys_lower = [] %}
         {% for day in coverage %}
             {% for p in day.projects %}
                 {% set key = p.project_name + '|' + p.product_type %}
-                {% if key not in all_proj_keys %}
+                {% set key_lower = p.project_name|lower + '|' + p.product_type|lower %}
+                {% if key_lower not in all_proj_keys_lower %}
                     {% if all_proj_keys.append(key) %}{% endif %}
+                    {% if all_proj_keys_lower.append(key_lower) %}{% endif %}
                 {% endif %}
             {% endfor %}
         {% endfor %}
@@ -213,7 +216,7 @@
                                 {% set parts = key.split('|') %}
                                 {% set mgr = namespace(name='') %}
                                 {% for mp in manager_projects %}
-                                    {% if mp.name == parts[0] %}
+                                    {% if mp.name|lower == parts[0]|lower %}
                                         {% set mgr.name = mp.employee_name %}
                                     {% endif %}
                                 {% endfor %}
@@ -250,7 +253,7 @@
                                 {% set parts = key.split('|') %}
                                 {% set proj_entry = namespace(found=false, data=none) %}
                                 {% for p in day.projects %}
-                                    {% if p.project_name == parts[0] and p.product_type == parts[1] %}
+                                    {% if p.project_name|lower == parts[0]|lower and p.product_type|lower == parts[1]|lower %}
                                         {% set proj_entry.found = true %}
                                         {% set proj_entry.data = p %}
                                     {% endif %}

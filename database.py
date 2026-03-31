@@ -225,7 +225,7 @@ def add_project(name, product_type, employee_id):
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO projects (name, product_type, employee_id) VALUES (%s, %s, %s)",
-        (name, product_type, employee_id)
+        (name.strip(), product_type, employee_id)
     )
     conn.commit()
     cur.close()

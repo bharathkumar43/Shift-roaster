@@ -619,7 +619,7 @@ def search():
             continue
         seen_projects.add(proj_key)
 
-        same_name_projs = [p for p in all_projects if p["name"] == proj["name"]]
+        same_name_projs = [p for p in all_projects if p["name"].lower() == proj["name"].lower()]
         manager_name = None
         for sp in same_name_projs:
             mgr = next((m for m in all_managers if m["id"] == sp["employee_id"]), None)
@@ -637,7 +637,7 @@ def search():
         daily = []
         for day_data in proj_coverage:
             for p in day_data.get("projects", []):
-                if p["project_name"] == proj["name"] and p["product_type"] == proj["product_type"]:
+                if p["project_name"].lower() == proj["name"].lower() and p["product_type"].lower() == proj["product_type"].lower():
                     shift_info = {}
                     for sn in [1, 2, 3]:
                         sh = p["shifts"].get(sn, {})

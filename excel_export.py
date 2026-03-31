@@ -199,10 +199,10 @@ def _create_project_coverage_sheet(wb, proj_coverage, year, month):
     seen = set()
     for day_data in proj_coverage:
         for p in day_data["projects"]:
-            key = (p["project_name"], p["product_type"])
-            if key not in seen:
-                seen.add(key)
-                project_names.append(key)
+            key_lower = (p["project_name"].lower(), p["product_type"].lower())
+            if key_lower not in seen:
+                seen.add(key_lower)
+                project_names.append((p["project_name"], p["product_type"]))
 
     row = 4
 
@@ -238,11 +238,11 @@ def _create_project_coverage_sheet(wb, proj_coverage, year, month):
 
         proj_map = {}
         for p in day_data["projects"]:
-            proj_map[(p["project_name"], p["product_type"])] = p
+            proj_map[(p["project_name"].lower(), p["product_type"].lower())] = p
 
         col = 2
-        for key in project_names:
-            p = proj_map.get(key)
+        for pname, ptype in project_names:
+            p = proj_map.get((pname.lower(), ptype.lower()))
             for sn in [1, 2, 3]:
                 cell = ws.cell(row=row, column=col)
                 cell.border = THIN_BORDER
