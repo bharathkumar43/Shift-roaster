@@ -54,7 +54,7 @@
             </p>
         </div>
 
-        {% if warnings %}
+        {% if warnings and current_user and current_user.role == 'admin' %}
         <div class="alert alert-warning alert-dismissible fade show" role="alert">
             <h6 class="alert-heading fw-bold"><i class="bi bi-exclamation-triangle"></i> Coverage Warnings</h6>
             <ul class="mb-0 small">
