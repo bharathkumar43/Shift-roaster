@@ -4,9 +4,9 @@ from math import ceil
 from collections import defaultdict
 
 SHIFTS = {
-    1: {"name": "Shift 1", "time_ist": "5:00 AM – 2:00 PM IST", "time_est": "7:30 PM – 4:30 AM EST", "strength": "lean"},
-    2: {"name": "Shift 2", "time_ist": "1:00 PM – 10:00 PM IST", "time_est": "3:30 AM – 12:30 PM EST", "strength": "strong"},
-    3: {"name": "Shift 3", "time_ist": "9:00 PM – 6:00 AM IST", "time_est": "11:30 AM – 8:30 PM EST", "strength": "strong"},
+    1: {"name": "Shift 1", "time_ist": "6:00 AM - 2:00 PM IST", "time_est": "7:30 PM - 3:30 AM EST", "strength": "lean"},
+    2: {"name": "Shift 2", "time_ist": "1:00 PM - 10:00 PM IST", "time_est": "2:30 AM - 11:30 AM EST", "strength": "strong"},
+    3: {"name": "Shift 3", "time_ist": "9:00 PM - 6:00 AM IST", "time_est": "10:30 AM - 7:30 PM EST", "strength": "strong"},
 }
 
 CONTENT_TYPES = ["Content", "Email", "Message"]

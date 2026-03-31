@@ -384,6 +384,10 @@ def projects():
     lead_projects = [p for p in all_projects if emp_role_map.get(p["employee_name"]) == "shift_lead"]
     manager_projects = [p for p in all_projects if emp_role_map.get(p["employee_name"]) == "manager"]
 
+    proj_manager_map = {}
+    for mp in manager_projects:
+        proj_manager_map[mp["name"]] = mp["employee_name"]
+
     return render_template("projects.html",
                            app_name=APP_NAME,
                            coverage=coverage,
@@ -395,6 +399,7 @@ def projects():
                            engineer_projects=engineer_projects,
                            lead_projects=lead_projects,
                            manager_projects=manager_projects,
+                           proj_manager_map=proj_manager_map,
                            shifts=SHIFTS,
                            shift_assignments=shift_assignments)
 
@@ -619,7 +624,7 @@ def search():
             continue
         seen_projects.add(proj_key)
 
-        same_name_projs = [p for p in all_projects if p["name"].lower() == proj["name"].lower()]
+        same_name_projs = [p for p in all_projects if p["name"] == proj["name"]]
         manager_name = None
         for sp in same_name_projs:
             mgr = next((m for m in all_managers if m["id"] == sp["employee_id"]), None)
@@ -637,7 +642,7 @@ def search():
         daily = []
         for day_data in proj_coverage:
             for p in day_data.get("projects", []):
-                if p["project_name"].lower() == proj["name"].lower() and p["product_type"].lower() == proj["product_type"].lower():
+                if p["project_name"] == proj["name"] and p["product_type"] == proj["product_type"]:
                     shift_info = {}
                     for sn in [1, 2, 3]:
                         sh = p["shifts"].get(sn, {})

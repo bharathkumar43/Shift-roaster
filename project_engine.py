@@ -9,16 +9,8 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
     """
     Generate daily project coverage for the month across ALL shifts.
 
-    For each project:
-      - The owner handles it in their shift
-      - For the other 2 shifts, the system auto-assigns the best-fit employee
-        (same product type, working that day, fewest projects)
-      - When owner or assigned handler is off, a secondary is picked
-
-    Returns:
-        coverage: list of dicts per day, each with:
-            projects: list of {project_name, product_type, owner, shifts: {1: {...}, 2: {...}, 3: {...}}}
-        warnings: list of warning strings
+    For each project, one fixed person is assigned per shift for the whole month.
+    On their off days, the best available backup from the same shift takes over.
     """
     emp_lookup = {e["name"]: e for e in employees}
 
@@ -31,6 +23,10 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
         shift = shift_assignments.get(emp["name"])
         if shift:
             emps_by_shift[shift].append(emp)
+
+    fixed_assignments = _assign_fixed_handlers(
+        projects, employees, shift_assignments, projects_by_owner
+    )
 
     num_days = calendar.monthrange(year, month)[1]
     coverage = []
@@ -49,8 +45,6 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
             "projects": []
         }
 
-        assignment_counts = defaultdict(int)
-
         for proj in projects:
             owner_name = proj["employee_name"]
             owner = emp_lookup.get(owner_name)
@@ -59,10 +53,13 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
 
             owner_shift = shift_assignments.get(owner_name)
             product_type = proj["product_type"]
+            proj_key = (proj["name"], product_type)
 
             shift_handlers = {}
 
             for shift_num in [1, 2, 3]:
+                fixed_person = fixed_assignments.get(proj_key, {}).get(shift_num)
+
                 if shift_num == owner_shift:
                     owner_working = day_name in owner["working_days"]
                     if owner_working:
@@ -72,15 +69,13 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
                             "is_owner_shift": True,
                         }
                     else:
-                        secondary = _find_handler(
+                        backup = _find_backup(
                             product_type, owner_name, shift_num,
-                            employees, shift_assignments, day_name,
-                            assignment_counts, projects_by_owner
+                            employees, shift_assignments, day_name
                         )
-                        if secondary:
-                            assignment_counts[secondary] += 1
+                        if backup:
                             shift_handlers[shift_num] = {
-                                "handler": secondary,
+                                "handler": backup,
                                 "is_secondary": True,
                                 "is_owner_shift": True,
                             }
@@ -96,18 +91,24 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
                                 f"({owner_name} is off)"
                             )
                 else:
-                    handler = _find_handler(
-                        product_type, None, shift_num,
-                        employees, shift_assignments, day_name,
-                        assignment_counts, projects_by_owner
-                    )
-                    if handler:
-                        assignment_counts[handler] += 1
-                        shift_handlers[shift_num] = {
-                            "handler": handler,
-                            "is_secondary": False,
-                            "is_owner_shift": False,
-                        }
+                    if fixed_person:
+                        fixed_emp = emp_lookup.get(fixed_person)
+                        if fixed_emp and day_name in fixed_emp["working_days"]:
+                            shift_handlers[shift_num] = {
+                                "handler": fixed_person,
+                                "is_secondary": False,
+                                "is_owner_shift": False,
+                            }
+                        else:
+                            backup = _find_backup(
+                                product_type, fixed_person, shift_num,
+                                employees, shift_assignments, day_name
+                            )
+                            shift_handlers[shift_num] = {
+                                "handler": backup,
+                                "is_secondary": True,
+                                "is_owner_shift": False,
+                            }
                     else:
                         shift_handlers[shift_num] = {
                             "handler": None,
@@ -128,14 +129,63 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
     return coverage, warnings
 
 
-def _find_handler(product_type, exclude_name, shift_num,
-                  employees, shift_assignments, day_name,
-                  assignment_counts, projects_by_owner):
+def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_owner):
     """
-    Find the best handler for a project in a given shift on a given day.
+    For each project + shift combination (excluding the owner's shift),
+    pick one fixed person for the whole month based on fewest existing projects.
+    """
+    emp_lookup = {e["name"]: e for e in employees}
+    fixed = {}
+    shift_load = defaultdict(int)
 
-    Picks the employee with the fewest total assignments (own projects +
-    already-assigned coverage today) who matches the product type and is working.
+    for proj in projects:
+        owner_name = proj["employee_name"]
+        owner = emp_lookup.get(owner_name)
+        if not owner:
+            continue
+
+        owner_shift = shift_assignments.get(owner_name)
+        product_type = proj["product_type"]
+        proj_key = (proj["name"], product_type)
+
+        if proj_key not in fixed:
+            fixed[proj_key] = {}
+
+        for shift_num in [1, 2, 3]:
+            if shift_num == owner_shift:
+                fixed[proj_key][shift_num] = owner_name
+                continue
+
+            candidates = []
+            for emp in employees:
+                if emp["name"] == owner_name:
+                    continue
+                if shift_assignments.get(emp["name"]) != shift_num:
+                    continue
+                if product_type not in emp["content_types"]:
+                    continue
+
+                own_count = len(projects_by_owner.get(emp["name"], []))
+                load = shift_load.get(emp["name"], 0)
+                total = own_count + load
+                candidates.append((emp["name"], total))
+
+            if candidates:
+                candidates.sort(key=lambda x: x[1])
+                chosen = candidates[0][0]
+                fixed[proj_key][shift_num] = chosen
+                shift_load[chosen] += 1
+            else:
+                fixed[proj_key][shift_num] = None
+
+    return fixed
+
+
+def _find_backup(product_type, exclude_name, shift_num,
+                 employees, shift_assignments, day_name):
+    """
+    Find a backup handler for a day when the fixed person is off.
+    Picks anyone in the same shift with the matching product type who is working.
     """
     candidates = []
 
@@ -149,14 +199,6 @@ def _find_handler(product_type, exclude_name, shift_num,
         if day_name not in emp["working_days"]:
             continue
 
-        own_count = len(projects_by_owner.get(emp["name"], []))
-        assigned_count = assignment_counts.get(emp["name"], 0)
-        total = own_count + assigned_count
+        candidates.append(emp["name"])
 
-        candidates.append((emp["name"], total))
-
-    if not candidates:
-        return None
-
-    candidates.sort(key=lambda x: x[1])
-    return candidates[0][0]
+    return candidates[0] if candidates else None

@@ -78,7 +78,7 @@ def _create_roster_sheet(wb, roster, shift_assignments, employees, year, month):
     ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=num_days + 1)
     legend = ws.cell(
         row=2, column=1,
-        value="Shift 1: 5AM-2PM IST / 7:30PM-4:30AM EST (Lean)  |  Shift 2: 1PM-10PM IST / 3:30AM-12:30PM EST (Strong)  |  Shift 3: 9PM-6AM IST / 11:30AM-8:30PM EST (Strong)"
+        value="Shift 1: 6AM-2PM IST / 7:30PM-3:30AM EST (Lean)  |  Shift 2: 1PM-10PM IST / 2:30AM-11:30AM EST (Strong)  |  Shift 3: 9PM-6AM IST / 10:30AM-7:30PM EST (Strong)"
     )
     legend.font = Font(size=9, italic=True, color="5D6D7E")
     legend.alignment = Alignment(horizontal="center")
@@ -199,10 +199,10 @@ def _create_project_coverage_sheet(wb, proj_coverage, year, month):
     seen = set()
     for day_data in proj_coverage:
         for p in day_data["projects"]:
-            key_lower = (p["project_name"].lower(), p["product_type"].lower())
-            if key_lower not in seen:
-                seen.add(key_lower)
-                project_names.append((p["project_name"], p["product_type"]))
+            key = (p["project_name"], p["product_type"])
+            if key not in seen:
+                seen.add(key)
+                project_names.append(key)
 
     row = 4
 
@@ -238,11 +238,11 @@ def _create_project_coverage_sheet(wb, proj_coverage, year, month):
 
         proj_map = {}
         for p in day_data["projects"]:
-            proj_map[(p["project_name"].lower(), p["product_type"].lower())] = p
+            proj_map[(p["project_name"], p["product_type"])] = p
 
         col = 2
-        for pname, ptype in project_names:
-            p = proj_map.get((pname.lower(), ptype.lower()))
+        for key in project_names:
+            p = proj_map.get(key)
             for sn in [1, 2, 3]:
                 cell = ws.cell(row=row, column=col)
                 cell.border = THIN_BORDER
