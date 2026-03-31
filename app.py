@@ -597,11 +597,33 @@ def search():
         )
         proj_coverage = proj_coverage_data
 
+    all_managers = db.get_employees_by_role("manager")
+    all_leads = db.get_employees_by_role("shift_lead")
+    all_people = db.get_all_employees()
+
     proj_results = []
+    seen_projects = set()
     matched_projs = db.search_projects(q)
     for proj in matched_projs:
-        owner = next((e for e in employees if e["name"] == proj["employee_name"]), None)
-        shift = shift_assignments.get(proj["employee_name"])
+        proj_key = (proj["name"], proj["product_type"])
+        if proj_key in seen_projects:
+            continue
+        seen_projects.add(proj_key)
+
+        same_name_projs = [p for p in all_projects if p["name"] == proj["name"]]
+        manager_name = None
+        for sp in same_name_projs:
+            mgr = next((m for m in all_managers if m["id"] == sp["employee_id"]), None)
+            if mgr:
+                manager_name = mgr["name"]
+                break
+
+        engineer_proj = next(
+            (sp for sp in same_name_projs
+             if any(e["id"] == sp["employee_id"] for e in employees)),
+            None
+        )
+        shift = shift_assignments.get(engineer_proj["employee_name"]) if engineer_proj else None
 
         daily = []
         for day_data in proj_coverage:
@@ -614,14 +636,10 @@ def search():
                             "handler": sh.get("handler"),
                             "is_secondary": sh.get("is_secondary", False),
                         }
-                    owner_shift = p.get("owner_shift", shift)
-                    os_data = shift_info.get(owner_shift, {})
                     daily.append({
                         "day_num": day_data["day_num"],
                         "date": day_data["date"],
                         "day_abbr": day_data["day_abbr"],
-                        "handler": os_data.get("handler"),
-                        "is_secondary": os_data.get("is_secondary", False),
                         "shifts": shift_info,
                     })
                     break
@@ -629,9 +647,7 @@ def search():
         proj_results.append({
             "name": proj["name"],
             "product_type": proj["product_type"],
-            "owner": proj["employee_name"],
-            "shift": shift,
-            "shift_name": SHIFTS[shift]["name"] if shift else None,
+            "manager": manager_name,
             "daily": daily,
         })
 

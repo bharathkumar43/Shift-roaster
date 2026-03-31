@@ -1368,9 +1368,9 @@
                     html += '<span class="fw-bold fs-6">' + proj.name + '</span>';
                     html += typeBadge(proj.product_type);
                     html += '</div>';
-                    html += '<div class="mb-2"><span class="fw-medium">' + proj.owner + '</span>';
-                    if (proj.shift_name) html += ' <span class="badge bg-shift' + proj.shift + '">' + proj.shift_name + '</span>';
-                    html += '</div>';
+                    if (proj.manager) {
+                        html += '<div class="mb-2"><small class="text-muted">Manager:</small> <span class="fw-medium">' + proj.manager + '</span></div>';
+                    }
 
                     if (proj.daily && proj.daily.length > 0) {
                         html += '<small class="text-muted fw-semibold">Daily Coverage (All Shifts):</small>';
