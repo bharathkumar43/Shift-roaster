@@ -66,48 +66,119 @@
         </div>
         {% endif %}
 
-        <!-- Project Summary -->
-        <div class="row g-3 mb-4">
-            <div class="col-12 animate-in">
-                <div class="card border-0 shadow-sm">
-                    <div class="card-header bg-white border-bottom">
-                        <h6 class="mb-0"><i class="bi bi-list-check"></i> Project Assignments</h6>
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-sm table-hover mb-0 align-middle">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Project</th>
-                                        <th>Product Type</th>
-                                        <th>Employee</th>
-                                        <th>Shift</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for p in projects %}
-                                    <tr>
-                                        <td class="fw-semibold">{{ p.name }}</td>
-                                        <td>
-                                            {% if p.product_type == 'Content' %}
-                                            <span class="badge bg-info text-dark">CON</span>
-                                            {% elif p.product_type == 'Email' %}
-                                            <span class="badge bg-primary">EML</span>
-                                            {% else %}
-                                            <span class="badge bg-warning text-dark">MSG</span>
-                                            {% endif %}
-                                        </td>
-                                        <td>{{ p.employee_name }}</td>
-                                        <td>
-                                            {% set sn = shift_assignments.get(p.employee_name, 0) %}
-                                            {% if sn %}
-                                            <span class="badge bg-shift{{ sn }}">{{ shifts[sn].name }}</span>
-                                            {% endif %}
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
+        <!-- Project Assignments (collapsible, side-by-side) -->
+        <div class="card border-0 shadow-sm mb-4 animate-in">
+            <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="bi bi-list-check"></i> Project Assignments</h6>
+                <button class="btn btn-sm btn-outline-secondary" type="button"
+                        data-bs-toggle="collapse" data-bs-target="#projAssignments">
+                    <i class="bi bi-chevron-down"></i> Show
+                </button>
+            </div>
+            <div class="collapse" id="projAssignments">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <!-- Migration Managers -->
+                        <div class="col-md-4">
+                            <div class="card border h-100">
+                                <div class="card-header bg-light py-2">
+                                    <small class="fw-bold"><i class="bi bi-briefcase"></i> Migration Managers</small>
+                                </div>
+                                <div class="card-body p-0">
+                                    {% if manager_projects %}
+                                    <table class="table table-sm table-hover mb-0 align-middle">
+                                        <thead class="table-light">
+                                            <tr><th>Project</th><th>Type</th><th>Manager</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for p in manager_projects %}
+                                            <tr>
+                                                <td class="fw-semibold small">{{ p.name }}</td>
+                                                <td>
+                                                    {% if p.product_type == 'Content' %}<span class="badge bg-info text-dark badge-sm">CON</span>
+                                                    {% elif p.product_type == 'Email' %}<span class="badge bg-primary badge-sm">EML</span>
+                                                    {% else %}<span class="badge bg-warning text-dark badge-sm">MSG</span>{% endif %}
+                                                </td>
+                                                <td class="small">{{ p.employee_name }}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                    {% else %}
+                                    <div class="text-center text-muted py-3"><small>No projects</small></div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Shift Leads -->
+                        <div class="col-md-4">
+                            <div class="card border h-100">
+                                <div class="card-header bg-light py-2">
+                                    <small class="fw-bold"><i class="bi bi-person-badge"></i> Shift Leads</small>
+                                </div>
+                                <div class="card-body p-0">
+                                    {% if lead_projects %}
+                                    <table class="table table-sm table-hover mb-0 align-middle">
+                                        <thead class="table-light">
+                                            <tr><th>Project</th><th>Type</th><th>Lead</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for p in lead_projects %}
+                                            <tr>
+                                                <td class="fw-semibold small">{{ p.name }}</td>
+                                                <td>
+                                                    {% if p.product_type == 'Content' %}<span class="badge bg-info text-dark badge-sm">CON</span>
+                                                    {% elif p.product_type == 'Email' %}<span class="badge bg-primary badge-sm">EML</span>
+                                                    {% else %}<span class="badge bg-warning text-dark badge-sm">MSG</span>{% endif %}
+                                                </td>
+                                                <td class="small">{{ p.employee_name }}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                    {% else %}
+                                    <div class="text-center text-muted py-3"><small>No projects</small></div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Migration Engineers -->
+                        <div class="col-md-4">
+                            <div class="card border h-100">
+                                <div class="card-header bg-light py-2">
+                                    <small class="fw-bold"><i class="bi bi-people"></i> Migration Engineers</small>
+                                </div>
+                                <div class="card-body p-0">
+                                    {% if engineer_projects %}
+                                    <table class="table table-sm table-hover mb-0 align-middle">
+                                        <thead class="table-light">
+                                            <tr><th>Project</th><th>Type</th><th>Engineer</th><th>Shift</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for p in engineer_projects %}
+                                            <tr>
+                                                <td class="fw-semibold small">{{ p.name }}</td>
+                                                <td>
+                                                    {% if p.product_type == 'Content' %}<span class="badge bg-info text-dark badge-sm">CON</span>
+                                                    {% elif p.product_type == 'Email' %}<span class="badge bg-primary badge-sm">EML</span>
+                                                    {% else %}<span class="badge bg-warning text-dark badge-sm">MSG</span>{% endif %}
+                                                </td>
+                                                <td class="small">{{ p.employee_name }}</td>
+                                                <td>
+                                                    {% set sn = shift_assignments.get(p.employee_name, 0) %}
+                                                    {% if sn %}<span class="badge bg-shift{{ sn }} badge-sm">S{{ sn }}</span>{% endif %}
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                    {% else %}
+                                    <div class="text-center text-muted py-3"><small>No projects</small></div>
+                                    {% endif %}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -140,11 +211,20 @@
                                 <th class="sticky-col" rowspan="2" style="vertical-align:middle">Date</th>
                                 {% for key in all_proj_keys %}
                                 {% set parts = key.split('|') %}
+                                {% set mgr = namespace(name='') %}
+                                {% for mp in manager_projects %}
+                                    {% if mp.name == parts[0] %}
+                                        {% set mgr.name = mp.employee_name %}
+                                    {% endif %}
+                                {% endfor %}
                                 <th class="text-center" colspan="3">
                                     {{ parts[0] }}
                                     <span class="badge {{ 'bg-info text-dark' if parts[1] == 'Content' else ('bg-primary' if parts[1] == 'Email' else 'bg-warning text-dark') }} badge-sm ms-1">
                                         {{ parts[1][:3] | upper }}
                                     </span>
+                                    {% if mgr.name %}
+                                    <br><span class="text-light" style="font-size:0.7rem; font-weight:normal;">{{ mgr.name }}</span>
+                                    {% endif %}
                                 </th>
                                 {% endfor %}
                             </tr>

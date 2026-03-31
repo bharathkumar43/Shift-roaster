@@ -378,6 +378,12 @@ def projects():
     month_name = calendar.month_name[month]
     session["last_roster"] = {"year": year, "month": month}
 
+    all_people = db.get_all_employees()
+    emp_role_map = {e["name"]: e.get("emp_role", "engineer") for e in all_people}
+    engineer_projects = [p for p in all_projects if emp_role_map.get(p["employee_name"]) == "engineer"]
+    lead_projects = [p for p in all_projects if emp_role_map.get(p["employee_name"]) == "shift_lead"]
+    manager_projects = [p for p in all_projects if emp_role_map.get(p["employee_name"]) == "manager"]
+
     return render_template("projects.html",
                            app_name=APP_NAME,
                            coverage=coverage,
@@ -386,6 +392,9 @@ def projects():
                            year=year,
                            month=month,
                            projects=all_projects,
+                           engineer_projects=engineer_projects,
+                           lead_projects=lead_projects,
+                           manager_projects=manager_projects,
                            shifts=SHIFTS,
                            shift_assignments=shift_assignments)
 
