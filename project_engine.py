@@ -5,17 +5,33 @@ from collections import defaultdict
 from roster_engine import DAY_NAMES, SHIFTS
 
 
-def generate_project_coverage(projects, employees, shift_assignments, year, month):
+def generate_project_coverage(projects, employees, shift_assignments, year, month, leave_dates=None):
     """
     Generate daily project coverage for the month across ALL shifts.
 
     For each project, one fixed person is assigned per shift for the whole month.
-    On their off days, the best available backup from the same shift takes over.
+    On their off days or leave days, the best available backup takes over.
+
+    leave_dates: dict {employee_name: [date_str, ...]} of approved leaves
     """
+    if leave_dates is None:
+        leave_dates = {}
+
     emp_lookup = {e["name"]: e for e in employees}
 
-    projects_by_owner = defaultdict(list)
+    seen_proj_keys = set()
+    unique_projects = []
     for p in projects:
+        if p["employee_name"] not in emp_lookup:
+            continue
+        key = (p["name"], p["product_type"])
+        if key in seen_proj_keys:
+            continue
+        seen_proj_keys.add(key)
+        unique_projects.append(p)
+
+    projects_by_owner = defaultdict(list)
+    for p in unique_projects:
         projects_by_owner[p["employee_name"]].append(p)
 
     emps_by_shift = defaultdict(list)
@@ -25,7 +41,7 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
             emps_by_shift[shift].append(emp)
 
     fixed_assignments = _assign_fixed_handlers(
-        projects, employees, shift_assignments, projects_by_owner
+        unique_projects, employees, shift_assignments, projects_by_owner
     )
 
     num_days = calendar.monthrange(year, month)[1]
@@ -36,6 +52,7 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
         d = date(year, month, day)
         weekday = d.weekday()
         day_name = DAY_NAMES[weekday]
+        date_str = d.strftime("%Y-%m-%d")
 
         day_info = {
             "date": d.strftime("%b %d"),
@@ -45,7 +62,7 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
             "projects": []
         }
 
-        for proj in projects:
+        for proj in unique_projects:
             owner_name = proj["employee_name"]
             owner = emp_lookup.get(owner_name)
             if not owner:
@@ -61,8 +78,11 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
                 fixed_person = fixed_assignments.get(proj_key, {}).get(shift_num)
 
                 if shift_num == owner_shift:
-                    owner_working = day_name in owner["working_days"]
-                    if owner_working:
+                    owner_off_weekly = day_name not in owner["working_days"]
+                    owner_on_leave = date_str in leave_dates.get(owner_name, [])
+                    owner_available = not owner_off_weekly and not owner_on_leave
+
+                    if owner_available:
                         shift_handlers[shift_num] = {
                             "handler": owner_name,
                             "is_secondary": False,
@@ -71,7 +91,8 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
                     else:
                         backup = _find_backup(
                             product_type, owner_name, shift_num,
-                            employees, shift_assignments, day_name
+                            employees, shift_assignments, day_name,
+                            date_str, leave_dates
                         )
                         if backup:
                             shift_handlers[shift_num] = {
@@ -93,7 +114,11 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
                 else:
                     if fixed_person:
                         fixed_emp = emp_lookup.get(fixed_person)
-                        if fixed_emp and day_name in fixed_emp["working_days"]:
+                        fixed_off_weekly = day_name not in fixed_emp["working_days"] if fixed_emp else True
+                        fixed_on_leave = date_str in leave_dates.get(fixed_person, [])
+                        fixed_available = fixed_emp and not fixed_off_weekly and not fixed_on_leave
+
+                        if fixed_available:
                             shift_handlers[shift_num] = {
                                 "handler": fixed_person,
                                 "is_secondary": False,
@@ -102,7 +127,8 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
                         else:
                             backup = _find_backup(
                                 product_type, fixed_person, shift_num,
-                                employees, shift_assignments, day_name
+                                employees, shift_assignments, day_name,
+                                date_str, leave_dates
                             )
                             shift_handlers[shift_num] = {
                                 "handler": backup,
@@ -130,10 +156,6 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
 
 
 def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_owner):
-    """
-    For each project + shift combination (excluding the owner's shift),
-    pick one fixed person for the whole month based on fewest existing projects.
-    """
     emp_lookup = {e["name"]: e for e in employees}
     fixed = {}
     shift_load = defaultdict(int)
@@ -182,11 +204,15 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_o
 
 
 def _find_backup(product_type, exclude_name, shift_num,
-                 employees, shift_assignments, day_name):
+                 employees, shift_assignments, day_name,
+                 date_str="", leave_dates=None):
     """
-    Find a backup handler for a day when the fixed person is off.
-    Picks anyone in the same shift with the matching product type who is working.
+    Find a backup handler for a day when the fixed person is off or on leave.
+    Skips anyone who is also on leave that day.
     """
+    if leave_dates is None:
+        leave_dates = {}
+
     candidates = []
 
     for emp in employees:
@@ -197,6 +223,8 @@ def _find_backup(product_type, exclude_name, shift_num,
         if product_type not in emp["content_types"]:
             continue
         if day_name not in emp["working_days"]:
+            continue
+        if date_str in leave_dates.get(emp["name"], []):
             continue
 
         candidates.append(emp["name"])

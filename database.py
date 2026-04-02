@@ -103,7 +103,51 @@ def init_db():
             password_hash TEXT NOT NULL,
             full_name TEXT NOT NULL DEFAULT '',
             role TEXT NOT NULL DEFAULT 'user',
+            employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
             created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+    """)
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL")
+        conn.commit()
+    except psycopg2.errors.DuplicateColumn:
+        conn.rollback()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS leaves (
+            id SERIAL PRIMARY KEY,
+            employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+            leave_date DATE NOT NULL,
+            leave_type TEXT NOT NULL DEFAULT 'planned',
+            reason TEXT DEFAULT '',
+            approved_by TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE(employee_id, leave_date)
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS leave_requests (
+            id SERIAL PRIMARY KEY,
+            employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+            requested_by INTEGER REFERENCES users(id),
+            leave_date DATE NOT NULL,
+            leave_type TEXT NOT NULL DEFAULT 'planned',
+            reason TEXT DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'pending',
+            reviewed_by TEXT DEFAULT '',
+            reviewed_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS leave_balances (
+            id SERIAL PRIMARY KEY,
+            employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+            year INTEGER NOT NULL,
+            total_allowed INTEGER DEFAULT 24,
+            planned_used INTEGER DEFAULT 0,
+            sick_used INTEGER DEFAULT 0,
+            emergency_used INTEGER DEFAULT 0,
+            UNIQUE(employee_id, year)
         )
     """)
     cur.execute("SELECT COUNT(*) FROM users")
@@ -512,13 +556,13 @@ def search_projects(query):
 
 # ── Users ─────────────────────────────────────────────────
 
-def add_user(username, password_hash, full_name="", role="user"):
+def add_user(username, password_hash, full_name="", role="user", employee_id=None):
     conn = get_db()
     cur = conn.cursor()
     try:
         cur.execute(
-            "INSERT INTO users (username, password_hash, full_name, role) VALUES (%s, %s, %s, %s) RETURNING id",
-            (username, password_hash, full_name, role)
+            "INSERT INTO users (username, password_hash, full_name, role, employee_id) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+            (username, password_hash, full_name, role, employee_id)
         )
         uid = cur.fetchone()[0]
         conn.commit()
@@ -529,6 +573,49 @@ def add_user(username, password_hash, full_name="", role="user"):
     finally:
         cur.close()
         conn.close()
+
+
+def auto_link_user(full_name):
+    """
+    Search employees by name (case-insensitive exact match).
+    Returns the employee dict if exactly 1 match, otherwise None.
+    """
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT * FROM employees WHERE LOWER(name) = LOWER(%s)",
+        (full_name.strip(),)
+    )
+    rows = _fetchall(cur)
+    cur.close()
+    conn.close()
+    if len(rows) == 1:
+        return _row_to_employee(rows[0])
+    return None
+
+
+def link_user_to_employee(user_id, employee_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET employee_id = %s WHERE id = %s", (employee_id, user_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def get_linked_employee(user_id):
+    """Get the employee record linked to a user, or None."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT e.* FROM employees e
+        JOIN users u ON u.employee_id = e.id
+        WHERE u.id = %s
+    """, (user_id,))
+    row = _fetchone(cur)
+    cur.close()
+    conn.close()
+    return _row_to_employee(row) if row else None
 
 
 def get_user_by_username(username):
@@ -577,3 +664,291 @@ def get_all_users():
     cur.close()
     conn.close()
     return rows
+
+
+# ── Leaves ───────────────────────────────────────────────
+
+def add_leave(employee_id, leave_date, leave_type, reason="", approved_by=""):
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO leaves (employee_id, leave_date, leave_type, reason, approved_by)
+            VALUES (%s, %s, %s, %s, %s) RETURNING id
+        """, (employee_id, leave_date, leave_type, reason, approved_by))
+        lid = cur.fetchone()[0]
+        conn.commit()
+        return lid
+    except psycopg2.IntegrityError:
+        conn.rollback()
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def cancel_leave(leave_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT employee_id, leave_date, leave_type FROM leaves WHERE id = %s", (leave_id,))
+    row = _fetchone(cur)
+    if row:
+        cur.execute("DELETE FROM leaves WHERE id = %s", (leave_id,))
+        conn.commit()
+    cur.close()
+    conn.close()
+    return row
+
+
+def get_leaves_for_month(year, month):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT l.id, l.employee_id, e.name AS employee_name, l.leave_date,
+               l.leave_type, l.reason, l.approved_by, l.created_at
+        FROM leaves l
+        JOIN employees e ON l.employee_id = e.id
+        WHERE EXTRACT(YEAR FROM l.leave_date) = %s
+          AND EXTRACT(MONTH FROM l.leave_date) = %s
+        ORDER BY l.leave_date, e.name
+    """, (year, month))
+    rows = _fetchall(cur)
+    cur.close()
+    conn.close()
+    return rows
+
+
+def get_leaves_for_employee(employee_id, year=None):
+    conn = get_db()
+    cur = conn.cursor()
+    if year:
+        cur.execute("""
+            SELECT * FROM leaves
+            WHERE employee_id = %s AND EXTRACT(YEAR FROM leave_date) = %s
+            ORDER BY leave_date
+        """, (employee_id, year))
+    else:
+        cur.execute("SELECT * FROM leaves WHERE employee_id = %s ORDER BY leave_date DESC", (employee_id,))
+    rows = _fetchall(cur)
+    cur.close()
+    conn.close()
+    return rows
+
+
+def get_leave_dates_map(year, month):
+    """Return {employee_name: [date_str, ...]} for all leaves in a month."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT e.name, l.leave_date
+        FROM leaves l
+        JOIN employees e ON l.employee_id = e.id
+        WHERE EXTRACT(YEAR FROM l.leave_date) = %s
+          AND EXTRACT(MONTH FROM l.leave_date) = %s
+        ORDER BY l.leave_date
+    """, (year, month))
+    rows = _fetchall(cur)
+    cur.close()
+    conn.close()
+    result = {}
+    for r in rows:
+        name = r["name"]
+        ld = r["leave_date"]
+        date_str = ld.strftime("%Y-%m-%d") if hasattr(ld, "strftime") else str(ld)
+        result.setdefault(name, []).append(date_str)
+    return result
+
+
+# ── Leave Requests ───────────────────────────────────────
+
+def add_leave_request(employee_id, requested_by, leave_date, leave_type, reason=""):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO leave_requests (employee_id, requested_by, leave_date, leave_type, reason)
+        VALUES (%s, %s, %s, %s, %s) RETURNING id
+    """, (employee_id, requested_by, leave_date, leave_type, reason))
+    rid = cur.fetchone()[0]
+    conn.commit()
+    cur.close()
+    conn.close()
+    return rid
+
+
+def get_pending_requests():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT lr.id, lr.employee_id, e.name AS employee_name, lr.leave_date,
+               lr.leave_type, lr.reason, lr.status, lr.created_at,
+               u.username AS requested_by_user
+        FROM leave_requests lr
+        JOIN employees e ON lr.employee_id = e.id
+        LEFT JOIN users u ON lr.requested_by = u.id
+        WHERE lr.status = 'pending'
+        ORDER BY lr.leave_date
+    """)
+    rows = _fetchall(cur)
+    cur.close()
+    conn.close()
+    return rows
+
+
+def get_leave_requests_for_employee(employee_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT lr.*, e.name AS employee_name
+        FROM leave_requests lr
+        JOIN employees e ON lr.employee_id = e.id
+        WHERE lr.employee_id = %s
+        ORDER BY lr.created_at DESC
+    """, (employee_id,))
+    rows = _fetchall(cur)
+    cur.close()
+    conn.close()
+    return rows
+
+
+def approve_leave_request(request_id, reviewed_by):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE leave_requests SET status = 'approved', reviewed_by = %s, reviewed_at = NOW()
+        WHERE id = %s RETURNING employee_id, leave_date, leave_type, reason
+    """, (reviewed_by, request_id))
+    row = cur.fetchone()
+    conn.commit()
+    cur.close()
+    conn.close()
+    return row
+
+
+def reject_leave_request(request_id, reviewed_by):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE leave_requests SET status = 'rejected', reviewed_by = %s, reviewed_at = NOW()
+        WHERE id = %s
+    """, (reviewed_by, request_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def get_leave_request_by_id(request_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT lr.*, e.name AS employee_name
+        FROM leave_requests lr
+        JOIN employees e ON lr.employee_id = e.id
+        WHERE lr.id = %s
+    """, (request_id,))
+    row = _fetchone(cur)
+    cur.close()
+    conn.close()
+    return row
+
+
+# ── Leave Balances ───────────────────────────────────────
+
+def get_or_create_balance(employee_id, year):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT * FROM leave_balances WHERE employee_id = %s AND year = %s",
+        (employee_id, year)
+    )
+    row = _fetchone(cur)
+    if not row:
+        cur.execute("""
+            INSERT INTO leave_balances (employee_id, year) VALUES (%s, %s) RETURNING *
+        """, (employee_id, year))
+        row = _fetchone(cur)
+        conn.commit()
+    cur.close()
+    conn.close()
+    return row
+
+
+def increment_leave_used(employee_id, year, leave_type):
+    conn = get_db()
+    cur = conn.cursor()
+    col = {"planned": "planned_used", "sick": "sick_used", "emergency": "emergency_used"}.get(leave_type)
+    if not col:
+        cur.close()
+        conn.close()
+        return
+    cur.execute(f"""
+        INSERT INTO leave_balances (employee_id, year, {col})
+        VALUES (%s, %s, 1)
+        ON CONFLICT (employee_id, year)
+        DO UPDATE SET {col} = leave_balances.{col} + 1
+    """, (employee_id, year))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def decrement_leave_used(employee_id, year, leave_type):
+    conn = get_db()
+    cur = conn.cursor()
+    col = {"planned": "planned_used", "sick": "sick_used", "emergency": "emergency_used"}.get(leave_type)
+    if not col:
+        cur.close()
+        conn.close()
+        return
+    cur.execute(f"""
+        UPDATE leave_balances SET {col} = GREATEST({col} - 1, 0)
+        WHERE employee_id = %s AND year = %s
+    """, (employee_id, year))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def get_all_balances_for_year(year):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT lb.*, e.name AS employee_name
+        FROM leave_balances lb
+        JOIN employees e ON lb.employee_id = e.id
+        WHERE lb.year = %s
+        ORDER BY e.name
+    """, (year,))
+    rows = _fetchall(cur)
+    cur.close()
+    conn.close()
+    return rows
+
+
+def get_shift_strength(year, month, shift_assignments):
+    """Return per-day, per-shift headcount accounting for weekly offs and leaves."""
+    from datetime import date as dt_date
+    leave_map = get_leave_dates_map(year, month)
+    employees = get_employees_by_role("engineer")
+    emp_lookup = {e["name"]: e for e in employees}
+
+    import calendar as cal
+    num_days = cal.monthrange(year, month)[1]
+    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+    strength = {}
+    for day in range(1, num_days + 1):
+        d = dt_date(year, month, day)
+        day_name = day_names[d.weekday()]
+        date_str = d.strftime("%Y-%m-%d")
+        daily = {1: 0, 2: 0, 3: 0}
+        for emp in employees:
+            shift = shift_assignments.get(emp["name"])
+            if not shift:
+                continue
+            if day_name not in emp["working_days"]:
+                continue
+            if date_str in leave_map.get(emp["name"], []):
+                continue
+            daily[shift] += 1
+        strength[day] = daily
+    return strength

@@ -228,23 +228,18 @@
     // projData: project_name -> {product_type, owner, days:[...]}
     function buildProjData() {
         var pd = {};
-        allProjects.forEach(function (p) {
-            pd[p.name] = { product_type: p.product_type, owner: p.employee_name, days: [] };
-        });
         coverage.forEach(function (day) {
             (day.projects || []).forEach(function (p) {
-                if (pd[p.project_name]) {
-                    var ownerShift = p.owner_shift || 1;
-                    var sh = (p.shifts && (p.shifts[ownerShift] || p.shifts[String(ownerShift)])) || {};
-                    pd[p.project_name].days.push({
-                        day_num:    day.day_num,
-                        date:       day.date,
-                        day_abbr:   day.day_abbr,
-                        handler:    sh.handler || null,
-                        is_takeover: sh.is_secondary || false,
-                        shifts:     p.shifts || {},
-                    });
+                var key = p.project_name;
+                if (!pd[key]) {
+                    pd[key] = { product_type: p.product_type, owner: p.owner, days: [] };
                 }
+                pd[key].days.push({
+                    day_num:    day.day_num,
+                    date:       day.date,
+                    day_abbr:   day.day_abbr,
+                    shifts:     p.shifts || {},
+                });
             });
         });
         return pd;
@@ -310,13 +305,20 @@
             if (!days.length) {
                 html += '<p class="text-muted small p-3 mb-0">No coverage data for selected period.</p>';
             } else {
-                html += '<div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">';
-                html += '<thead class="table-light"><tr><th>Date</th><th>Day</th><th>Employee</th></tr></thead><tbody>';
+                html += '<div class="table-responsive"><table class="table table-sm table-bordered table-hover align-middle mb-0">';
+                html += '<thead class="table-light"><tr><th>Date</th><th>Day</th><th class="text-center">S1</th><th class="text-center">S2</th><th class="text-center">S3</th></tr></thead><tbody>';
                 days.forEach(function (d) {
                     html += '<tr>';
                     html += '<td class="text-muted small">' + d.date + '</td>';
                     html += '<td><span class="badge bg-light text-dark border">' + d.day_abbr + '</span></td>';
-                    html += '<td class="fw-medium">' + (d.handler || '<span class="text-muted">—</span>') + '</td>';
+                    [1,2,3].forEach(function(sn) {
+                        var sh = (d.shifts && (d.shifts[sn] || d.shifts[String(sn)])) || {};
+                        if (sh.handler) {
+                            html += '<td class="text-center small">' + sh.handler + '</td>';
+                        } else {
+                            html += '<td class="text-center text-muted small">—</td>';
+                        }
+                    });
                     html += '</tr>';
                 });
                 html += '</tbody></table></div>';

@@ -19,6 +19,11 @@ from project_engine import generate_project_coverage
 from file_parser import parse_file
 import database as db
 
+
+def _get_leave_dates(year, month):
+    """Helper to fetch leave dates map for coverage calculations."""
+    return db.get_leave_dates_map(year, month)
+
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "roster-automation-secret-key-change-in-production")
 
@@ -64,7 +69,10 @@ def load_logged_in_user():
 
 @app.context_processor
 def inject_user():
-    return {"current_user": g.user}
+    linked_emp = None
+    if g.user and g.user.get("employee_id"):
+        linked_emp = db.get_employee_by_id(g.user["employee_id"])
+    return {"current_user": g.user, "linked_employee": linked_emp}
 
 
 def _predefined(year, month):
@@ -290,7 +298,7 @@ def save_roster():
         employees, year, month, night_counts, _predefined(year, month)
     )
     proj_coverage, proj_warnings = generate_project_coverage(
-        all_projects, employees, shift_assignments, year, month
+        all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
     )
 
     excel_output = generate_excel(
@@ -372,7 +380,7 @@ def projects():
     _, _, shift_assignments = generate_roster(employees, year, month, night_counts, _predefined(year, month))
 
     coverage, proj_warnings = generate_project_coverage(
-        all_projects, employees, shift_assignments, year, month
+        all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
     )
 
     month_name = calendar.month_name[month]
@@ -437,7 +445,7 @@ def download():
 
     all_projects = db.get_all_projects()
     proj_coverage, proj_warnings = generate_project_coverage(
-        all_projects, employees, shift_assignments, year, month
+        all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
     )
 
     output = generate_excel(
@@ -607,7 +615,7 @@ def search():
     proj_coverage = []
     if employees and shift_assignments:
         proj_coverage_data, _ = generate_project_coverage(
-            all_projects, employees, shift_assignments, year, month
+            all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
         )
         proj_coverage = proj_coverage_data
 
@@ -719,7 +727,7 @@ def summary():
 
         if all_projects:
             proj_coverage, proj_warnings = generate_project_coverage(
-                all_projects, employees, shift_assignments, year, month
+                all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
             )
 
     month_name = calendar.month_name[month]
@@ -824,8 +832,14 @@ def signup():
         if error:
             flash(error, "danger")
         else:
-            db.add_user(username, generate_password_hash(password), full_name, role="user")
-            flash("Account created! You can now sign in.", "success")
+            matched_emp = db.auto_link_user(full_name)
+            emp_id = matched_emp["id"] if matched_emp else None
+            db.add_user(username, generate_password_hash(password), full_name, role="user", employee_id=emp_id)
+            if matched_emp:
+                role_label = ROLE_LABELS.get(matched_emp.get("emp_role", "engineer"), "Employee")
+                flash(f"Account created! Linked to {role_label}: {matched_emp['name']}.", "success")
+            else:
+                flash("Account created! No matching employee found -- view-only access.", "info")
             return redirect(url_for("login"))
     return render_template("signup.html", app_name=APP_NAME)
 
@@ -865,6 +879,211 @@ def profile():
     # Refresh user from DB to show latest data
     user = db.get_user_by_id(user["id"])
     return render_template("profile.html", app_name=APP_NAME, user=user)
+
+
+# ── Leave Tracker ────────────────────────────────────────
+
+@app.route("/leaves")
+@login_required
+def leaves():
+    today = date.today()
+    next_month = today.month % 12 + 1
+    next_year = today.year + (1 if today.month == 12 else 0)
+    year = request.args.get("year", next_year, type=int)
+    month = request.args.get("month", next_month, type=int)
+    month_names = [calendar.month_name[m] for m in range(1, 13)]
+
+    is_admin = g.user and g.user.get("role") == "admin"
+    linked_emp = db.get_linked_employee(g.user["id"]) if g.user else None
+    linked_emp_id = linked_emp["id"] if linked_emp else None
+
+    month_leaves = db.get_leaves_for_month(year, month)
+    pending_requests = db.get_pending_requests() if is_admin else []
+    engineers = db.get_employees_by_role("engineer")
+
+    if not is_admin and linked_emp_id:
+        month_leaves = [l for l in month_leaves if l["employee_id"] == linked_emp_id]
+
+    balances = db.get_all_balances_for_year(year)
+    bal_map = {b["employee_id"]: b for b in balances}
+    for emp in engineers:
+        if emp["id"] not in bal_map:
+            db.get_or_create_balance(emp["id"], year)
+    balances = db.get_all_balances_for_year(year)
+
+    if not is_admin and linked_emp_id:
+        balances = [b for b in balances if b["employee_id"] == linked_emp_id]
+
+    shift_assignments = {}
+    if engineers:
+        night_counts = db.get_night_shift_counts()
+        _, _, shift_assignments = generate_roster(engineers, year, month, night_counts, _predefined(year, month))
+
+    strength = db.get_shift_strength(year, month, shift_assignments) if is_admin else {}
+
+    return render_template("leaves.html",
+                           app_name=APP_NAME,
+                           month_leaves=month_leaves,
+                           pending_requests=pending_requests,
+                           engineers=engineers,
+                           balances=balances,
+                           strength=strength,
+                           shift_assignments=shift_assignments,
+                           shifts=SHIFTS,
+                           month_names=month_names,
+                           year=year,
+                           month=month,
+                           current_year=today.year,
+                           is_admin=is_admin,
+                           linked_employee=linked_emp,
+                           now_month=next_month,
+                           now_year=next_year)
+
+
+@app.route("/add_leave", methods=["POST"])
+@admin_required
+def add_leave_route():
+    emp_id = request.form.get("employee_id", type=int)
+    leave_date = request.form.get("leave_date")
+    leave_type = request.form.get("leave_type", "planned")
+    reason = request.form.get("reason", "")
+
+    if not emp_id or not leave_date:
+        flash("Employee and date are required.", "danger")
+        return redirect(url_for("leaves"))
+
+    lid = db.add_leave(emp_id, leave_date, leave_type, reason, approved_by=g.user["username"])
+    if lid is None:
+        flash("Leave already exists for that date.", "warning")
+    else:
+        emp = db.get_employee_by_id(emp_id)
+        yr = int(leave_date.split("-")[0])
+        db.increment_leave_used(emp_id, yr, leave_type)
+        flash(f"Leave added for {emp['name'] if emp else 'employee'} on {leave_date}.", "success")
+
+    return redirect(url_for("leaves"))
+
+
+@app.route("/cancel_leave/<int:leave_id>", methods=["POST"])
+@admin_required
+def cancel_leave_route(leave_id):
+    row = db.cancel_leave(leave_id)
+    if row:
+        yr = row["leave_date"].year if hasattr(row["leave_date"], "year") else int(str(row["leave_date"])[:4])
+        db.decrement_leave_used(row["employee_id"], yr, row["leave_type"])
+        flash("Leave cancelled.", "success")
+    return redirect(url_for("leaves"))
+
+
+@app.route("/approve_leave/<int:request_id>", methods=["POST"])
+@admin_required
+def approve_leave_route(request_id):
+    req = db.get_leave_request_by_id(request_id)
+    if not req:
+        flash("Request not found.", "danger")
+        return redirect(url_for("leaves"))
+
+    result = db.approve_leave_request(request_id, g.user["username"])
+    if result:
+        emp_id, leave_date, leave_type, reason = result
+        lid = db.add_leave(emp_id, leave_date, leave_type, reason, approved_by=g.user["username"])
+        if lid:
+            yr = leave_date.year if hasattr(leave_date, "year") else int(str(leave_date)[:4])
+            db.increment_leave_used(emp_id, yr, leave_type)
+        flash(f"Leave approved for {req['employee_name']}.", "success")
+
+    return redirect(url_for("leaves"))
+
+
+@app.route("/reject_leave/<int:request_id>", methods=["POST"])
+@admin_required
+def reject_leave_route(request_id):
+    db.reject_leave_request(request_id, g.user["username"])
+    flash("Leave request rejected.", "success")
+    return redirect(url_for("leaves"))
+
+
+@app.route("/request_leave", methods=["POST"])
+@login_required
+def request_leave():
+    emp_id = request.form.get("employee_id", type=int)
+    leave_date = request.form.get("leave_date")
+    leave_type = request.form.get("leave_type", "planned")
+    reason = request.form.get("reason", "")
+
+    is_admin = g.user and g.user.get("role") == "admin"
+    if not is_admin and g.user.get("employee_id"):
+        emp_id = g.user["employee_id"]
+
+    if not emp_id or not leave_date:
+        flash("Please select employee and date.", "danger")
+        return redirect(url_for("leaves"))
+
+    from datetime import datetime
+    req_date = datetime.strptime(leave_date, "%Y-%m-%d").date()
+    days_ahead = (req_date - date.today()).days
+
+    if days_ahead < 2 and leave_type == "planned":
+        flash("Planned leave must be requested at least 2 days in advance.", "warning")
+        return redirect(url_for("leaves"))
+
+    db.add_leave_request(emp_id, g.user["id"], leave_date, leave_type, reason)
+    flash(f"Leave request submitted for {leave_date}.", "success")
+    return redirect(url_for("leaves"))
+
+
+@app.route("/leave_impact", methods=["GET"])
+@login_required
+def leave_impact():
+    emp_id = request.args.get("employee_id", type=int)
+    leave_date = request.args.get("date")
+
+    if not emp_id or not leave_date:
+        return jsonify({"error": "employee_id and date required"}), 400
+
+    emp = db.get_employee_by_id(emp_id)
+    if not emp:
+        return jsonify({"error": "Employee not found"}), 404
+
+    from datetime import datetime
+    d = datetime.strptime(leave_date, "%Y-%m-%d").date()
+    year, month = d.year, d.month
+
+    engineers = db.get_employees_by_role("engineer")
+    night_counts = db.get_night_shift_counts()
+    _, _, shift_assignments = generate_roster(engineers, year, month, night_counts, _predefined(year, month))
+
+    emp_shift = shift_assignments.get(emp["name"])
+
+    leave_map = _get_leave_dates(year, month)
+    leave_map.setdefault(emp["name"], []).append(leave_date)
+
+    strength = db.get_shift_strength(year, month, shift_assignments)
+    day_strength = strength.get(d.day, {})
+    if emp_shift and day_strength.get(emp_shift, 0) > 0:
+        day_strength[emp_shift] -= 1
+
+    all_projects = db.get_all_projects()
+    emp_projects = [p for p in all_projects if p["employee_name"] == emp["name"]]
+
+    balance = db.get_or_create_balance(emp_id, year)
+    used = (balance.get("planned_used", 0) + balance.get("sick_used", 0) + balance.get("emergency_used", 0))
+    remaining = balance.get("total_allowed", 24) - used
+
+    return jsonify({
+        "employee": emp["name"],
+        "shift": emp_shift,
+        "shift_strength": day_strength,
+        "projects_affected": len(emp_projects),
+        "project_names": [p["name"] for p in emp_projects],
+        "leaves_remaining": remaining,
+        "balance": {
+            "total": balance.get("total_allowed", 24),
+            "planned": balance.get("planned_used", 0),
+            "sick": balance.get("sick_used", 0),
+            "emergency": balance.get("emergency_used", 0),
+        }
+    })
 
 
 if __name__ == "__main__":
