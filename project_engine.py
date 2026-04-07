@@ -41,7 +41,7 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
             emps_by_shift[shift].append(emp)
 
     fixed_assignments = _assign_fixed_handlers(
-        unique_projects, employees, shift_assignments, projects_by_owner
+        unique_projects, employees, shift_assignments, projects_by_owner, projects
     )
 
     num_days = calendar.monthrange(year, month)[1]
@@ -155,10 +155,22 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
     return coverage, warnings
 
 
-def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_owner):
+def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_owner, all_projects=None):
+    """
+    Assign a fixed handler per shift for each project.
+    Priority: engineers who already have the project assigned > load-balanced pick.
+    """
     emp_lookup = {e["name"]: e for e in employees}
     fixed = {}
     shift_load = defaultdict(int)
+
+    if all_projects is None:
+        all_projects = projects
+
+    proj_assigned = defaultdict(list)
+    for p in all_projects:
+        if p["employee_name"] in emp_lookup:
+            proj_assigned[p["name"].lower()].append(p["employee_name"])
 
     for proj in projects:
         owner_name = proj["employee_name"]
@@ -176,6 +188,15 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_o
         for shift_num in [1, 2, 3]:
             if shift_num == owner_shift:
                 fixed[proj_key][shift_num] = owner_name
+                continue
+
+            assigned_in_shift = [
+                name for name in proj_assigned.get(proj["name"].lower(), [])
+                if name != owner_name and shift_assignments.get(name) == shift_num
+            ]
+            if assigned_in_shift:
+                fixed[proj_key][shift_num] = assigned_in_shift[0]
+                shift_load[assigned_in_shift[0]] += 1
                 continue
 
             candidates = []

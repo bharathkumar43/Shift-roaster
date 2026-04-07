@@ -627,10 +627,9 @@ def search():
     seen_projects = set()
     matched_projs = db.search_projects(q)
     for proj in matched_projs:
-        proj_key = (proj["name"], proj["product_type"])
-        if proj_key in seen_projects:
+        if proj["name"] in seen_projects:
             continue
-        seen_projects.add(proj_key)
+        seen_projects.add(proj["name"])
 
         same_name_projs = [p for p in all_projects if p["name"] == proj["name"]]
         manager_name = None
@@ -640,17 +639,25 @@ def search():
                 manager_name = mgr["name"]
                 break
 
-        engineer_proj = next(
-            (sp for sp in same_name_projs
-             if any(e["id"] == sp["employee_id"] for e in employees)),
-            None
-        )
-        shift = shift_assignments.get(engineer_proj["employee_name"]) if engineer_proj else None
+        engineer_name = None
+        shift = None
+        shift_name = None
+        for day_data in proj_coverage:
+            for p in day_data.get("projects", []):
+                if p["project_name"].lower() == proj["name"].lower():
+                    engineer_name = p.get("owner")
+                    owner_shift = p.get("owner_shift")
+                    if owner_shift:
+                        shift = owner_shift
+                        shift_name = SHIFTS[owner_shift]["name"]
+                    break
+            if engineer_name:
+                break
 
         daily = []
         for day_data in proj_coverage:
             for p in day_data.get("projects", []):
-                if p["project_name"] == proj["name"] and p["product_type"] == proj["product_type"]:
+                if p["project_name"].lower() == proj["name"].lower():
                     shift_info = {}
                     for sn in [1, 2, 3]:
                         sh = p["shifts"].get(sn, {})
@@ -670,6 +677,9 @@ def search():
             "name": proj["name"],
             "product_type": proj["product_type"],
             "manager": manager_name,
+            "engineer": engineer_name,
+            "shift": shift,
+            "shift_name": shift_name,
             "daily": daily,
         })
 
@@ -1084,6 +1094,250 @@ def leave_impact():
             "emergency": balance.get("emergency_used", 0),
         }
     })
+
+
+# ── Agent Bot ────────────────────────────────────────────
+
+import re as _re
+
+_MONTH_MAP = {
+    "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
+    "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6,
+    "jul": 7, "july": 7, "aug": 8, "august": 8, "sep": 9, "september": 9,
+    "oct": 10, "october": 10, "nov": 11, "november": 11, "dec": 12, "december": 12,
+}
+
+
+def _bot_parse_date(query):
+    today = date.today()
+    for mname, mnum in sorted(_MONTH_MAP.items(), key=lambda x: -len(x[0])):
+        if mname in query:
+            m = _re.search(r'(\d{1,2})\s*(?:st|nd|rd|th)?\s*(?:of\s*)?' + mname, query)
+            if not m:
+                m = _re.search(mname + r'\s*(\d{1,2})', query)
+            if m:
+                d = int(m.group(1))
+                y = today.year
+                yr = _re.search(r'20\d{2}', query)
+                if yr:
+                    y = int(yr.group())
+                elif mnum < today.month:
+                    y = today.year + 1
+                try:
+                    date(y, mnum, d)
+                    return (y, mnum, d)
+                except ValueError:
+                    pass
+            return None
+    return None
+
+
+def _bot_parse_shift(query):
+    for pat in [r'shift\s*(\d)', r'(\d)\s*(?:st|nd|rd|th)\s*shift', r'\bs(\d)\b']:
+        m = _re.search(pat, query)
+        if m:
+            s = int(m.group(1))
+            if 1 <= s <= 3:
+                return s
+    return None
+
+
+def _bot_get_coverage(year, month, engineers, shift_assignments):
+    saved = db.get_saved_roster_data(year, month)
+    if saved:
+        cov = json.loads(saved["roster_json"]).get("proj_coverage", [])
+        if cov:
+            return cov
+    all_proj = db.get_all_projects()
+    if engineers and shift_assignments and all_proj:
+        cov, _ = generate_project_coverage(all_proj, engineers, shift_assignments, year, month, _get_leave_dates(year, month))
+        return cov
+    return []
+
+
+@app.route("/bot", methods=["POST"])
+@login_required
+def bot():
+    data = request.get_json()
+    q = (data.get("query") or "").strip().lower()
+    if not q:
+        return jsonify({"answer": "Please ask a question."})
+
+    today = date.today()
+
+    pd = _bot_parse_date(q)
+    asked_shift = _bot_parse_shift(q)
+    q_year, q_month, q_day = (pd[0], pd[1], pd[2]) if pd else (today.year, today.month, None)
+
+    engineers = db.get_employees_by_role("engineer")
+    all_projects = db.get_all_projects()
+    all_people = db.get_all_employees()
+    shift_leads = db.get_employees_by_role("shift_lead")
+    managers = db.get_employees_by_role("manager")
+
+    shift_assignments = {}
+    if engineers:
+        sr = db.get_saved_roster_data(q_year, q_month)
+        if sr:
+            shift_assignments = json.loads(sr["roster_json"]).get("shift_assignments", {})
+        else:
+            nc = db.get_night_shift_counts()
+            _, _, shift_assignments = generate_roster(engineers, q_year, q_month, nc, _predefined(q_year, q_month))
+
+    emp_match = None
+    for e in sorted(all_people, key=lambda x: -len(x["name"])):
+        if e["name"].lower() in q:
+            emp_match = e
+            break
+
+    proj_match = None
+    for p in sorted(all_projects, key=lambda x: -len(x["name"])):
+        if p["name"].lower() in q:
+            proj_match = p
+            break
+
+    # Team counts
+    if any(w in q for w in ["how many engineer", "total engineer"]):
+        return jsonify({"answer": f"There are {len(engineers)} migration engineers."})
+    if any(w in q for w in ["how many lead", "total lead"]):
+        return jsonify({"answer": f"There are {len(shift_leads)} shift leads."})
+    if any(w in q for w in ["how many manager", "total manager"]):
+        return jsonify({"answer": f"There are {len(managers)} migration managers."})
+    if any(w in q for w in ["how many project", "total project"]):
+        return jsonify({"answer": f"There are {len(set(p['name'] for p in all_projects))} projects."})
+
+    # List queries
+    if any(w in q for w in ["list engineer", "all engineer", "show engineer"]):
+        return jsonify({"answer": "Engineers: " + ", ".join(e["name"] for e in engineers)})
+    if any(w in q for w in ["list lead", "all lead", "show lead"]):
+        return jsonify({"answer": "Shift Leads: " + (", ".join(e["name"] for e in shift_leads) or "None")})
+    if any(w in q for w in ["list manager", "all manager", "show manager"]):
+        return jsonify({"answer": "Managers: " + (", ".join(e["name"] for e in managers) or "None")})
+    if any(w in q for w in ["list project", "all project", "show project"]):
+        return jsonify({"answer": "Projects: " + ", ".join(sorted(set(p["name"] for p in all_projects)))})
+
+    # Project + date/shift queries (highest priority)
+    if proj_match:
+        pname = proj_match["name"]
+        mgr_name = None
+        eng_name = None
+        eng_shift = None
+        for p in all_projects:
+            if p["name"] == pname:
+                mgr = next((m for m in managers if m["id"] == p["employee_id"]), None)
+                if mgr:
+                    mgr_name = mgr["name"]
+                emp = next((e for e in engineers if e["id"] == p["employee_id"]), None)
+                if emp:
+                    eng_name = emp["name"]
+                    eng_shift = shift_assignments.get(emp["name"])
+
+        coverage = _bot_get_coverage(q_year, q_month, engineers, shift_assignments)
+
+        if q_day:
+            mn = calendar.month_name[q_month]
+            for day_data in coverage:
+                if day_data.get("day_num") == q_day:
+                    for p in day_data.get("projects", []):
+                        if p["project_name"].lower() == pname.lower():
+                            shifts = p.get("shifts", {})
+                            if asked_shift:
+                                sh = shifts.get(asked_shift) or shifts.get(str(asked_shift)) or {}
+                                h = sh.get("handler") or "No one available"
+                                return jsonify({"answer": f"{pname} on {mn} {q_day} ({day_data['day_abbr']}), {SHIFTS[asked_shift]['name']}: {h}" + (f" | Manager: {mgr_name}" if mgr_name else "")})
+                            else:
+                                parts = []
+                                for sn in [1, 2, 3]:
+                                    sh = shifts.get(sn) or shifts.get(str(sn)) or {}
+                                    h = sh.get("handler") or "—"
+                                    parts.append(f"S{sn}: {h}")
+                                return jsonify({"answer": f"{pname} on {mn} {q_day} ({day_data['day_abbr']}): {' | '.join(parts)}" + (f" | Manager: {mgr_name}" if mgr_name else "")})
+                    return jsonify({"answer": f"No data for {pname} on {mn} {q_day}."})
+
+        answer = f"{pname} (Type: {proj_match['product_type']})"
+        if eng_name:
+            answer += f" | Engineer: {eng_name}"
+            if eng_shift:
+                answer += f" ({SHIFTS[eng_shift]['name']})"
+        if mgr_name:
+            answer += f" | Manager: {mgr_name}"
+        return jsonify({"answer": answer})
+
+    # Shift roster queries (no project)
+    if asked_shift and not emp_match and any(w in q for w in ["who", "working", "shift"]):
+        emps = [n for n, s in shift_assignments.items() if s == asked_shift]
+        mn = calendar.month_name[q_month]
+        if q_day:
+            d = date(q_year, q_month, q_day)
+            dn = DAY_NAMES[d.weekday()]
+            lm = _get_leave_dates(q_year, q_month)
+            el = {e["name"]: e for e in engineers}
+            working = [n for n in emps if el.get(n) and dn in el[n]["working_days"] and d.strftime("%Y-%m-%d") not in lm.get(n, [])]
+            return jsonify({"answer": f"{SHIFTS[asked_shift]['name']} on {mn} {q_day} ({d.strftime('%a')}): {', '.join(working) if working else 'No one'}"})
+        return jsonify({"answer": f"{SHIFTS[asked_shift]['name']} for {mn} {q_year}: {', '.join(emps) if emps else 'None'}"})
+
+    # Employee queries
+    if emp_match:
+        name = emp_match["name"]
+        role = emp_match.get("emp_role", "engineer")
+        rl = ROLE_LABELS.get(role, "Employee")
+        shift = shift_assignments.get(name)
+        sn = SHIFTS[shift]["name"] if shift else "Not assigned"
+        ep = [p["name"] for p in all_projects if p["employee_id"] == emp_match["id"]]
+
+        if q_day:
+            d = date(q_year, q_month, q_day)
+            dn = DAY_NAMES[d.weekday()]
+            ds = d.strftime("%Y-%m-%d")
+            lm = _get_leave_dates(q_year, q_month)
+            on_leave = ds in lm.get(name, [])
+            is_off = dn not in emp_match.get("working_days", [])
+            status = "on leave" if on_leave else ("off (weekly)" if is_off else "working")
+            mn = calendar.month_name[q_month]
+
+            coverage = _bot_get_coverage(q_year, q_month, engineers, shift_assignments)
+            handling = []
+            for dd in coverage:
+                if dd.get("day_num") == q_day:
+                    for p in dd.get("projects", []):
+                        shifts_data = p.get("shifts", {})
+                        for s in [1, 2, 3]:
+                            sh = shifts_data.get(s) or shifts_data.get(str(s)) or {}
+                            if sh.get("handler") == name:
+                                handling.append(p["project_name"])
+                    break
+
+            answer = f"{name} on {mn} {q_day} ({d.strftime('%a')}): {status}, {sn}"
+            if handling:
+                answer += f" | Projects: {', '.join(set(handling))}"
+            return jsonify({"answer": answer})
+
+        if any(w in q for w in ["shift", "which shift"]):
+            return jsonify({"answer": f"{name} is in {sn} for {calendar.month_name[q_month]} {q_year}."})
+        if any(w in q for w in ["project", "what project"]):
+            return jsonify({"answer": f"{name} handles: {', '.join(ep)}" if ep else f"{name} has no projects."})
+        if any(w in q for w in ["leave", "balance"]):
+            b = db.get_or_create_balance(emp_match["id"], q_year)
+            used = b["planned_used"] + b["sick_used"] + b["emergency_used"]
+            rem = b["total_allowed"] - used
+            return jsonify({"answer": f"{name}: {rem}/{b['total_allowed']} leaves remaining (P:{b['planned_used']}, S:{b['sick_used']}, E:{b['emergency_used']})"})
+        if any(w in q for w in ["off day", "week off", "working day"]):
+            days = emp_match.get("working_days", [])
+            off = [d for d in DAY_NAMES if d not in days]
+            return jsonify({"answer": f"{name} works {', '.join(d[:3] for d in days)}. Off: {', '.join(d[:3] for d in off)}"})
+
+        info = f"{name} ({rl}), {sn}"
+        days = emp_match.get("working_days", [])
+        off = [d for d in DAY_NAMES if d not in days]
+        info += f" | Works: {', '.join(d[:3] for d in days)} | Off: {', '.join(d[:3] for d in off)}"
+        if ep:
+            info += f" | Projects: {', '.join(ep)}"
+        return jsonify({"answer": info})
+
+    if any(w in q for w in ["help", "what can", "how to", "hi", "hello"]):
+        return jsonify({"answer": "Ask me about:\n• 'Who handles Washington Post on 6th April?'\n• 'Washington Post shift 2 on 6th april'\n• 'What shift is Arun in?'\n• 'Arun on 10th april'\n• 'Who is in shift 2 on april 10?'\n• 'How many leaves does David have?'\n• 'List all projects'"})
+
+    return jsonify({"answer": "I couldn't find a match. Try mentioning an employee name, project name, or date. Type 'help' for examples."})
 
 
 if __name__ == "__main__":
