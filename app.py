@@ -1254,6 +1254,37 @@ def bot():
                                 return jsonify({"answer": f"{pname} on {mn} {q_day} ({day_data['day_abbr']}): {' | '.join(parts)}" + (f" | Manager: {mgr_name}" if mgr_name else "")})
                     return jsonify({"answer": f"No data for {pname} on {mn} {q_day}."})
 
+        if asked_shift and coverage:
+            mn = calendar.month_name[q_month]
+            for day_data in coverage:
+                for p in day_data.get("projects", []):
+                    if p["project_name"].lower() == pname.lower():
+                        shifts = p.get("shifts", {})
+                        sh = shifts.get(asked_shift) or shifts.get(str(asked_shift)) or {}
+                        h = sh.get("handler")
+                        if h:
+                            return jsonify({"answer": f"{pname}, {SHIFTS[asked_shift]['name']} ({mn} {q_year}): {h}" + (f" | Manager: {mgr_name}" if mgr_name else "")})
+                break
+            return jsonify({"answer": f"No handler found for {pname} in {SHIFTS[asked_shift]['name']}."})
+
+        if any(w in q for w in ["who", "handle", "working", "manage", "assign"]) and coverage:
+            mn = calendar.month_name[q_month]
+            for day_data in coverage:
+                for p in day_data.get("projects", []):
+                    if p["project_name"].lower() == pname.lower():
+                        shifts = p.get("shifts", {})
+                        parts = []
+                        for sn in [1, 2, 3]:
+                            sh = shifts.get(sn) or shifts.get(str(sn)) or {}
+                            h = sh.get("handler")
+                            if h:
+                                parts.append(f"{SHIFTS[sn]['name']}: {h}")
+                        answer = f"{pname} ({mn} {q_year}): {' | '.join(parts)}" if parts else f"No coverage data for {pname}"
+                        if mgr_name:
+                            answer += f" | Manager: {mgr_name}"
+                        return jsonify({"answer": answer})
+                break
+
         answer = f"{pname} (Type: {proj_match['product_type']})"
         if eng_name:
             answer += f" | Engineer: {eng_name}"
