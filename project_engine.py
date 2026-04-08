@@ -158,11 +158,16 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
 def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_owner, all_projects=None):
     """
     Assign a fixed handler per shift for each project.
-    Priority: engineers who already have the project assigned > load-balanced pick.
+
+    Priority:
+      1. Engineers who already have this project assigned in that shift (from DB)
+      2. Engineer with fewest total assigned projects, alphabetical tiebreak (deterministic)
+
+    This is deterministic -- adding a new project won't change existing assignments
+    because the sort uses (total_assigned_projects, name) which is stable.
     """
     emp_lookup = {e["name"]: e for e in employees}
     fixed = {}
-    shift_load = defaultdict(int)
 
     if all_projects is None:
         all_projects = projects
@@ -171,6 +176,11 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_o
     for p in all_projects:
         if p["employee_name"] in emp_lookup:
             proj_assigned[p["name"].lower()].append(p["employee_name"])
+
+    total_project_count = defaultdict(int)
+    for p in all_projects:
+        if p["employee_name"] in emp_lookup:
+            total_project_count[p["employee_name"]] += 1
 
     for proj in projects:
         owner_name = proj["employee_name"]
@@ -195,8 +205,7 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_o
                 if name != owner_name and shift_assignments.get(name) == shift_num
             ]
             if assigned_in_shift:
-                fixed[proj_key][shift_num] = assigned_in_shift[0]
-                shift_load[assigned_in_shift[0]] += 1
+                fixed[proj_key][shift_num] = sorted(assigned_in_shift)[0]
                 continue
 
             candidates = []
@@ -207,17 +216,11 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_o
                     continue
                 if product_type not in emp["content_types"]:
                     continue
-
-                own_count = len(projects_by_owner.get(emp["name"], []))
-                load = shift_load.get(emp["name"], 0)
-                total = own_count + load
-                candidates.append((emp["name"], total))
+                candidates.append((total_project_count.get(emp["name"], 0), emp["name"]))
 
             if candidates:
-                candidates.sort(key=lambda x: x[1])
-                chosen = candidates[0][0]
-                fixed[proj_key][shift_num] = chosen
-                shift_load[chosen] += 1
+                candidates.sort()
+                fixed[proj_key][shift_num] = candidates[0][1]
             else:
                 fixed[proj_key][shift_num] = None
 

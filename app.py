@@ -1143,11 +1143,6 @@ def _bot_parse_shift(query):
 
 
 def _bot_get_coverage(year, month, engineers, shift_assignments):
-    saved = db.get_saved_roster_data(year, month)
-    if saved:
-        cov = json.loads(saved["roster_json"]).get("proj_coverage", [])
-        if cov:
-            return cov
     all_proj = db.get_all_projects()
     if engineers and shift_assignments and all_proj:
         cov, _ = generate_project_coverage(all_proj, engineers, shift_assignments, year, month, _get_leave_dates(year, month))
