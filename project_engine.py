@@ -202,7 +202,9 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_o
 
             assigned_in_shift = [
                 name for name in proj_assigned.get(proj["name"].lower(), [])
-                if name != owner_name and shift_assignments.get(name) == shift_num
+                if name != owner_name
+                and shift_assignments.get(name) == shift_num
+                and product_type in emp_lookup[name]["content_types"]
             ]
             if assigned_in_shift:
                 fixed[proj_key][shift_num] = sorted(assigned_in_shift)[0]

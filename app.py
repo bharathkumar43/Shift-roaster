@@ -626,10 +626,20 @@ def search():
     proj_results = []
     seen_projects = set()
     matched_projs = db.search_projects(q)
+
+    emp_lookup = {e["name"]: True for e in employees}
+
     for proj in matched_projs:
-        if proj["name"] in seen_projects:
+        is_engineer_proj = proj["employee_name"] in emp_lookup
+        proj_key = (proj["name"], proj["product_type"], proj["employee_name"] if is_engineer_proj else "_mgr_")
+
+        name_type_key = (proj["name"], proj["product_type"])
+        if name_type_key in seen_projects:
             continue
-        seen_projects.add(proj["name"])
+        if not is_engineer_proj:
+            if any(p["name"] == proj["name"] and p["product_type"] == proj["product_type"] and p["employee_name"] in emp_lookup for p in matched_projs):
+                continue
+        seen_projects.add(name_type_key)
 
         same_name_projs = [p for p in all_projects if p["name"] == proj["name"]]
         manager_name = None
@@ -644,7 +654,7 @@ def search():
         shift_name = None
         for day_data in proj_coverage:
             for p in day_data.get("projects", []):
-                if p["project_name"].lower() == proj["name"].lower():
+                if p["project_name"].lower() == proj["name"].lower() and p.get("product_type", "").lower() == proj["product_type"].lower():
                     engineer_name = p.get("owner")
                     owner_shift = p.get("owner_shift")
                     if owner_shift:
@@ -657,7 +667,7 @@ def search():
         daily = []
         for day_data in proj_coverage:
             for p in day_data.get("projects", []):
-                if p["project_name"].lower() == proj["name"].lower():
+                if p["project_name"].lower() == proj["name"].lower() and p.get("product_type", "").lower() == proj["product_type"].lower():
                     shift_info = {}
                     for sn in [1, 2, 3]:
                         sh = p["shifts"].get(sn, {})
