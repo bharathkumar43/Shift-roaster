@@ -85,11 +85,37 @@
     </div>
     {% else %}
 
-    <!-- Week Filter -->
-    <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
-        <span class="fw-semibold small">Week:</span>
-        <div class="btn-group btn-group-sm" id="weekFilter">
-            <button class="btn btn-secondary active" data-week="all">All</button>
+    <!-- Week + Day + Person filters (apply to both tabs) -->
+    <div class="card shadow-sm border-0 mb-3">
+        <div class="card-body py-3">
+            <div class="row g-3 align-items-end">
+                <div class="col-12 col-lg-auto">
+                    <span class="fw-semibold small d-block mb-2">Week</span>
+                    <div class="btn-group btn-group-sm flex-wrap" id="weekFilter">
+                        <button type="button" class="btn btn-secondary active" data-week="all">All</button>
+                    </div>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label fw-semibold small mb-1" for="summaryDayFilter">Day</label>
+                    <select class="form-select form-select-sm" id="summaryDayFilter" style="min-width:200px" title="Show a single calendar day (within the week filter when a week is selected)">
+                        <option value="all">All days</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label fw-semibold small mb-1" for="summaryPersonFilter">Person</label>
+                    <select class="form-select form-select-sm" id="summaryPersonFilter" style="min-width:200px" title="Filter to one engineer’s coverage">
+                        <option value="all">All people</option>
+                    </select>
+                </div>
+                <div class="col-auto ms-lg-auto d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="btnDlProjects" title="Export current filters — By Projects">
+                        <i class="bi bi-download"></i> CSV — Projects
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="btnDlEmployees" title="Export current filters — By Employees">
+                        <i class="bi bi-download"></i> CSV — Employees
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -199,6 +225,14 @@
                 b.classList.toggle('btn-outline-secondary', !on);
                 b.classList.toggle('active', on);
             });
+            var daySel = document.getElementById('summaryDayFilter');
+            if (daySel && daySel.value !== 'all') {
+                var dn = parseInt(daySel.value, 10);
+                var weekNumsOnly = activeWeek === 'all'
+                    ? coverage.map(function (d) { return d.day_num; })
+                    : (weekDayMap[parseInt(activeWeek, 10)] || []).slice();
+                if (weekNumsOnly.indexOf(dn) === -1) daySel.value = 'all';
+            }
             renderProjects();
             renderEmployees();
         });
@@ -206,10 +240,65 @@
 
     var activeWeek = 'all';
 
+    function populateDayPersonSelects() {
+        var daySel = document.getElementById('summaryDayFilter');
+        var perSel = document.getElementById('summaryPersonFilter');
+        if (daySel) {
+            var v = daySel.value;
+            daySel.innerHTML = '<option value="all">All days</option>';
+            coverage.forEach(function (d) {
+                var opt = document.createElement('option');
+                opt.value = String(d.day_num);
+                opt.textContent = d.date + ' (' + d.day_abbr + ')';
+                daySel.appendChild(opt);
+            });
+            if ([].slice.call(daySel.options).some(function (o) { return o.value === v; })) daySel.value = v;
+            else daySel.value = 'all';
+        }
+        if (perSel && employees && employees.length) {
+            var pv = perSel.value;
+            perSel.innerHTML = '<option value="all">All people</option>';
+            employees.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (e) {
+                var opt = document.createElement('option');
+                opt.value = e.name;
+                opt.textContent = e.name;
+                perSel.appendChild(opt);
+            });
+            if ([].slice.call(perSel.options).some(function (o) { return o.value === pv; })) perSel.value = pv;
+            else perSel.value = 'all';
+        }
+    }
+
+    populateDayPersonSelects();
+
+    function selectedPersonName() {
+        var perSel = document.getElementById('summaryPersonFilter');
+        return (perSel && perSel.value !== 'all') ? perSel.value : 'all';
+    }
+
     function filteredDayNums() {
-        if (activeWeek === 'all') return coverage.map(function (d) { return d.day_num; });
-        var w = parseInt(activeWeek);
-        return (weekDayMap[w] || []).slice();
+        var nums;
+        if (activeWeek === 'all') nums = coverage.map(function (d) { return d.day_num; });
+        else nums = (weekDayMap[parseInt(activeWeek, 10)] || []).slice();
+        var daySel = document.getElementById('summaryDayFilter');
+        if (daySel && daySel.value !== 'all') {
+            var dn = parseInt(daySel.value, 10);
+            if (nums.indexOf(dn) === -1) return [];
+            return [dn];
+        }
+        return nums;
+    }
+
+    /** True if this person is a handler for this project on this day (any shift). */
+    function dayHasPersonAsHandler(dayRow, personName) {
+        if (personName === 'all') return true;
+        var shifts = dayRow.shifts || {};
+        var sn, sh;
+        for (sn = 1; sn <= 3; sn++) {
+            sh = shifts[sn] || shifts[String(sn)];
+            if (sh && sh.handler === personName) return true;
+        }
+        return false;
     }
 
     // ── Badge helpers ───────────────────────────────────────
@@ -283,16 +372,25 @@
         if (!el) return;
         var pd = buildProjData();
         var dayNums = filteredDayNums();
+        var personName = selectedPersonName();
         var filterVal = '';
         var pf = document.getElementById('projFilter');
         if (pf) filterVal = pf.value.trim().toLowerCase();
         var names = Object.keys(pd).sort();
         if (filterVal) names = names.filter(function (n) { return n.toLowerCase().indexOf(filterVal) !== -1; });
+        names = names.filter(function (pname) {
+            var p = pd[pname];
+            return p.days.some(function (d) {
+                return dayNums.indexOf(d.day_num) !== -1 && dayHasPersonAsHandler(d, personName);
+            });
+        });
         var html = '';
 
         names.forEach(function (pname) {
             var p = pd[pname];
-            var days = p.days.filter(function (d) { return dayNums.indexOf(d.day_num) !== -1; });
+            var days = p.days.filter(function (d) {
+                return dayNums.indexOf(d.day_num) !== -1 && dayHasPersonAsHandler(d, personName);
+            });
 
             html += '<div class="card shadow-sm border-0 mb-3">';
             html += '<div class="card-header bg-white border-bottom d-flex align-items-center gap-2 flex-wrap">';
@@ -336,12 +434,14 @@
         if (!el) return;
         var ed    = buildEmpData();
         var dayNums = filteredDayNums();
+        var personName = selectedPersonName();
         var filterVal = '';
         var fi = document.getElementById('empFilter');
         if (fi) filterVal = fi.value.trim().toLowerCase();
 
         var names = Object.keys(ed).sort();
         if (filterVal) names = names.filter(function (n) { return n.toLowerCase().indexOf(filterVal) !== -1; });
+        if (personName !== 'all') names = names.filter(function (n) { return n === personName; });
 
         var html = '';
         if (!names.length) {
@@ -388,6 +488,97 @@
         el.innerHTML = html;
     }
 
+    // ── CSV export (matches current week, day, person, and search filters) ──
+    function escapeCsv(cell) {
+        var s = String(cell == null ? '' : cell);
+        if (/[",\r\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+        return s;
+    }
+
+    function downloadCsv(filename, rows) {
+        var lines = rows.map(function (row) { return row.map(escapeCsv).join(','); });
+        var blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+    }
+
+    function buildProjectsCsvRows() {
+        var pd = buildProjData();
+        var dayNums = filteredDayNums();
+        var personName = selectedPersonName();
+        var filterVal = '';
+        var pf = document.getElementById('projFilter');
+        if (pf) filterVal = pf.value.trim().toLowerCase();
+        var names = Object.keys(pd).sort();
+        if (filterVal) names = names.filter(function (n) { return n.toLowerCase().indexOf(filterVal) !== -1; });
+        var rows = [['Project', 'Product type', 'Owner', 'Date', 'Day', 'Shift 1', 'Shift 2', 'Shift 3']];
+        names.forEach(function (pname) {
+            var p = pd[pname];
+            var days = p.days.filter(function (d) {
+                return dayNums.indexOf(d.day_num) !== -1 && dayHasPersonAsHandler(d, personName);
+            });
+            days.forEach(function (d) {
+                var sh = d.shifts || {};
+                var s1 = '', s2 = '', s3 = '';
+                [1, 2, 3].forEach(function (sn) {
+                    var h = sh[sn] || sh[String(sn)];
+                    var t = h && h.handler ? h.handler : '';
+                    if (sn === 1) s1 = t;
+                    if (sn === 2) s2 = t;
+                    if (sn === 3) s3 = t;
+                });
+                rows.push([pname, p.product_type, p.owner, d.date, d.day_abbr, s1, s2, s3]);
+            });
+        });
+        return rows;
+    }
+
+    function buildEmployeesCsvRows() {
+        var ed = buildEmpData();
+        var dayNums = filteredDayNums();
+        var personName = selectedPersonName();
+        var filterVal = '';
+        var fi = document.getElementById('empFilter');
+        if (fi) filterVal = fi.value.trim().toLowerCase();
+        var names = Object.keys(ed).sort();
+        if (filterVal) names = names.filter(function (n) { return n.toLowerCase().indexOf(filterVal) !== -1; });
+        if (personName !== 'all') names = names.filter(function (n) { return n === personName; });
+        var rows = [['Employee', 'Date', 'Day', 'Project', 'Product type', 'Primary owner', 'Takeover']];
+        names.forEach(function (ename) {
+            var e = ed[ename];
+            var relevantNums = dayNums.filter(function (n) { return e.days[n]; });
+            relevantNums.forEach(function (dayNum) {
+                var dd = e.days[dayNum];
+                dd.projects.forEach(function (p) {
+                    rows.push([
+                        ename, dd.date, dd.day_abbr, p.name, p.type, p.owner,
+                        p.is_takeover ? 'Yes' : ''
+                    ]);
+                });
+            });
+        });
+        return rows;
+    }
+
+    function ymSuffix() {
+        return YEAR + '-' + (MONTH < 10 ? '0' : '') + MONTH;
+    }
+
+    function csvProjectsDownload() {
+        var rows = buildProjectsCsvRows();
+        downloadCsv('summary-by-projects-' + ymSuffix() + '.csv', rows);
+    }
+
+    function csvEmployeesDownload() {
+        var rows = buildEmployeesCsvRows();
+        downloadCsv('summary-by-employees-' + ymSuffix() + '.csv', rows);
+    }
+
     // Project filter input
     var projFilter = document.getElementById('projFilter');
     if (projFilter) {
@@ -411,6 +602,25 @@
     // Re-render on tab switch so the inactive tab renders properly
     document.getElementById('tab-emp-btn') && document.getElementById('tab-emp-btn').addEventListener('shown.bs.tab', renderEmployees);
     document.getElementById('tab-proj-btn') && document.getElementById('tab-proj-btn').addEventListener('shown.bs.tab', renderProjects);
+
+    var summaryDayFilter = document.getElementById('summaryDayFilter');
+    if (summaryDayFilter) {
+        summaryDayFilter.addEventListener('change', function () {
+            renderProjects();
+            renderEmployees();
+        });
+    }
+    var summaryPersonFilter = document.getElementById('summaryPersonFilter');
+    if (summaryPersonFilter) {
+        summaryPersonFilter.addEventListener('change', function () {
+            renderProjects();
+            renderEmployees();
+        });
+    }
+    var btnDlP = document.getElementById('btnDlProjects');
+    var btnDlE = document.getElementById('btnDlEmployees');
+    if (btnDlP) btnDlP.addEventListener('click', csvProjectsDownload);
+    if (btnDlE) btnDlE.addEventListener('click', csvEmployeesDownload);
 
     // Initial render
     renderProjects();
