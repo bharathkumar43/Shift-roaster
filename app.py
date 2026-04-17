@@ -12,12 +12,29 @@ from flask import (Flask, render_template, request, session, g,
                    redirect, url_for, send_file, flash, jsonify)
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import msal
+
 from roster_engine import (generate_roster, get_roster_summary,
                            SHIFTS, DAY_NAMES, CONTENT_TYPES)
 from excel_export import generate_excel
 from project_engine import generate_project_coverage
 from file_parser import parse_file
 import database as db
+
+AZURE_CLIENT_ID = os.getenv("AZURE_CLIENT_ID", "")
+AZURE_CLIENT_SECRET = os.getenv("AZURE_CLIENT_SECRET", "")
+AZURE_TENANT_ID = os.getenv("AZURE_TENANT_ID", "")
+AZURE_AUTHORITY = f"https://login.microsoftonline.com/{AZURE_TENANT_ID}" if AZURE_TENANT_ID else ""
+AZURE_SCOPE = ["User.Read"]
+AZURE_ENABLED = bool(AZURE_CLIENT_ID and AZURE_CLIENT_SECRET and AZURE_TENANT_ID)
+
+
+def _build_msal_app():
+    return msal.ConfidentialClientApplication(
+        AZURE_CLIENT_ID,
+        authority=AZURE_AUTHORITY,
+        client_credential=AZURE_CLIENT_SECRET,
+    )
 
 
 def _get_leave_dates(year, month):
@@ -828,7 +845,75 @@ def login():
             return redirect(next_page)
         flash("Invalid username or password.", "danger")
     return render_template("login.html", app_name=APP_NAME,
-                           next=request.args.get("next", ""))
+                           next=request.args.get("next", ""),
+                           azure_enabled=AZURE_ENABLED)
+
+
+@app.route("/login/azure")
+def login_azure():
+    if not AZURE_ENABLED:
+        flash("Azure AD login is not configured.", "danger")
+        return redirect(url_for("login"))
+    msal_app = _build_msal_app()
+    redirect_uri = url_for("azure_callback", _external=True)
+    auth_url = msal_app.get_authorization_request_url(
+        AZURE_SCOPE, redirect_uri=redirect_uri
+    )
+    return redirect(auth_url)
+
+
+@app.route("/login/azure/callback")
+def azure_callback():
+    if not AZURE_ENABLED:
+        return redirect(url_for("login"))
+
+    code = request.args.get("code")
+    if not code:
+        flash("Azure AD login failed -- no authorization code.", "danger")
+        return redirect(url_for("login"))
+
+    msal_app = _build_msal_app()
+    redirect_uri = url_for("azure_callback", _external=True)
+    result = msal_app.acquire_token_by_authorization_code(
+        code, scopes=AZURE_SCOPE, redirect_uri=redirect_uri
+    )
+
+    if "error" in result:
+        flash(f"Azure AD login failed: {result.get('error_description', result['error'])}", "danger")
+        return redirect(url_for("login"))
+
+    azure_user = result.get("id_token_claims", {})
+    email = azure_user.get("preferred_username", "").strip()
+    display_name = azure_user.get("name", "").strip()
+
+    if not email:
+        flash("Could not get email from Azure AD.", "danger")
+        return redirect(url_for("login"))
+
+    user = db.get_user_by_username(email)
+    if not user:
+        matched_emp = db.auto_link_user(display_name)
+        emp_id = matched_emp["id"] if matched_emp else None
+        uid = db.add_user(
+            username=email,
+            password_hash=generate_password_hash(os.urandom(32).hex()),
+            full_name=display_name,
+            role="user",
+            employee_id=emp_id
+        )
+        if uid:
+            user = db.get_user_by_id(uid)
+        else:
+            user = db.get_user_by_username(email)
+
+    if user:
+        session.clear()
+        session["user_id"] = user["id"]
+        flash(f"Welcome, {display_name}!", "success")
+        return redirect(url_for("index"))
+
+    flash("Login failed.", "danger")
+    return redirect(url_for("login"))
 
 
 @app.route("/signup", methods=["GET", "POST"])

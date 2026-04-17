@@ -5,6 +5,25 @@ from collections import defaultdict
 from roster_engine import DAY_NAMES, SHIFTS
 
 
+def _emp_sort_key(emp_lookup, name):
+    """Stable tiebreak: employee id (not alphabetical name)."""
+    e = emp_lookup.get(name) or {}
+    return (e.get("id") if e is not None else 0) or 0
+
+
+def _pick_min_coverage(candidates, coverage_load, shift_num, product_type, emp_lookup):
+    """Choose engineer with lowest coverage count for (shift, product_type); tiebreak by id."""
+    if not candidates:
+        return None
+    return min(
+        candidates,
+        key=lambda n: (
+            coverage_load[(n, shift_num, product_type)],
+            _emp_sort_key(emp_lookup, n),
+        ),
+    )
+
+
 def generate_project_coverage(projects, employees, shift_assignments, year, month, leave_dates=None):
     """
     Generate daily project coverage for the month across ALL shifts.
@@ -47,6 +66,8 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
     num_days = calendar.monthrange(year, month)[1]
     coverage = []
     warnings = []
+    # Balance backup picks across the month (per shift × product type)
+    backup_load = defaultdict(int)
 
     for day in range(1, num_days + 1):
         d = date(year, month, day)
@@ -92,7 +113,8 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
                         backup = _find_backup(
                             product_type, owner_name, shift_num,
                             employees, shift_assignments, day_name,
-                            date_str, leave_dates
+                            date_str, leave_dates,
+                            backup_load=backup_load,
                         )
                         if backup:
                             shift_handlers[shift_num] = {
@@ -128,7 +150,8 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
                             backup = _find_backup(
                                 product_type, fixed_person, shift_num,
                                 employees, shift_assignments, day_name,
-                                date_str, leave_dates
+                                date_str, leave_dates,
+                                backup_load=backup_load,
                             )
                             shift_handlers[shift_num] = {
                                 "handler": backup,
@@ -161,10 +184,13 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_o
 
     Priority:
       1. Engineers who already have this project assigned in that shift (from DB)
-      2. Engineer with fewest total assigned projects, alphabetical tiebreak (deterministic)
+      2. Among eligible engineers in that shift, pick whoever has the fewest
+         cross-shift coverage slots so far for (shift, product_type) — then
+         tiebreak by employee id (not name alphabet).
 
-    This is deterministic -- adding a new project won't change existing assignments
-    because the sort uses (total_assigned_projects, name) which is stable.
+    Eligibility for a non-owner shift: same shift, content_types includes
+    product_type. (Working days and leaves are applied per day in the
+    coverage loop via backup.)
     """
     emp_lookup = {e["name"]: e for e in employees}
     fixed = {}
@@ -177,10 +203,8 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_o
         if p["employee_name"] in emp_lookup:
             proj_assigned[p["name"].lower()].append(p["employee_name"])
 
-    total_project_count = defaultdict(int)
-    for p in all_projects:
-        if p["employee_name"] in emp_lookup:
-            total_project_count[p["employee_name"]] += 1
+    # Running count of fixed coverage slots per engineer per (shift, product_type)
+    coverage_load = defaultdict(int)
 
     for proj in projects:
         owner_name = proj["employee_name"]
@@ -207,7 +231,11 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_o
                 and product_type in emp_lookup[name]["content_types"]
             ]
             if assigned_in_shift:
-                fixed[proj_key][shift_num] = sorted(assigned_in_shift)[0]
+                chosen = _pick_min_coverage(
+                    assigned_in_shift, coverage_load, shift_num, product_type, emp_lookup
+                )
+                fixed[proj_key][shift_num] = chosen
+                coverage_load[(chosen, shift_num, product_type)] += 1
                 continue
 
             candidates = []
@@ -218,11 +246,14 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_o
                     continue
                 if product_type not in emp["content_types"]:
                     continue
-                candidates.append((total_project_count.get(emp["name"], 0), emp["name"]))
+                candidates.append(emp["name"])
 
             if candidates:
-                candidates.sort()
-                fixed[proj_key][shift_num] = candidates[0][1]
+                chosen = _pick_min_coverage(
+                    candidates, coverage_load, shift_num, product_type, emp_lookup
+                )
+                fixed[proj_key][shift_num] = chosen
+                coverage_load[(chosen, shift_num, product_type)] += 1
             else:
                 fixed[proj_key][shift_num] = None
 
@@ -231,14 +262,21 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_o
 
 def _find_backup(product_type, exclude_name, shift_num,
                  employees, shift_assignments, day_name,
-                 date_str="", leave_dates=None):
+                 date_str="", leave_dates=None,
+                 backup_load=None):
     """
     Find a backup handler for a day when the fixed person is off or on leave.
-    Skips anyone who is also on leave that day.
+
+    Eligibility: same shift, content_types, working that weekday, not on leave.
+    Among eligible engineers, prefer lowest backup_load for (shift, product_type)
+    this month; tiebreak by employee id. Increments backup_load when set.
     """
     if leave_dates is None:
         leave_dates = {}
+    if backup_load is None:
+        backup_load = defaultdict(int)
 
+    emp_lookup = {e["name"]: e for e in employees}
     candidates = []
 
     for emp in employees:
@@ -255,4 +293,11 @@ def _find_backup(product_type, exclude_name, shift_num,
 
         candidates.append(emp["name"])
 
-    return candidates[0] if candidates else None
+    if not candidates:
+        return None
+
+    chosen = _pick_min_coverage(
+        candidates, backup_load, shift_num, product_type, emp_lookup
+    )
+    backup_load[(chosen, shift_num, product_type)] += 1
+    return chosen
