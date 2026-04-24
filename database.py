@@ -112,6 +112,13 @@ def init_db():
         conn.commit()
     except psycopg2.errors.DuplicateColumn:
         conn.rollback()
+    try:
+        cur.execute(
+            "ALTER TABLE employees ADD COLUMN monthly_working_days TEXT NOT NULL DEFAULT '{}'"
+        )
+        conn.commit()
+    except psycopg2.errors.DuplicateColumn:
+        conn.rollback()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS leaves (
             id SERIAL PRIMARY KEY,
@@ -222,6 +229,69 @@ def update_employee(emp_id, content_types, working_days, name=None):
     conn.close()
 
 
+def snapshot_monthly_working_pattern(emp_id, year, month, working_days_list):
+    """
+    Store the canonical 5-day pattern used for a roster month (YYYY-MM key).
+    Used after saving a roster so the next month can resolve week-1 transitions.
+    """
+    key = f"{year}-{month:02d}"
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT monthly_working_days FROM employees WHERE id = %s", (emp_id,))
+    row = cur.fetchone()
+    md = {}
+    if row and row[0]:
+        try:
+            md = json.loads(row[0]) if isinstance(row[0], str) else (row[0] or {})
+        except json.JSONDecodeError:
+            md = {}
+    if not isinstance(md, dict):
+        md = {}
+    md[key] = list(working_days_list)
+    cur.execute(
+        "UPDATE employees SET monthly_working_days = %s WHERE id = %s",
+        (json.dumps(md), emp_id),
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def clear_monthly_working_snapshot_for_month(year, month):
+    """
+    Drop the YYYY-MM entry from every employee's monthly_working_days so the roster
+    engine recomputes that month from earlier snapshots + rotation (avoids stale May
+    data that matched April blocking forward week-off shifts).
+    """
+    keys = {f"{year}-{month:02d}", f"{year}-{month}"}
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id, monthly_working_days FROM employees")
+    rows = cur.fetchall()
+    for emp_id, raw in rows:
+        md = {}
+        if raw:
+            try:
+                md = json.loads(raw) if isinstance(raw, str) else (raw or {})
+            except json.JSONDecodeError:
+                md = {}
+        if not isinstance(md, dict):
+            md = {}
+        changed = False
+        for k in list(md.keys()):
+            if k in keys:
+                del md[k]
+                changed = True
+        if changed:
+            cur.execute(
+                "UPDATE employees SET monthly_working_days = %s WHERE id = %s",
+                (json.dumps(md), emp_id),
+            )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
 def remove_employee(emp_id):
     conn = get_db()
     cur = conn.cursor()
@@ -243,11 +313,20 @@ def clear_all_employees():
 def _row_to_employee(row):
     ct = row["content_types"]
     wd = row["working_days"]
+    mwd = row.get("monthly_working_days", "{}")
+    if mwd is None:
+        mwd = "{}"
+    if isinstance(mwd, str):
+        try:
+            mwd = json.loads(mwd) if mwd else {}
+        except json.JSONDecodeError:
+            mwd = {}
     return {
         "id": row["id"],
         "name": row["name"],
         "content_types": json.loads(ct) if isinstance(ct, str) else ct,
         "working_days": json.loads(wd) if isinstance(wd, str) else wd,
+        "monthly_working_days": mwd if isinstance(mwd, dict) else {},
         "emp_role": row.get("emp_role", "engineer") if isinstance(row, dict) else "engineer",
     }
 
@@ -414,6 +493,23 @@ def get_shift_assignments_for_month(year, month):
     return {r["name"]: r["shift_assigned"] for r in rows}
 
 
+def get_employee_ids_on_shift(year, month, shift_num):
+    """Return set of employee ids assigned to shift_num for that calendar month."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT employee_id FROM rotation_history
+        WHERE year = %s AND month = %s AND shift_assigned = %s
+        """,
+        (year, month, shift_num),
+    )
+    rows = {r["employee_id"] for r in _fetchall(cur)}
+    cur.close()
+    conn.close()
+    return rows
+
+
 def clear_shifts_for_month(year, month):
     """Delete all rotation_history rows for a given month (revert to auto)."""
     conn = get_db()
@@ -521,6 +617,27 @@ def list_finalized_rosters():
     cur.close()
     conn.close()
     return rows
+
+
+def clear_all_saved_rosters_and_rotation():
+    """
+    Remove every saved roster (Excel + JSON), all rotation_history rows,
+    and reset per-month week-off snapshots so scheduling starts clean from profiles.
+    """
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM saved_roster_data")
+        cur.execute("DELETE FROM saved_rosters")
+        cur.execute("DELETE FROM rotation_history")
+        cur.execute("UPDATE employees SET monthly_working_days = %s", ("{}",))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
 
 
 # ── Search ───────────────────────────────────────────────
@@ -927,25 +1044,27 @@ def get_all_balances_for_year(year):
 def get_shift_strength(year, month, shift_assignments):
     """Return per-day, per-shift headcount accounting for weekly offs and leaves."""
     from datetime import date as dt_date
+
+    from roster_engine import prepare_employees_for_roster_month, is_emp_scheduled_work_day
+
     leave_map = get_leave_dates_map(year, month)
     employees = get_employees_by_role("engineer")
-    emp_lookup = {e["name"]: e for e in employees}
+    employees, _ = prepare_employees_for_roster_month(employees, year, month)
 
     import calendar as cal
+
     num_days = cal.monthrange(year, month)[1]
-    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
     strength = {}
     for day in range(1, num_days + 1):
         d = dt_date(year, month, day)
-        day_name = day_names[d.weekday()]
         date_str = d.strftime("%Y-%m-%d")
         daily = {1: 0, 2: 0, 3: 0}
         for emp in employees:
             shift = shift_assignments.get(emp["name"])
             if not shift:
                 continue
-            if day_name not in emp["working_days"]:
+            if not is_emp_scheduled_work_day(emp, d):
                 continue
             if date_str in leave_map.get(emp["name"], []):
                 continue

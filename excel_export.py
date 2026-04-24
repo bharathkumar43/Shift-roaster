@@ -6,7 +6,19 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-from roster_engine import SHIFTS, DAY_ABBR, DAY_NAMES
+from roster_engine import (
+    SHIFTS,
+    DAY_ABBR,
+    DAY_NAMES,
+    pattern_for_calendar_month,
+    coerce_to_five_day_pattern,
+)
+
+
+def _month_working_days_label(emp, year, month):
+    return ", ".join(
+        coerce_to_five_day_pattern(pattern_for_calendar_month(emp, year, month))
+    )
 
 SHIFT_COLORS = {
     1: PatternFill(start_color="D5F5E3", end_color="D5F5E3", fill_type="solid"),
@@ -46,7 +58,7 @@ def generate_excel(roster, warnings, shift_assignments, employees, year, month,
     wb = Workbook()
 
     _create_roster_sheet(wb, roster, shift_assignments, employees, year, month)
-    _create_summary_sheet(wb, shift_assignments, employees)
+    _create_summary_sheet(wb, shift_assignments, employees, year, month)
     if proj_coverage:
         _create_project_coverage_sheet(wb, proj_coverage, year, month)
     if warnings or proj_warnings:
@@ -127,14 +139,12 @@ def _create_roster_sheet(wb, roster, shift_assignments, employees, year, month):
 
             for day in range(1, num_days + 1):
                 d = date(year, month, day)
-                weekday = d.weekday()
-                day_name = DAY_NAMES[weekday]
                 col = day + 1
                 cell = ws.cell(row=row, column=col)
                 cell.border = THIN_BORDER
                 cell.alignment = Alignment(horizontal="center", vertical="center")
 
-                if day_name in emp["working_days"]:
+                if emp["name"] in roster[d][shift_num]:
                     cell.value = "\u2713"
                     cell.fill = SHIFT_COLORS[shift_num]
                     cell.font = Font(color="27AE60", bold=True, size=12)
@@ -147,7 +157,7 @@ def _create_roster_sheet(wb, roster, shift_assignments, employees, year, month):
         row += 1
 
 
-def _create_summary_sheet(wb, shift_assignments, employees):
+def _create_summary_sheet(wb, shift_assignments, employees, year, month):
     ws = wb.create_sheet("Shift Summary")
 
     ws.cell(row=1, column=1, value="Shift Distribution Summary")
@@ -166,7 +176,7 @@ def _create_summary_sheet(wb, shift_assignments, employees):
             ws.cell(row=row, column=2,
                     value=_format_content_types(emp["content_types"])).border = THIN_BORDER
             ws.cell(row=row, column=3,
-                    value=", ".join(emp["working_days"])).border = THIN_BORDER
+                    value=_month_working_days_label(emp, year, month)).border = THIN_BORDER
 
             shift_cell = ws.cell(row=row, column=4, value=SHIFTS[shift_num]["name"])
             shift_cell.fill = SHIFT_COLORS[shift_num]

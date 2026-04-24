@@ -1,0 +1,36 @@
+{# Requires: current_user, app_context_year, app_context_month, app_context_month_name, calendar_month_names, request #}
+{% if current_user %}
+{% set is_admin = current_user.role == 'admin' %}
+<div class="alert alert-light border py-2 mb-3 small d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <div>
+        <i class="bi bi-calendar3 text-primary"></i>
+        <strong>Application month</strong>
+        <span class="text-nowrap">{{ app_context_month_name }} {{ app_context_year }}</span>
+        {% if is_admin %}
+        <span class="text-muted">— roster, search, coverage, and shift tools use this month unless you override.</span>
+        {% else %}
+        <span class="text-muted">— roster, search, coverage, and shift tools use this month. Only an administrator can change it.</span>
+        {% endif %}
+    </div>
+    {% if is_admin %}
+    <form method="POST" action="{{ url_for('set_app_context') }}" class="d-flex flex-wrap align-items-center gap-2">
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <label class="visually-hidden" for="ctxMonthSel">Month</label>
+        <select name="month" id="ctxMonthSel" class="form-select form-select-sm" style="width:auto;min-width:7.5rem">
+            {% for m in range(1, 13) %}
+            <option value="{{ m }}" {% if m == app_context_month %}selected{% endif %}>{{ calendar_month_names[m - 1] }}</option>
+            {% endfor %}
+        </select>
+        <label class="visually-hidden" for="ctxYearSel">Year</label>
+        <select name="year" id="ctxYearSel" class="form-select form-select-sm" style="width:auto;min-width:5rem">
+            {% for y in range(app_context_year - 1, app_context_year + 4) %}
+            <option value="{{ y }}" {% if y == app_context_year %}selected{% endif %}>{{ y }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-sm btn-primary">
+            <i class="bi bi-check2"></i> Apply
+        </button>
+    </form>
+    {% endif %}
+</div>
+{% endif %}

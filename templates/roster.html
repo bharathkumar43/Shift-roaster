@@ -18,7 +18,7 @@
                 <a href="{{ url_for('index') }}" class="btn btn-outline-light btn-sm">
                     <i class="bi bi-arrow-left"></i> Back
                 </a>
-                <a href="{{ url_for('download') }}" class="btn btn-light btn-sm fw-semibold">
+                <a href="{{ url_for('download', year=year, month=month, draft=1) if is_draft else url_for('download', year=year, month=month) }}" class="btn btn-light btn-sm fw-semibold">
                     <i class="bi bi-download"></i> Download Excel
                 </a>
                 {% if current_user %}
@@ -41,6 +41,10 @@
             </div>
         </div>
     </nav>
+
+    <div class="container-fluid px-4">
+        {% include 'partials/app_context_bar.html' %}
+    </div>
 
     <main class="container-fluid my-4 px-4">
 
@@ -93,6 +97,63 @@
         </div>
         {% endif %}
 
+        {% if weekoff_rows %}
+        <div class="card border-0 shadow-sm mb-4 animate-in">
+            <div class="card-header bg-white border-bottom">
+                <h5 class="mb-0"><i class="bi bi-calendar-week"></i> Week-offs for this roster</h5>
+                <small class="text-muted d-block mt-1">
+                    {{ month_name }} {{ year }} &mdash; week-offs vs
+                    <strong>{{ weekoff_prev_month_name }} {{ weekoff_prev_year }}</strong>.
+                    Patterns come from stored monthly snapshots (updated when you <strong>Generate</strong> or <strong>Save</strong> a roster); the next month rotates two weekdays forward from the latest earlier snapshot.
+                </small>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Name</th>
+                                <th>{{ weekoff_prev_month_name[:3] }} week-offs</th>
+                                <th>{{ month_name }} week-offs</th>
+                                <th>{{ month_name }} working days</th>
+                                <th class="text-nowrap text-center">Change</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in weekoff_rows %}
+                            <tr>
+                                <td class="fw-semibold">{{ row.name }}</td>
+                                <td>
+                                    {% for d in row.prev_week_offs %}
+                                    <span class="badge bg-light text-dark border">{{ d[:3] }}</span>
+                                    {% endfor %}
+                                </td>
+                                <td>
+                                    {% for d in row.week_offs %}
+                                    <span class="badge bg-secondary">{{ d[:3] }}</span>
+                                    {% endfor %}
+                                </td>
+                                <td>
+                                    {% for d in row.working_days %}
+                                    <span class="badge bg-light text-dark border">{{ d[:3] }}</span>
+                                    {% endfor %}
+                                </td>
+                                <td class="text-center">
+                                    {% if row.weekoffs_changed %}
+                                    <span class="badge bg-info text-dark">Changed</span>
+                                    {% else %}
+                                    <span class="text-muted small">Same</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Shift Summary Cards -->
         <div class="row g-3 mb-4">
             {% for shift_num in [1, 2, 3] %}
@@ -134,7 +195,7 @@
         <div class="card border-0 shadow-sm animate-in">
             <div class="card-header bg-white d-flex justify-content-between align-items-center">
                 <h5 class="mb-0"><i class="bi bi-table"></i> Daily Schedule</h5>
-                <a href="{{ url_for('download') }}" class="btn btn-success btn-sm">
+                <a href="{{ url_for('download', year=year, month=month, draft=1) if is_draft else url_for('download', year=year, month=month) }}" class="btn btn-success btn-sm">
                     <i class="bi bi-file-earmark-excel"></i> Download Excel
                 </a>
             </div>
@@ -197,7 +258,7 @@
             </form>
             {% endif %}
             {% if is_saved %}
-            <a href="{{ url_for('download') }}" class="btn btn-success btn-lg btn-download-pulse">
+            <a href="{{ url_for('download', year=year, month=month) }}" class="btn btn-success btn-lg btn-download-pulse">
                 <i class="bi bi-file-earmark-excel"></i> Download Excel
             </a>
             <form method="POST" action="{{ url_for('generate') }}">

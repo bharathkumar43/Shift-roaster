@@ -56,6 +56,8 @@
         {% endif %}
         {% endwith %}
 
+        {% include 'partials/app_context_bar.html' %}
+
         <!-- Search Bar -->
         <div class="card shadow-sm border-0 mb-4 animate-in">
             <div class="card-body py-3">
@@ -72,7 +74,7 @@
                     <div class="col-md-3">
                         <select class="form-select" id="search_month">
                             {% for m in range(1, 13) %}
-                            <option value="{{ m }}" {% if m == now_month %}selected{% endif %}>
+                            <option value="{{ m }}" {% if m == default_search_month %}selected{% endif %}>
                                 {{ month_names[m - 1] }}
                             </option>
                             {% endfor %}
@@ -80,8 +82,8 @@
                     </div>
                     <div class="col-md-3">
                         <select class="form-select" id="search_year">
-                            {% for y in range(current_year - 1, current_year + 3) %}
-                            <option value="{{ y }}" {% if y == now_year %}selected{% endif %}>{{ y }}</option>
+                            {% for y in range(year_range_lo, year_range_hi + 1) %}
+                            <option value="{{ y }}" {% if y == default_search_year %}selected{% endif %}>{{ y }}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -185,7 +187,7 @@
                                     </div>
                                     {% endfor %}
                                 </div>
-                                <div class="form-text">Select the days this employee works.</div>
+                                <div class="form-text">Select exactly 5 days. The two days off must be <strong>next to each other</strong> (e.g. Sat-Sun, Mon-Tue), not split.</div>
                             </div>
 
                             <div class="mb-3">
@@ -299,12 +301,17 @@
                         <h6 class="mb-0"><i class="bi bi-calendar-check"></i> Generate Roster</h6>
                     </div>
                     <div class="card-body">
+                        <p class="small text-muted mb-2">
+                            Month and year default to your <strong>application month</strong>
+                            (<strong>{{ app_context_month_name }} {{ app_context_year }}</strong>; today is {{ month_names[this_month - 1] }} {{ this_year }}).
+                            You can override below for a one-off run.
+                        </p>
                         <div class="row g-2 mb-3">
                             <div class="col-6">
                                 <label class="form-label fw-semibold small">Month</label>
                                 <select class="form-select" id="gen_month">
                                     {% for m in range(1, 13) %}
-                                    <option value="{{ m }}" {% if m == now_month %}selected{% endif %}>
+                                    <option value="{{ m }}" {% if m == default_roster_month %}selected{% endif %}>
                                         {{ month_names[m - 1] }}
                                     </option>
                                     {% endfor %}
@@ -313,8 +320,8 @@
                             <div class="col-6">
                                 <label class="form-label fw-semibold small">Year</label>
                                 <select class="form-select" id="gen_year">
-                                    {% for y in range(current_year, current_year + 3) %}
-                                    <option value="{{ y }}" {% if y == now_year %}selected{% endif %}>{{ y }}</option>
+                                    {% for y in range(year_range_lo, year_range_hi + 1) %}
+                                    <option value="{{ y }}" {% if y == default_roster_year %}selected{% endif %}>{{ y }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
@@ -356,7 +363,7 @@
 
                 <!-- Summary Link -->
                 <div class="card shadow-sm border-0 mt-3 animate-in">
-                    <a href="{{ url_for('summary') }}" class="card-body d-flex align-items-center gap-2 text-decoration-none text-dark py-3">
+                    <a href="{{ url_for('summary', year=app_context_year, month=app_context_month) }}" class="card-body d-flex align-items-center gap-2 text-decoration-none text-dark py-3">
                         <i class="bi bi-table fs-5 text-primary"></i>
                         <div>
                             <span class="fw-semibold">Summary View</span>
@@ -368,7 +375,7 @@
 
                 <!-- Leave Tracker Link -->
                 <div class="card shadow-sm border-0 mt-3 animate-in">
-                    <a href="{{ url_for('leaves') }}" class="card-body d-flex align-items-center gap-2 text-decoration-none text-dark py-3">
+                    <a href="{{ url_for('leaves', year=app_context_year, month=app_context_month) }}" class="card-body d-flex align-items-center gap-2 text-decoration-none text-dark py-3">
                         <i class="bi bi-calendar-x fs-5 text-danger"></i>
                         <div>
                             <span class="fw-semibold">Leave Tracker</span>
@@ -396,6 +403,13 @@
                         </form>
                         {% endif %}
                     </div>
+                    <div class="px-3 pt-2 pb-2 border-bottom bg-white small text-muted">
+                        Rows use the <strong>generated</strong> working pattern for
+                        <strong>{{ app_context_month_name }} {{ app_context_year }}</strong>
+                        (your <strong>application month</strong>; same default as Generate Roster &mdash; working days / week-offs below).
+                        Ratio <strong>6 / 7 / 8</strong> shifts when there are 21 engineers.
+                        Week-offs advance by two weekdays each new calendar month from the latest saved monthly snapshot (or your profile if none).
+                    </div>
                     <div class="card-body p-0">
                         {% if employees|length == 0 %}
                         <div class="empty-state text-center">
@@ -412,6 +426,7 @@
                                         <th>Name</th>
                                         <th>Product Types</th>
                                         <th>Working Days</th>
+                                        <th>Week-offs</th>
                                         <th>Projects</th>
                                         <th style="width:80px"></th>
                                     </tr>
@@ -433,8 +448,13 @@
                                             {% endfor %}
                                         </td>
                                         <td>
-                                            {% for d in emp.working_days %}
+                                            {% for d in emp.generated_working_days %}
                                             <span class="badge bg-light text-dark border">{{ d[:3] }}</span>
+                                            {% endfor %}
+                                        </td>
+                                        <td>
+                                            {% for d in emp.generated_week_offs %}
+                                            <span class="badge bg-secondary">{{ d[:3] }}</span>
                                             {% endfor %}
                                         </td>
                                         <td>
@@ -614,12 +634,21 @@
                 </div>
 
                 <!-- Saved Rosters -->
-                {% if finalized_rosters|length > 0 %}
+                {% if finalized_rosters|length > 0 or saved_rosters|length > 0 %}
                 <div class="card shadow-sm border-0 mt-3 animate-in">
-                    <div class="card-header bg-white border-bottom">
+                    <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <h6 class="mb-0"><i class="bi bi-clock-history"></i> Saved Rosters</h6>
+                        {% if current_user and current_user.role == 'admin' %}
+                        <form method="POST" action="{{ url_for('clear_all_saved_rosters') }}" class="d-inline">
+                            <button type="submit" class="btn btn-outline-danger btn-sm"
+                                    onclick="return confirm('Delete ALL saved rosters (every month), shift rotation history, and stored week-off snapshots? Employees stay; you will generate from scratch.')">
+                                <i class="bi bi-trash"></i> Clear all saved rosters
+                            </button>
+                        </form>
+                        {% endif %}
                     </div>
                     <div class="card-body p-0">
+                        {% if finalized_rosters|length > 0 %}
                         <div class="table-responsive">
                             <table class="table table-hover table-sm mb-0 align-middle">
                                 <thead class="table-light">
@@ -651,6 +680,9 @@
                                 </tbody>
                             </table>
                         </div>
+                        {% else %}
+                        <p class="small text-muted mb-0 p-3">No finalized roster rows in the list; archived Excel rows may still exist until you clear.</p>
+                        {% endif %}
                     </div>
                 </div>
                 {% endif %}
@@ -677,6 +709,7 @@
                     <div class="mb-4" id="editDaySection">
                         <label class="form-label fw-semibold">Working Days</label>
                         <div id="editDayToggles" class="d-flex gap-1 flex-wrap"></div>
+                        <div class="form-text">Exactly 5 days on; the two days off must be adjacent (e.g. Sat-Sun).</div>
                     </div>
                     <div class="mb-2">
                         <label class="form-label fw-semibold">
@@ -687,6 +720,17 @@
                             <i class="bi bi-plus-circle"></i> Add Project
                         </button>
                     </div>
+                    {% if current_user and current_user.role == 'admin' %}
+                    <div class="border-top pt-3 mt-2 d-none" id="editSnapshotAppMonthWrap">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="editSnapshotAppMonth">
+                            <label class="form-check-label" for="editSnapshotAppMonth">
+                                Also save this working pattern for <strong>{{ app_context_month_name }} {{ app_context_year }}</strong>
+                                (updates the monthly snapshot used for week-off rotation).
+                            </label>
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -874,6 +918,21 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
     (function () {
+        var ALL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+        /** True if exactly five working days with two adjacent off-days on Mon-Sun (incl. Sun-Mon wrap). */
+        function weekoffsConsecutiveDays(days) {
+            if (!days || days.length !== 5) return false;
+            var s = {};
+            days.forEach(function (d) { s[d] = true; });
+            if (Object.keys(s).length !== 5) return false;
+            var off = ALL_DAYS.filter(function (d) { return !s[d]; });
+            if (off.length !== 2) return false;
+            var i = ALL_DAYS.indexOf(off[0]), j = ALL_DAYS.indexOf(off[1]);
+            var a = Math.min(i, j), b = Math.max(i, j);
+            return (b - a === 1) || (a === 0 && b === 6);
+        }
+
         // ── Day-count counter (admin-only: inside Add Employee form) ──
         var counter = document.getElementById('dayCount');
         if (counter) {
@@ -884,6 +943,23 @@
                 counter.style.color = (n === 5) ? '#27ae60' : (n > 5) ? '#dc3545' : '';
             }
             checks.forEach(function (cb) { cb.addEventListener('change', updateCount); });
+        }
+
+        var addEmpForm = document.getElementById('addEmployeeForm');
+        if (addEmpForm) {
+            addEmpForm.addEventListener('submit', function (ev) {
+                var days = [];
+                addEmpForm.querySelectorAll('.day-check:checked').forEach(function (cb) { days.push(cb.value); });
+                if (days.length !== 5) {
+                    alert('Select exactly 5 working days (two full days off).');
+                    ev.preventDefault();
+                    return;
+                }
+                if (!weekoffsConsecutiveDays(days)) {
+                    alert('The two days off must be next to each other (e.g. Saturday-Sunday or Monday-Tuesday), not separated across the week.');
+                    ev.preventDefault();
+                }
+            });
         }
 
         // ── Add Project button (admin-only) ──────────────
@@ -968,7 +1044,6 @@
         var ALL_TYPES   = ['Content','Email','Message'];
         var TYPE_ABBR   = ['CON','EML','MSG'];
         var TYPE_COLORS = ['info','primary','warning'];
-        var ALL_DAYS    = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
         var DAY_ABBR    = ['Mo','Tu','We','Th','Fr','Sa','Su'];
 
         function esc(s) {
@@ -1047,6 +1122,10 @@
                 }
                 if (!cts.length)  cts  = ['Content'];
                 if (!days.length) days = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+                if (days.length !== 5 || !weekoffsConsecutiveDays(days)) {
+                    alert(name + ': select exactly 5 working days with two consecutive days off (e.g. Sat-Sun).');
+                    return null;
+                }
                 list.push({name: name, content_types: cts, working_days: days, projects: projs});
             });
             return list;
@@ -1054,6 +1133,7 @@
 
         empConfirmBtn.addEventListener('click', function() {
             var emps = collectEmps();
+            if (emps === null) return;
             if (!emps.length) return;
             empConfirmBtn.disabled = true;
             empConfirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Importing\u2026';
@@ -1172,6 +1252,17 @@
                 document.getElementById('editTypeSection').style.display = hideFields ? 'none' : '';
                 document.getElementById('editDaySection').style.display = hideFields ? 'none' : '';
 
+                var snapWrap = document.getElementById('editSnapshotAppMonthWrap');
+                if (snapWrap) {
+                    if (!hideFields && empRole === 'engineer') {
+                        snapWrap.classList.remove('d-none');
+                        var snapCb = document.getElementById('editSnapshotAppMonth');
+                        if (snapCb) snapCb.checked = false;
+                    } else {
+                        snapWrap.classList.add('d-none');
+                    }
+                }
+
                 var cts      = JSON.parse(btn.dataset.contentTypes);
                 var days     = JSON.parse(btn.dataset.workingDays);
                 var projects = JSON.parse(btn.dataset.projects || '[]');
@@ -1241,22 +1332,40 @@
             if (!cts.length)  cts  = ['Content'];
             if (!days.length) days = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
 
+            var daySectionHidden = document.getElementById('editDaySection').style.display === 'none';
+            if (!daySectionHidden) {
+                if (days.length !== 5) {
+                    alert('Select exactly 5 working days.');
+                    return;
+                }
+                if (!weekoffsConsecutiveDays(days)) {
+                    alert('The two days off must be next to each other (e.g. Sat-Sun), not split across the week.');
+                    return;
+                }
+            }
+
             var saveBtn = document.getElementById('saveEmpBtn');
             saveBtn.disabled = true;
             saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving\u2026';
 
             var editedName = document.getElementById('editEmpNameInput').value.trim();
 
+            var snapEl = document.getElementById('editSnapshotAppMonth');
+            var payload = {name: editedName, content_types: cts, working_days: days, projects: projs};
+            if (snapEl && snapEl.offsetParent !== null) {
+                payload.snapshot_for_app_month = !!snapEl.checked;
+            }
+
             fetch('/edit_employee/' + currentEditEmpId, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({name: editedName, content_types: cts, working_days: days, projects: projs})
+                body: JSON.stringify(payload)
             })
             .then(function(r) { return r.json(); })
             .then(function(d) {
                 if (d.success) { editEmpModal.hide(); window.location.reload(); }
                 else {
-                    alert('Save failed.');
+                    alert(d.error || 'Save failed.');
                     saveBtn.disabled = false;
                     saveBtn.innerHTML = '<i class="bi bi-check2"></i> Save Changes';
                 }
@@ -1540,8 +1649,11 @@
             }
         });
 
-        // Save shifts
-        document.getElementById('saveShiftsBtn').addEventListener('click', function () {
+        // Save / clear shifts (buttons exist for admins only)
+        if (isAdmin) {
+        var saveShiftsBtn = document.getElementById('saveShiftsBtn');
+        var clearShiftsBtn = document.getElementById('clearShiftsBtn');
+        saveShiftsBtn.addEventListener('click', function () {
             var month = parseInt(document.getElementById('gen_month').value);
             var year  = parseInt(document.getElementById('gen_year').value);
             var assignments = {};
@@ -1553,7 +1665,7 @@
                     if (active) assignments[empName] = parseInt(active.dataset.shift);
                 });
             });
-            var btn = document.getElementById('saveShiftsBtn');
+            var btn = saveShiftsBtn;
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
             fetch('/save_shifts', {
@@ -1561,21 +1673,24 @@
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({year: year, month: month, assignments: assignments})
             })
-            .then(function (r) { return r.json(); })
-            .then(function (d) {
+            .then(function (r) {
+                return r.json().then(function (d) { return { ok: r.ok, data: d }; });
+            })
+            .then(function (res) {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="bi bi-check2"></i> Save Shifts';
-                if (d.success) {
+                if (res.ok && res.data.success) {
                     shiftsModal.hide();
-                    // Visual feedback on the button
                     var eb = document.getElementById('editShiftsBtn');
                     if (eb) {
                         eb.classList.remove('btn-outline-warning');
                         eb.classList.add('btn-warning');
-                        eb.title = 'Manual shifts saved for this month';
+                        eb.title = res.data.roster_regenerated
+                            ? 'Shifts saved; roster regenerated for this month'
+                            : 'Manual shifts saved for this month';
                     }
                 } else {
-                    alert('Save failed: ' + (d.error || 'Unknown error'));
+                    alert('Save failed: ' + (res.data && res.data.error ? res.data.error : 'Unknown error'));
                 }
             })
             .catch(function () {
@@ -1585,8 +1700,7 @@
             });
         });
 
-        // Reset to auto
-        document.getElementById('clearShiftsBtn').addEventListener('click', function () {
+        clearShiftsBtn.addEventListener('click', function () {
             if (!confirm('Reset to automatic shift assignment for this month? Manually saved shifts will be removed.')) return;
             var month = parseInt(document.getElementById('gen_month').value);
             var year  = parseInt(document.getElementById('gen_year').value);
@@ -1595,9 +1709,11 @@
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({year: year, month: month})
             })
-            .then(function (r) { return r.json(); })
-            .then(function (d) {
-                if (d.success) {
+            .then(function (r) {
+                return r.json().then(function (d) { return { ok: r.ok, data: d }; });
+            })
+            .then(function (res) {
+                if (res.ok && res.data.success) {
                     shiftsModal.hide();
                     var eb = document.getElementById('editShiftsBtn');
                     if (eb) {
@@ -1605,9 +1721,15 @@
                         eb.classList.remove('btn-warning');
                         eb.title = 'Manually set shifts for this month';
                     }
+                } else {
+                    alert('Reset failed: ' + (res.data && res.data.error ? res.data.error : 'Unknown error'));
                 }
+            })
+            .catch(function () {
+                alert('Reset failed. Please try again.');
             });
         });
+        }
     })();
     </script>
     <button class="chat-fab" id="chatFab" title="Ask me anything"><i class="bi bi-chat-dots"></i></button>

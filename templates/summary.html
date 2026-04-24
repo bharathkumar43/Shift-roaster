@@ -46,6 +46,10 @@
     </div>
 </nav>
 
+<div class="container">
+    {% include 'partials/app_context_bar.html' %}
+</div>
+
 <main class="container my-4">
 
     <!-- Month/Year Filter -->
@@ -63,7 +67,7 @@
                 <div class="col-auto">
                     <label class="form-label fw-semibold mb-1 small">Year</label>
                     <select class="form-select" name="year" style="min-width:100px">
-                        {% for y in range(current_year - 1, current_year + 3) %}
+                        {% for y in range(year_range_lo, year_range_hi + 1) %}
                         <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
                         {% endfor %}
                     </select>

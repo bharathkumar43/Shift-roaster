@@ -1,8 +1,13 @@
 import calendar
-from datetime import date
 from collections import defaultdict
+from datetime import date
 
-from roster_engine import DAY_NAMES, SHIFTS
+from roster_engine import (
+    DAY_NAMES,
+    SHIFTS,
+    prepare_employees_for_roster_month,
+    is_emp_scheduled_work_day,
+)
 
 
 def _emp_sort_key(emp_lookup, name):
@@ -36,6 +41,7 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
     if leave_dates is None:
         leave_dates = {}
 
+    employees, _ = prepare_employees_for_roster_month(employees, year, month)
     emp_lookup = {e["name"]: e for e in employees}
 
     seen_proj_keys = set()
@@ -99,7 +105,7 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
                 fixed_person = fixed_assignments.get(proj_key, {}).get(shift_num)
 
                 if shift_num == owner_shift:
-                    owner_off_weekly = day_name not in owner["working_days"]
+                    owner_off_weekly = not is_emp_scheduled_work_day(owner, d)
                     owner_on_leave = date_str in leave_dates.get(owner_name, [])
                     owner_available = not owner_off_weekly and not owner_on_leave
 
@@ -136,7 +142,9 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
                 else:
                     if fixed_person:
                         fixed_emp = emp_lookup.get(fixed_person)
-                        fixed_off_weekly = day_name not in fixed_emp["working_days"] if fixed_emp else True
+                        fixed_off_weekly = (
+                            not is_emp_scheduled_work_day(fixed_emp, d) if fixed_emp else True
+                        )
                         fixed_on_leave = date_str in leave_dates.get(fixed_person, [])
                         fixed_available = fixed_emp and not fixed_off_weekly and not fixed_on_leave
 
@@ -286,7 +294,7 @@ def _find_backup(product_type, exclude_name, shift_num,
             continue
         if product_type not in emp["content_types"]:
             continue
-        if day_name not in emp["working_days"]:
+        if not is_emp_scheduled_work_day(emp, date.fromisoformat(date_str)):
             continue
         if date_str in leave_dates.get(emp["name"], []):
             continue

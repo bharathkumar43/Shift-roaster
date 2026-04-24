@@ -18,7 +18,7 @@
                 <a href="{{ url_for('index') }}" class="btn btn-outline-light btn-sm">
                     <i class="bi bi-arrow-left"></i> Back
                 </a>
-                <a href="{{ url_for('download') }}" class="btn btn-light btn-sm fw-semibold">
+                <a href="{{ url_for('download', year=year, month=month) }}" class="btn btn-light btn-sm fw-semibold">
                     <i class="bi bi-download"></i> Download Excel
                 </a>
                 {% if current_user %}
@@ -41,6 +41,10 @@
             </div>
         </div>
     </nav>
+
+    <div class="container-fluid px-4">
+        {% include 'partials/app_context_bar.html' %}
+    </div>
 
     <main class="container-fluid my-4 px-4">
 
