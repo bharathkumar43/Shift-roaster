@@ -454,12 +454,9 @@ def edit_employee(emp_id):
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     db.update_employee(emp_id, content_types, working_days, name=new_name)
-    if data.get("snapshot_for_app_month"):
-        emp_row = db.get_employee_by_id(emp_id)
-        if not emp_row or emp_row.get("emp_role") != "engineer":
-            return jsonify(
-                {"error": "Monthly week-off snapshot applies to migration engineers only."}
-            ), 400
+    # Keep app-month week-offs aligned with edits so roster updates immediately.
+    emp_row = db.get_employee_by_id(emp_id)
+    if emp_row and emp_row.get("emp_role") == "engineer":
         cy, cm = get_app_context_ym()
         db.snapshot_monthly_working_pattern(emp_id, cy, cm, working_days)
     # Replace projects
@@ -620,9 +617,7 @@ def generate():
     if saved and not request.form.get("regenerate"):
         return _render_saved_roster(year, month, saved)
 
-    # Drop this month's snapshot so we never reuse a stale pattern (e.g. May == April)
-    # when recomputing from the prior month's anchor + two-day week-off advance.
-    db.clear_monthly_working_snapshot_for_month(year, month)
+    # Keep this month's snapshot so explicit week-off edits are honored.
     employees = db.get_employees_by_role("engineer")
 
     night_counts = db.get_night_shift_counts()
@@ -694,7 +689,6 @@ def save_roster():
 
     db.save_all_rotations(shift_assignments, employees, year, month)
 
-    db.clear_monthly_working_snapshot_for_month(year, month)
     employees = db.get_employees_by_role("engineer")
 
     prepared, _ = prepare_employees_for_roster_month(employees, year, month)
@@ -1322,7 +1316,6 @@ def save_shifts():
     if len(engineers) >= 2:
         complete = _complete_engineer_shifts_for_save(engineers, assignments, year, month)
 
-        db.clear_monthly_working_snapshot_for_month(year, month)
         engineers = db.get_employees_by_role("engineer")
         night_counts = db.get_night_shift_counts()
         try:
