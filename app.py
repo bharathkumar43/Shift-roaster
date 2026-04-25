@@ -16,6 +16,7 @@ import msal
 
 from roster_engine import (
     generate_roster,
+    generate_roster_from_manual_assignments,
     get_roster_summary,
     SHIFTS,
     DAY_NAMES,
@@ -206,7 +207,9 @@ def _generate_roster_with_saved_month(
     Run roster generation honoring saved month shifts where possible.
 
     If strict=True, invalid saved combinations propagate ValueError.
-    If strict=False, falls back to pin-only predefined on ValueError.
+    If strict=False and mandate caps are exceeded, still honor rotation_history by
+    building the calendar from saved engineer shifts (no pin-only fallback that
+    dropped manual Edit Shifts — that broke search/project coverage vs DB).
     """
     nc = night_counts if night_counts is not None else db.get_night_shift_counts()
     pre = _predefined_with_saved_shifts(year, month)
@@ -215,7 +218,28 @@ def _generate_roster_with_saved_month(
     except ValueError:
         if strict:
             raise
-        return _generate_roster(employees, year, month, nc, _predefined(year, month))
+        saved = db.get_shift_assignments_for_month(year, month) or {}
+        eng_names = {e["name"] for e in employees}
+        complete = {}
+        for e in employees:
+            nm = e["name"]
+            if is_pinned_shift_1(nm):
+                complete[nm] = 1
+            elif nm in saved and nm in eng_names:
+                complete[nm] = int(saved[nm])
+        if len(complete) < len(employees):
+            _, _, guess = _generate_roster(employees, year, month, nc, _predefined(year, month))
+            for e in employees:
+                nm = e["name"]
+                if nm not in complete:
+                    complete[nm] = int(guess.get(nm, 1))
+        return generate_roster_from_manual_assignments(
+            employees,
+            year,
+            month,
+            complete,
+            prev_month_night_ids=_prev_month_night_ids(year, month),
+        )
 
 
 def _prev_month_night_ids(year, month):
@@ -227,7 +251,35 @@ def _prev_month_night_ids(year, month):
     return frozenset(db.get_employee_ids_on_shift(py, pm, 3))
 
 
-def _generate_roster(employees, year, month, night_counts=None, predefined=None):
+def _complete_engineer_shifts_for_save(engineers, assignments, year, month):
+    """
+    One shift number per engineer for manual roster build: form body, pins, then DB,
+    then a single auto guess for anyone still missing (unusual).
+    """
+    saved = dict(db.get_shift_assignments_for_month(year, month) or {})
+    complete = {}
+    for e in engineers:
+        nm = e["name"]
+        if is_pinned_shift_1(nm):
+            complete[nm] = 1
+        elif nm in assignments:
+            complete[nm] = int(assignments[nm])
+        elif nm in saved:
+            complete[nm] = int(saved[nm])
+    if len(complete) < len(engineers):
+        # Avoid assign_shifts here (can reject DB/saved ratios); fill gaps with rotation.
+        idx = 0
+        for e in engineers:
+            nm = e["name"]
+            if nm not in complete:
+                complete[nm] = (idx % 3) + 1
+                idx += 1
+    return complete
+
+
+def _generate_roster(
+    employees, year, month, night_counts=None, predefined=None, *, relax_fixed_caps=False
+):
     """generate_roster with night-shift anti-streak (no back-to-back months on Shift 3)."""
     nc = night_counts if night_counts is not None else db.get_night_shift_counts()
     pre = predefined if predefined is not None else _predefined(year, month)
@@ -238,6 +290,7 @@ def _generate_roster(employees, year, month, night_counts=None, predefined=None)
         nc,
         pre,
         prev_month_night_ids=_prev_month_night_ids(year, month),
+        relax_fixed_caps=relax_fixed_caps,
     )
 
 
@@ -495,9 +548,36 @@ def _excel_bytes_from_shift_assignments(year, month, shift_assignments, warnings
                 employees, year, month, night_counts, pre or None
             )
         except ValueError:
-            roster, gen_warnings, sa = _generate_roster_with_saved_month(
-                employees, year, month, night_counts
-            )
+            complete = {}
+            raw = shift_assignments or {}
+            for e in employees:
+                nm = e["name"]
+                if is_pinned_shift_1(nm):
+                    complete[nm] = 1
+                elif nm in pre:
+                    complete[nm] = pre[nm]
+                else:
+                    try:
+                        complete[nm] = int(raw.get(nm, raw.get(str(nm), 2)))
+                    except (TypeError, ValueError):
+                        complete[nm] = 2
+            try:
+                roster, gen_warnings, sa = generate_roster_from_manual_assignments(
+                    employees,
+                    year,
+                    month,
+                    complete,
+                    prev_month_night_ids=_prev_month_night_ids(year, month),
+                )
+            except (ValueError, KeyError):
+                roster, gen_warnings, sa = _generate_roster(
+                    employees,
+                    year,
+                    month,
+                    night_counts,
+                    predefined=complete,
+                    relax_fixed_caps=True,
+                )
     merged_warnings = list(warnings or []) + list(gen_warnings or [])
     all_projects = db.get_all_projects()
     proj_coverage, proj_warnings = generate_project_coverage(
@@ -1238,26 +1318,31 @@ def save_shifts():
             assignments[e["name"]] = 1
 
     engineers = db.get_employees_by_role("engineer")
-    eng_names = {e["name"] for e in engineers}
-    predefined_eng = {n: assignments[n] for n in assignments if n in eng_names}
-    for e in engineers:
-        if is_pinned_shift_1(e["name"]):
-            predefined_eng[e["name"]] = 1
 
     if len(engineers) >= 2:
-        night_counts = db.get_night_shift_counts()
-        try:
-            _generate_roster(
-                engineers, year, month, night_counts, predefined_eng or None
-            )
-        except ValueError as err:
-            return jsonify({"error": str(err)}), 400
+        complete = _complete_engineer_shifts_for_save(engineers, assignments, year, month)
 
         db.clear_monthly_working_snapshot_for_month(year, month)
         engineers = db.get_employees_by_role("engineer")
-        roster, warnings, gen_assign = _generate_roster(
-            engineers, year, month, night_counts, predefined_eng or None
-        )
+        night_counts = db.get_night_shift_counts()
+        try:
+            roster, warnings, gen_assign = generate_roster_from_manual_assignments(
+                engineers,
+                year,
+                month,
+                complete,
+                prev_month_night_ids=_prev_month_night_ids(year, month),
+            )
+        except (ValueError, KeyError):
+            # Belt-and-suspenders: accept any headcount per shift (e.g. 8 on shift 2).
+            roster, warnings, gen_assign = _generate_roster(
+                engineers,
+                year,
+                month,
+                night_counts,
+                predefined=complete,
+                relax_fixed_caps=True,
+            )
 
         prepared, prep_warnings = prepare_employees_for_roster_month(engineers, year, month)
         for pe in prepared:

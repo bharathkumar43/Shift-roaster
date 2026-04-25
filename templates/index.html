@@ -301,11 +301,17 @@
                         <h6 class="mb-0"><i class="bi bi-calendar-check"></i> Generate Roster</h6>
                     </div>
                     <div class="card-body">
+                        {% if current_user and current_user.role == 'admin' %}
                         <p class="small text-muted mb-2">
                             Month and year default to your <strong>application month</strong>
                             (<strong>{{ app_context_month_name }} {{ app_context_year }}</strong>; today is {{ month_names[this_month - 1] }} {{ this_year }}).
                             You can override below for a one-off run.
                         </p>
+                        {% else %}
+                        <p class="small text-muted mb-2">
+                            Choose month and year below (today is {{ month_names[this_month - 1] }} {{ this_year }}).
+                        </p>
+                        {% endif %}
                         <div class="row g-2 mb-3">
                             <div class="col-6">
                                 <label class="form-label fw-semibold small">Month</label>
@@ -403,6 +409,7 @@
                         </form>
                         {% endif %}
                     </div>
+                    {% if current_user and current_user.role == 'admin' %}
                     <div class="px-3 pt-2 pb-2 border-bottom bg-white small text-muted">
                         Rows use the <strong>generated</strong> working pattern for
                         <strong>{{ app_context_month_name }} {{ app_context_year }}</strong>
@@ -410,6 +417,7 @@
                         Ratio <strong>6 / 7 / 8</strong> shifts when there are 21 engineers.
                         Week-offs advance by two weekdays each new calendar month from the latest saved monthly snapshot (or your profile if none).
                     </div>
+                    {% endif %}
                     <div class="card-body p-0">
                         {% if employees|length == 0 %}
                         <div class="empty-state text-center">

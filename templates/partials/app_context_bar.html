@@ -1,18 +1,12 @@
-{# Requires: current_user, app_context_year, app_context_month, app_context_month_name, calendar_month_names, request #}
-{% if current_user %}
-{% set is_admin = current_user.role == 'admin' %}
+{# Admins only: application month selector and short explanation. #}
+{% if current_user and current_user.role == 'admin' %}
 <div class="alert alert-light border py-2 mb-3 small d-flex flex-wrap align-items-center justify-content-between gap-2">
     <div>
         <i class="bi bi-calendar3 text-primary"></i>
         <strong>Application month</strong>
         <span class="text-nowrap">{{ app_context_month_name }} {{ app_context_year }}</span>
-        {% if is_admin %}
         <span class="text-muted">— roster, search, coverage, and shift tools use this month unless you override.</span>
-        {% else %}
-        <span class="text-muted">— roster, search, coverage, and shift tools use this month. Only an administrator can change it.</span>
-        {% endif %}
     </div>
-    {% if is_admin %}
     <form method="POST" action="{{ url_for('set_app_context') }}" class="d-flex flex-wrap align-items-center gap-2">
         <input type="hidden" name="next" value="{{ request.path }}">
         <label class="visually-hidden" for="ctxMonthSel">Month</label>
@@ -31,6 +25,5 @@
             <i class="bi bi-check2"></i> Apply
         </button>
     </form>
-    {% endif %}
 </div>
 {% endif %}

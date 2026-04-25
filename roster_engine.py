@@ -21,8 +21,10 @@ DEFAULT_FIVE_DAY_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 # Mandated shift headcount ratio (Shift 1 : Shift 2 : Shift 3) for a full team of 21.
 SHIFT_MANDATE_WEIGHTS = (6, 7, 8)
 
-# Comma-separated names; always Shift 1, excluded from auto reassignment. Override with env PINNED_SHIFT_1_NAMES.
-_PINNED_SHIFT_1_RAW = os.getenv("PINNED_SHIFT_1_NAMES", "Nandini,Neelima")
+# Comma-separated engineer names always kept on Shift 1 (Edit Shifts and generation honor this).
+# Optional: set PINNED_SHIFT_1_NAMES in .env, e.g. PINNED_SHIFT_1_NAMES=Alice,Bob
+# Default is empty so shift changes in the UI are not overridden for anyone.
+_PINNED_SHIFT_1_RAW = os.getenv("PINNED_SHIFT_1_NAMES", "")
 PINNED_SHIFT_1_LOWER = frozenset(
     x.strip().lower() for x in _PINNED_SHIFT_1_RAW.split(",") if x.strip()
 )
@@ -389,13 +391,23 @@ def prepare_employees_for_roster_month(employees, year, month):
     return prep, transition_warnings + prep_errors
 
 
-def assign_shifts(employees, night_shift_counts=None, prev_month_night_ids=None, fixed_assignments=None):
+def assign_shifts(
+    employees,
+    night_shift_counts=None,
+    prev_month_night_ids=None,
+    fixed_assignments=None,
+    *,
+    relax_fixed_caps=False,
+):
     """
     Assign each employee to a shift (1, 2, or 3).
 
     fixed_assignments: name -> shift for people already locked (e.g. Shift 1 pins).
     Mandated targets use len(employees) (6/7/8 for 21); remaining slots are filled
     after fixed placements.
+
+    relax_fixed_caps: If True, do not raise when fixed_assignments already exceed
+    per-shift targets (used for fully manual Edit Shifts saves).
 
     Strategy:
       1. Guarantee: place at least 1 employee of each product type in each shift
@@ -435,7 +447,7 @@ def assign_shifts(employees, night_shift_counts=None, prev_month_night_ids=None,
         shift_counts[s] += 1
 
     for s in (1, 2, 3):
-        if shift_counts[s] > targets[s]:
+        if shift_counts[s] > targets[s] and not relax_fixed_caps:
             raise ValueError(
                 f"Fixed shift assignments exceed mandated cap for shift {s}: "
                 f"{shift_counts[s]} > {targets[s]} (targets {targets})."
@@ -448,6 +460,89 @@ def assign_shifts(employees, night_shift_counts=None, prev_month_night_ids=None,
     _fix_daily_gaps(assignments, sorted_emps)
 
     return assignments
+
+
+def generate_roster_from_manual_assignments(
+    employees,
+    year,
+    month,
+    locked_shifts,
+    prev_month_night_ids=None,
+):
+    """
+    Build the monthly roster grid from a complete engineer name -> shift map.
+
+    Skips mandated 6/7/8 caps (no ValueError for "too many on shift N"). Used when saving
+    arbitrary Edit Shifts layouts. Coverage / type / off-day warnings are still produced.
+    """
+    locked_shifts = dict(locked_shifts or {})
+    employees, prep_warnings = prepare_employees_for_roster_month(employees, year, month)
+    shift_assignments = {}
+    for e in employees:
+        nm = e["name"]
+        if nm not in locked_shifts:
+            raise ValueError(f"Missing shift assignment for engineer: {nm}")
+        shift_assignments[nm] = int(locked_shifts[nm])
+
+    prev_night = frozenset(prev_month_night_ids or ())
+    emp_lookup = {emp["name"]: emp for emp in employees}
+    num_days = calendar.monthrange(year, month)[1]
+    roster = {}
+    warnings = list(prep_warnings)
+
+    off_day_warnings = _check_off_day_overlaps(shift_assignments, employees)
+    warnings.extend(off_day_warnings)
+
+    type_dist_warnings = _check_type_distribution(shift_assignments, employees)
+    warnings.extend(type_dist_warnings)
+
+    if prev_night:
+        emp_by_id = {e.get("id"): e for e in employees}
+        for eid in prev_night:
+            emp = emp_by_id.get(eid)
+            if not emp:
+                continue
+            if shift_assignments.get(emp["name"]) == 3:
+                warnings.append(
+                    f"NIGHT ROTATION: {emp['name']} was on night shift (Shift 3) last month but "
+                    "is still assigned to Shift 3 this month (coverage constraints). Consider manual adjustment."
+                )
+
+    for day in range(1, num_days + 1):
+        d = date(year, month, day)
+        weekday = d.weekday()
+        day_name = DAY_NAMES[weekday]
+
+        daily = {1: [], 2: [], 3: []}
+
+        for emp in employees:
+            if is_emp_scheduled_work_day(emp, d):
+                shift = shift_assignments[emp["name"]]
+                daily[shift].append(emp["name"])
+
+        roster[d] = daily
+
+        for shift_num in [1, 2, 3]:
+            shift_employees = daily[shift_num]
+            if len(shift_employees) == 0:
+                warnings.append(
+                    f"{d.strftime('%b %d')} ({day_name}): {SHIFTS[shift_num]['name']} has NO coverage"
+                )
+                continue
+
+            types_covered = set()
+            for name in shift_employees:
+                for ct in emp_lookup[name]["content_types"]:
+                    types_covered.add(ct)
+
+            for ct in CONTENT_TYPES:
+                if ct not in types_covered:
+                    warnings.append(
+                        f"{d.strftime('%b %d')} ({day_name}): {SHIFTS[shift_num]['name']} "
+                        f"missing '{ct}' coverage"
+                    )
+
+    return roster, warnings, shift_assignments
 
 
 def _guarantee_type_coverage(
@@ -650,12 +745,16 @@ def generate_roster(
     night_shift_counts=None,
     predefined_shifts=None,
     prev_month_night_ids=None,
+    *,
+    relax_fixed_caps=False,
 ):
     """
     Generate a full monthly roster.
 
     predefined_shifts: optional fixed placements (e.g. Shift 1 pins). Everyone else
     is assigned so mandated shift sizes (6/7/8 for 21 engineers) are met.
+
+    relax_fixed_caps: passed through to assign_shifts when fixed placements exceed targets.
 
     Employees are prepared with a normalized 5-day pattern for (year, month) and
     compensatory OFF days on ISO weeks that cross month boundaries when week-offs
@@ -687,6 +786,7 @@ def generate_roster(
         night_shift_counts,
         prev_night,
         fixed_assignments=dict(predefined_shifts or {}),
+        relax_fixed_caps=relax_fixed_caps,
     )
     emp_lookup = {emp["name"]: emp for emp in employees}
 
