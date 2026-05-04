@@ -28,7 +28,7 @@ from roster_engine import (
     pattern_for_calendar_month,
     coerce_to_five_day_pattern,
 )
-from excel_export import generate_excel
+from excel_export import generate_excel, generate_delta_excel
 from project_engine import generate_project_coverage
 from file_parser import parse_file
 import database as db
@@ -2050,6 +2050,230 @@ def bot():
         return jsonify({"answer": "Ask me about:\n• 'Who handles Washington Post on 6th April?'\n• 'Washington Post shift 2 on 6th april'\n• 'What shift is Arun in?'\n• 'Arun on 10th april'\n• 'Who is in shift 2 on april 10?'\n• 'How many leaves does David have?'\n• 'List all projects'"})
 
     return jsonify({"answer": "I couldn't find a match. Try mentioning an employee name, project name, or date. Type 'help' for examples."})
+
+
+# ── Delta Calendar ───────────────────────────────────────
+
+@app.route("/delta")
+@login_required
+def delta():
+    cy, cm = get_app_context_ym()
+    all_projects = db.get_all_projects()
+    all_people = db.get_all_employees()
+    emp_role_map = {e["name"]: e.get("emp_role", "engineer") for e in all_people}
+
+    seen = set()
+    unique_projects = []
+    for p in all_projects:
+        if emp_role_map.get(p["employee_name"]) != "engineer":
+            continue
+        key = (p["name"], p["product_type"])
+        if key not in seen:
+            seen.add(key)
+            unique_projects.append({"name": p["name"], "product_type": p["product_type"]})
+    unique_projects.sort(key=lambda p: (p["name"].lower(), p["product_type"].lower()))
+
+    proj_manager_map = {}
+    for p in all_projects:
+        if emp_role_map.get(p["employee_name"]) == "manager":
+            proj_manager_map[p["name"]] = p["employee_name"]
+
+    managers = [e["name"] for e in all_people if e.get("emp_role") == "manager"]
+    managers.sort()
+
+    delta_events = db.get_all_delta_events()
+    for ev in delta_events:
+        ev["assignments"] = db.get_delta_assignments(ev["id"])
+
+    all_types = sorted({p["product_type"] for p in all_projects}) if all_projects else []
+
+    return render_template(
+        "delta.html",
+        app_name=APP_NAME,
+        unique_projects=unique_projects,
+        proj_manager_map=proj_manager_map,
+        managers=managers,
+        delta_events=delta_events,
+        product_types=all_types,
+        year=cy,
+        month=cm,
+    )
+
+
+@app.route("/delta/preview", methods=["POST"])
+@login_required
+def delta_preview():
+    data = request.get_json()
+    project_name = (data.get("project_name") or "").strip()
+    product_type = (data.get("product_type") or "").strip()
+    start_str = (data.get("start_date") or "").strip()
+    end_str = (data.get("end_date") or "").strip()
+
+    if not project_name or not product_type or not start_str or not end_str:
+        return jsonify({"error": "Missing required fields"}), 400
+
+    try:
+        start_d = date.fromisoformat(start_str)
+        end_d = date.fromisoformat(end_str)
+    except ValueError:
+        return jsonify({"error": "Invalid date format"}), 400
+
+    if end_d < start_d:
+        return jsonify({"error": "End date must be on or after start date"}), 400
+
+    from datetime import timedelta
+    all_dates = []
+    cur_d = start_d
+    while cur_d <= end_d:
+        all_dates.append(cur_d)
+        cur_d += timedelta(days=1)
+
+    from collections import defaultdict
+    dates_by_month = defaultdict(list)
+    for d in all_dates:
+        dates_by_month[(d.year, d.month)].append(d)
+
+    all_projects = db.get_all_projects()
+    engineers = db.get_employees_by_role("engineer")
+
+    result_days = []
+    for (yr, mo), month_dates in sorted(dates_by_month.items()):
+        try:
+            _, _, shift_assignments = _generate_roster_with_saved_month(engineers, yr, mo)
+        except Exception:
+            shift_assignments = {}
+
+        leave_dates = _get_leave_dates(yr, mo)
+
+        try:
+            coverage, _ = generate_project_coverage(
+                all_projects, engineers, shift_assignments, yr, mo, leave_dates
+            )
+        except Exception:
+            coverage = []
+
+        cov_by_day = {c["day_num"]: c for c in coverage}
+
+        prepared_emps, _ = prepare_employees_for_roster_month(engineers, yr, mo)
+        emp_lookup = {e["name"]: e for e in prepared_emps}
+
+        for d in month_dates:
+            day_cov = cov_by_day.get(d.day, {})
+            proj_entry = None
+            for p in day_cov.get("projects", []):
+                if p["project_name"] == project_name and p["product_type"] == product_type:
+                    proj_entry = p
+                    break
+
+            date_str = d.strftime("%Y-%m-%d")
+            shifts_out = {}
+            for sn in [1, 2, 3]:
+                auto_handler = None
+                if proj_entry:
+                    sh = proj_entry.get("shifts", {}).get(sn, {})
+                    auto_handler = sh.get("handler")
+
+                eligible = []
+                for emp in prepared_emps:
+                    if shift_assignments.get(emp["name"]) != sn:
+                        continue
+                    if product_type not in emp.get("content_types", []):
+                        continue
+                    if not is_emp_scheduled_work_day(emp, d):
+                        continue
+                    if date_str in leave_dates.get(emp["name"], []):
+                        continue
+                    eligible.append(emp["name"])
+                eligible.sort()
+
+                if auto_handler and auto_handler not in eligible:
+                    eligible.insert(0, auto_handler)
+
+                shifts_out[str(sn)] = {"auto": auto_handler, "eligible": eligible}
+
+            result_days.append({
+                "date_str": date_str,
+                "day_name": d.strftime("%a, %b %d"),
+                "shifts": shifts_out,
+            })
+
+    return jsonify({"days": result_days})
+
+
+@app.route("/delta/save", methods=["POST"])
+@login_required
+def delta_save():
+    project_name = (request.form.get("project_name") or "").strip()
+    product_type = (request.form.get("product_type") or "").strip()
+    start_date = (request.form.get("start_date") or "").strip()
+    end_date = (request.form.get("end_date") or "").strip()
+
+    if not project_name or not product_type or not start_date or not end_date:
+        flash("Missing required fields.", "danger")
+        return redirect(url_for("delta"))
+
+    manager_name = (request.form.get("manager_name") or "").strip()
+    start_time = (request.form.get("start_time") or "").strip()
+    end_time = (request.form.get("end_time") or "").strip()
+    created_by = g.user.get("username", "") if g.user else ""
+    delta_id = db.add_delta_event(project_name, product_type, start_date, end_date, created_by, manager_name, start_time, end_time)
+
+    assignments = []
+    for key, value in request.form.items():
+        if key.startswith("assign["):
+            try:
+                inner = key[len("assign["):-1]
+                date_part, shift_part = inner.rsplit("][", 1)
+                shift_num = int(shift_part)
+                engineer_name = (value or "").strip()
+                if engineer_name:
+                    assignments.append({
+                        "date": date_part,
+                        "shift_num": shift_num,
+                        "engineer_name": engineer_name,
+                    })
+            except (ValueError, IndexError):
+                continue
+
+    if assignments:
+        db.save_delta_assignments(delta_id, assignments)
+
+    flash(f"Delta for '{project_name}' saved successfully.", "success")
+    return redirect(url_for("delta"))
+
+
+@app.route("/delta/download")
+@login_required
+def delta_download():
+    product_type = (request.args.get("product_type") or "").strip()
+    if not product_type:
+        flash("No product type specified.", "danger")
+        return redirect(url_for("delta"))
+
+    events = db.get_delta_events_by_product_type(product_type)
+    if not events:
+        flash(f"No delta events found for product type '{product_type}'.", "warning")
+        return redirect(url_for("delta"))
+
+    assignments_by_id = {ev["id"]: db.get_delta_assignments(ev["id"]) for ev in events}
+
+    output = generate_delta_excel(events, assignments_by_id, product_type)
+    today_str = date.today().strftime("%Y%m%d")
+    filename = f"Delta_{product_type}_{today_str}.xlsx"
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.route("/delta/delete/<int:delta_id>", methods=["POST"])
+@login_required
+def delta_delete(delta_id):
+    db.delete_delta_event(delta_id)
+    flash("Delta event deleted.", "success")
+    return redirect(url_for("delta"))
 
 
 if __name__ == "__main__":

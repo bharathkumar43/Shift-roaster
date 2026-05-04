@@ -157,6 +157,42 @@ def init_db():
             UNIQUE(employee_id, year)
         )
     """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS delta_events (
+            id SERIAL PRIMARY KEY,
+            project_name TEXT NOT NULL,
+            product_type TEXT NOT NULL,
+            start_date DATE NOT NULL,
+            end_date DATE NOT NULL,
+            manager_name TEXT DEFAULT '',
+            created_by TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+    """)
+    try:
+        cur.execute("ALTER TABLE delta_events ADD COLUMN manager_name TEXT DEFAULT ''")
+        conn.commit()
+    except psycopg2.errors.DuplicateColumn:
+        conn.rollback()
+    try:
+        cur.execute("ALTER TABLE delta_events ADD COLUMN start_time TEXT DEFAULT ''")
+        conn.commit()
+    except psycopg2.errors.DuplicateColumn:
+        conn.rollback()
+    try:
+        cur.execute("ALTER TABLE delta_events ADD COLUMN end_time TEXT DEFAULT ''")
+        conn.commit()
+    except psycopg2.errors.DuplicateColumn:
+        conn.rollback()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS delta_assignments (
+            id SERIAL PRIMARY KEY,
+            delta_event_id INTEGER NOT NULL REFERENCES delta_events(id) ON DELETE CASCADE,
+            assignment_date DATE NOT NULL,
+            shift_num INTEGER NOT NULL,
+            engineer_name TEXT NOT NULL
+        )
+    """)
     cur.execute("SELECT COUNT(*) FROM users")
     if cur.fetchone()[0] == 0:
         admin_user = os.getenv("ADMIN_USER", "admin")
@@ -1039,6 +1075,84 @@ def get_all_balances_for_year(year):
     cur.close()
     conn.close()
     return rows
+
+
+# ── Delta Calendar CRUD ──────────────────────────────────
+
+def add_delta_event(project_name, product_type, start_date, end_date, created_by="", manager_name="", start_time="", end_time=""):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO delta_events (project_name, product_type, start_date, end_date, created_by, manager_name, start_time, end_time) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+        (project_name, product_type, start_date, end_date, created_by, manager_name, start_time, end_time)
+    )
+    delta_id = cur.fetchone()[0]
+    conn.commit()
+    cur.close()
+    conn.close()
+    return delta_id
+
+
+def get_all_delta_events():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM delta_events ORDER BY start_date DESC, id DESC")
+    rows = _fetchall(cur)
+    cur.close()
+    conn.close()
+    return rows
+
+
+def get_delta_events_by_product_type(product_type):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT * FROM delta_events WHERE product_type = %s ORDER BY start_date, id",
+        (product_type,)
+    )
+    rows = _fetchall(cur)
+    cur.close()
+    conn.close()
+    return rows
+
+
+def save_delta_assignments(delta_event_id, assignments):
+    """assignments: list of {date, shift_num, engineer_name}"""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM delta_assignments WHERE delta_event_id = %s", (delta_event_id,))
+    for a in assignments:
+        cur.execute(
+            "INSERT INTO delta_assignments (delta_event_id, assignment_date, shift_num, engineer_name) "
+            "VALUES (%s, %s, %s, %s)",
+            (delta_event_id, a["date"], a["shift_num"], a["engineer_name"])
+        )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def get_delta_assignments(delta_event_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT * FROM delta_assignments WHERE delta_event_id = %s ORDER BY assignment_date, shift_num",
+        (delta_event_id,)
+    )
+    rows = _fetchall(cur)
+    cur.close()
+    conn.close()
+    return rows
+
+
+def delete_delta_event(delta_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM delta_events WHERE id = %s", (delta_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
 
 
 def get_shift_strength(year, month, shift_assignments):

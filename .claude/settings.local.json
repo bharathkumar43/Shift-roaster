@@ -4,7 +4,9 @@
       "Bash(python -c \"import app; print\\(''app.py OK''\\)\")",
       "Bash(python -c \"from file_parser import parse_file, get_excel_headers_info, parse_excel_with_col_map; print\\(''file_parser OK''\\)\")",
       "Bash(python -c \"import app; print\\(''OK''\\)\")",
-      "Bash(python -c \":*)"
+      "Bash(python -c \":*)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\Roaster_Automation\" -Recurse -Filter \"*.py\")",
+      "Bash(Select-Object -ExpandProperty FullName)"
     ]
   }
 }

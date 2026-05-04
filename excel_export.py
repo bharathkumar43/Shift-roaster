@@ -296,6 +296,81 @@ def _create_warnings_sheet(wb, warnings):
         cell.border = THIN_BORDER
 
 
+def generate_delta_excel(events, assignments_by_id, product_type):
+    """
+    Build an Excel file for all delta events of a given product_type.
+
+    events: list of delta_event dicts (from db.get_delta_events_by_product_type)
+    assignments_by_id: dict {delta_event_id: [assignment_dicts]}
+    product_type: str used in the sheet title
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"Delta - {product_type}"
+
+    ws.cell(row=1, column=1, value=f"Delta Calendar — {product_type}")
+    ws.cell(row=1, column=1).font = TITLE_FONT
+
+    headers = ["Project Name", "Product Type", "Manager", "Start Date", "End Date", "Date", "Shift 1", "Shift 2", "Shift 3"]
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=3, column=col, value=h)
+        _style_header(cell)
+
+    col_widths = [28, 14, 22, 14, 14, 14, 22, 22, 22]
+    for i, w in enumerate(col_widths, 1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    row = 4
+    for event in events:
+        event_assignments = assignments_by_id.get(event["id"], [])
+        date_map = {}
+        for a in event_assignments:
+            d = str(a["assignment_date"])
+            if d not in date_map:
+                date_map[d] = {}
+            date_map[d][a["shift_num"]] = a["engineer_name"]
+
+        sorted_dates = sorted(date_map.keys())
+        if not sorted_dates:
+            continue
+
+        for i, d_str in enumerate(sorted_dates):
+            shifts = date_map[d_str]
+            is_first = (i == 0)
+
+            ws.cell(row=row, column=1, value=event["project_name"] if is_first else "").border = THIN_BORDER
+            ws.cell(row=row, column=2, value=event["product_type"] if is_first else "").border = THIN_BORDER
+            ws.cell(row=row, column=3, value=(event.get("manager_name") or "") if is_first else "").border = THIN_BORDER
+            ws.cell(row=row, column=4, value=str(event["start_date"]) if is_first else "").border = THIN_BORDER
+            ws.cell(row=row, column=5, value=str(event["end_date"]) if is_first else "").border = THIN_BORDER
+
+            date_cell = ws.cell(row=row, column=6, value=d_str)
+            date_cell.border = THIN_BORDER
+            date_cell.font = Font(size=10)
+
+            for sn in [1, 2, 3]:
+                col = 5 + sn
+                name = shifts.get(sn, "—")
+                c = ws.cell(row=row, column=col, value=name)
+                c.border = THIN_BORDER
+                c.alignment = Alignment(horizontal="center", vertical="center")
+                if name and name != "—":
+                    c.fill = SHIFT_COLORS[sn]
+                    c.font = Font(size=10)
+                else:
+                    c.fill = OFF_FILL
+                    c.font = OFF_FONT
+
+            row += 1
+
+        row += 1
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output
+
+
 def _style_header(cell):
     cell.font = HEADER_FONT
     cell.fill = HEADER_FILL
