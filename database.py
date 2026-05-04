@@ -165,25 +165,23 @@ def init_db():
             start_date DATE NOT NULL,
             end_date DATE NOT NULL,
             manager_name TEXT DEFAULT '',
+            start_time TEXT DEFAULT '',
+            end_time TEXT DEFAULT '',
             created_by TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT NOW()
         )
     """)
-    try:
-        cur.execute("ALTER TABLE delta_events ADD COLUMN manager_name TEXT DEFAULT ''")
-        conn.commit()
-    except psycopg2.errors.DuplicateColumn:
-        conn.rollback()
-    try:
-        cur.execute("ALTER TABLE delta_events ADD COLUMN start_time TEXT DEFAULT ''")
-        conn.commit()
-    except psycopg2.errors.DuplicateColumn:
-        conn.rollback()
-    try:
-        cur.execute("ALTER TABLE delta_events ADD COLUMN end_time TEXT DEFAULT ''")
-        conn.commit()
-    except psycopg2.errors.DuplicateColumn:
-        conn.rollback()
+    conn.commit()  # commit CREATE TABLE before ALTER TABLE migrations to avoid rollback undoing it
+    for _col, _def in [
+        ("manager_name", "TEXT DEFAULT ''"),
+        ("start_time",   "TEXT DEFAULT ''"),
+        ("end_time",     "TEXT DEFAULT ''"),
+    ]:
+        try:
+            cur.execute(f"ALTER TABLE delta_events ADD COLUMN {_col} {_def}")
+            conn.commit()
+        except (psycopg2.errors.DuplicateColumn, psycopg2.errors.UndefinedTable):
+            conn.rollback()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS delta_assignments (
             id SERIAL PRIMARY KEY,
