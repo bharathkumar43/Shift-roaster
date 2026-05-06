@@ -349,7 +349,7 @@ def generate_delta_excel(events, assignments_by_id, product_type):
             date_cell.font = Font(size=10)
 
             for sn in [1, 2, 3]:
-                col = 5 + sn
+                col = 6 + sn
                 name = shifts.get(sn, "—")
                 c = ws.cell(row=row, column=col, value=name)
                 c.border = THIN_BORDER
