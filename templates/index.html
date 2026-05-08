@@ -718,17 +718,6 @@
                             <i class="bi bi-plus-circle"></i> Add Project
                         </button>
                     </div>
-                    {% if current_user and current_user.role == 'admin' %}
-                    <div class="border-top pt-3 mt-2 d-none" id="editSnapshotAppMonthWrap">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="editSnapshotAppMonth">
-                            <label class="form-check-label" for="editSnapshotAppMonth">
-                                Also save this working pattern for <strong>{{ app_context_month_name }} {{ app_context_year }}</strong>
-                                (updates the monthly snapshot used for week-off rotation).
-                            </label>
-                        </div>
-                    </div>
-                    {% endif %}
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -1261,17 +1250,6 @@
                 document.getElementById('editTypeSection').style.display = hideFields ? 'none' : '';
                 document.getElementById('editDaySection').style.display = hideFields ? 'none' : '';
 
-                var snapWrap = document.getElementById('editSnapshotAppMonthWrap');
-                if (snapWrap) {
-                    if (!hideFields && empRole === 'engineer') {
-                        snapWrap.classList.remove('d-none');
-                        var snapCb = document.getElementById('editSnapshotAppMonth');
-                        if (snapCb) snapCb.checked = false;
-                    } else {
-                        snapWrap.classList.add('d-none');
-                    }
-                }
-
                 var cts      = JSON.parse(btn.dataset.contentTypes);
                 var days     = JSON.parse(btn.dataset.workingDays);
                 var projects = JSON.parse(btn.dataset.projects || '[]');
@@ -1359,11 +1337,7 @@
 
             var editedName = document.getElementById('editEmpNameInput').value.trim();
 
-            var snapEl = document.getElementById('editSnapshotAppMonth');
             var payload = {name: editedName, content_types: cts, working_days: days, projects: projs};
-            if (snapEl && snapEl.offsetParent !== null) {
-                payload.snapshot_for_app_month = !!snapEl.checked;
-            }
 
             fetch('/edit_employee/' + currentEditEmpId, {
                 method: 'POST',
