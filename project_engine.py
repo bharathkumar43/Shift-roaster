@@ -17,7 +17,8 @@ def _emp_sort_key(emp_lookup, name):
 
 
 def _pick_min_coverage(candidates, coverage_load, shift_num, product_type, emp_lookup):
-    """Choose engineer with lowest coverage count for (shift, product_type); tiebreak by id."""
+    """Choose engineer with lowest coverage count for (shift, product_type); tiebreak by id.
+    Used only for day-level backup selection within a month."""
     if not candidates:
         return None
     return min(
@@ -27,6 +28,25 @@ def _pick_min_coverage(candidates, coverage_load, shift_num, product_type, emp_l
             _emp_sort_key(emp_lookup, n),
         ),
     )
+
+
+def _stable_pick(candidates, project_name, shift_num, emp_lookup):
+    """Pick one candidate deterministically based on project name + shift.
+
+    Sorting by employee id first ensures the pool is ordered consistently.
+    The hash is a simple polynomial roll that avoids Python's randomised hash().
+    Result depends only on the project name and the pool, never on what other
+    projects were processed before this one — so adding a new project cannot
+    reshuffle assignments for existing projects.
+    """
+    if not candidates:
+        return None
+    pool = sorted(candidates, key=lambda n: _emp_sort_key(emp_lookup, n))
+    h = 0
+    for ch in project_name.lower():
+        h = (h * 31 + ord(ch)) & 0x7FFFFFFF
+    h = (h * 7 + shift_num) & 0x7FFFFFFF
+    return pool[h % len(pool)]
 
 
 def generate_project_coverage(projects, employees, shift_assignments, year, month, leave_dates=None):
@@ -191,10 +211,10 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_o
     Assign a fixed handler per shift for each project.
 
     Priority:
-      1. Engineers who already have this project assigned in that shift (from DB)
-      2. Among eligible engineers in that shift, pick whoever has the fewest
-         cross-shift coverage slots so far for (shift, product_type) — then
-         tiebreak by employee id (not name alphabet).
+      1. Engineers who already have this project assigned in that shift (from DB).
+      2. Any eligible engineer in that shift — chosen via a stable hash of the
+         project name so the result never changes when unrelated projects are
+         added or removed.
 
     Eligibility for a non-owner shift: same shift, content_types includes
     product_type. (Working days and leaves are applied per day in the
@@ -210,9 +230,6 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_o
     for p in all_projects:
         if p["employee_name"] in emp_lookup:
             proj_assigned[p["name"].lower()].append(p["employee_name"])
-
-    # Running count of fixed coverage slots per engineer per (shift, product_type)
-    coverage_load = defaultdict(int)
 
     for proj in projects:
         owner_name = proj["employee_name"]
@@ -232,6 +249,7 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_o
                 fixed[proj_key][shift_num] = owner_name
                 continue
 
+            # Priority: engineers explicitly assigned to this project in this shift
             assigned_in_shift = [
                 name for name in proj_assigned.get(proj["name"].lower(), [])
                 if name != owner_name
@@ -239,31 +257,21 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_o
                 and product_type in emp_lookup[name]["content_types"]
             ]
             if assigned_in_shift:
-                chosen = _pick_min_coverage(
-                    assigned_in_shift, coverage_load, shift_num, product_type, emp_lookup
+                fixed[proj_key][shift_num] = _stable_pick(
+                    assigned_in_shift, proj["name"], shift_num, emp_lookup
                 )
-                fixed[proj_key][shift_num] = chosen
-                coverage_load[(chosen, shift_num, product_type)] += 1
                 continue
 
-            candidates = []
-            for emp in employees:
-                if emp["name"] == owner_name:
-                    continue
-                if shift_assignments.get(emp["name"]) != shift_num:
-                    continue
-                if product_type not in emp["content_types"]:
-                    continue
-                candidates.append(emp["name"])
-
-            if candidates:
-                chosen = _pick_min_coverage(
-                    candidates, coverage_load, shift_num, product_type, emp_lookup
-                )
-                fixed[proj_key][shift_num] = chosen
-                coverage_load[(chosen, shift_num, product_type)] += 1
-            else:
-                fixed[proj_key][shift_num] = None
+            # Fallback: any eligible engineer in this shift
+            candidates = [
+                emp["name"] for emp in employees
+                if emp["name"] != owner_name
+                and shift_assignments.get(emp["name"]) == shift_num
+                and product_type in emp["content_types"]
+            ]
+            fixed[proj_key][shift_num] = _stable_pick(
+                candidates, proj["name"], shift_num, emp_lookup
+            )
 
     return fixed
 
