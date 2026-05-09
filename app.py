@@ -696,6 +696,8 @@ def save_roster():
         db.snapshot_monthly_working_pattern(pe["id"], year, month, pe["working_days"])
 
     all_projects = db.get_all_projects()
+    _excl = db.get_excluded_projects()
+    all_projects = [p for p in all_projects if (p["name"], p["product_type"]) not in _excl]
     night_counts = db.get_night_shift_counts()
     roster, _, _ = _generate_roster_with_saved_month(
         employees, year, month, night_counts
@@ -2062,12 +2064,16 @@ def delta():
     all_people = db.get_all_employees()
     emp_role_map = {e["name"]: e.get("emp_role", "engineer") for e in all_people}
 
+    excluded = db.get_excluded_projects()
+
     seen = set()
     unique_projects = []
     for p in all_projects:
         if emp_role_map.get(p["employee_name"]) != "engineer":
             continue
         key = (p["name"], p["product_type"])
+        if key in excluded:
+            continue
         if key not in seen:
             seen.add(key)
             unique_projects.append({"name": p["name"], "product_type": p["product_type"]})
@@ -2087,6 +2093,39 @@ def delta():
 
     all_types = sorted({p["product_type"] for p in all_projects}) if all_projects else []
 
+    final_validation_projects = db.get_project_lifecycle_by_status("final_validation")
+    decommissioned_projects = db.get_project_lifecycle_by_status("decommissioned")
+
+    # Build lookup keys so the template can override badge colour from project_lifecycle
+    # (authoritative source for phase) rather than delta_events.delta_status alone
+    final_validation_keys = [
+        f"{p['project_name']}||{p['product_type']}" for p in final_validation_projects
+    ]
+    decommissioned_keys = [
+        f"{p['project_name']}||{p['product_type']}" for p in decommissioned_projects
+    ]
+
+    today = date.today()
+    today_str = today.isoformat()
+    from datetime import timedelta
+    week_start = today - timedelta(days=today.weekday())   # Monday
+    week_end   = week_start + timedelta(days=6)             # Sunday
+
+    current_week_events = []
+    history_by_week = {}  # {week_monday_date: [events]}
+    for ev in delta_events:
+        ev_start = date.fromisoformat(str(ev["start_date"]))
+        ev_week_mon = ev_start - timedelta(days=ev_start.weekday())
+        if ev_week_mon == week_start:
+            current_week_events.append(ev)
+        else:
+            history_by_week.setdefault(ev_week_mon, []).append(ev)
+
+    sorted_history = [
+        (ws.isoformat(), (ws + timedelta(days=6)).isoformat(), evts)
+        for ws, evts in sorted(history_by_week.items(), key=lambda x: x[0], reverse=True)
+    ]
+
     return render_template(
         "delta.html",
         app_name=APP_NAME,
@@ -2097,6 +2136,15 @@ def delta():
         product_types=all_types,
         year=cy,
         month=cm,
+        final_validation_projects=final_validation_projects,
+        decommissioned_projects=decommissioned_projects,
+        final_validation_keys=final_validation_keys,
+        decommissioned_keys=decommissioned_keys,
+        today_str=today_str,
+        week_start=week_start.isoformat(),
+        week_end=week_end.isoformat(),
+        current_week_events=current_week_events,
+        sorted_history=sorted_history,
     )
 
 
@@ -2134,6 +2182,8 @@ def delta_preview():
         dates_by_month[(d.year, d.month)].append(d)
 
     all_projects = db.get_all_projects()
+    _excl = db.get_excluded_projects()
+    all_projects = [p for p in all_projects if (p["name"], p["product_type"]) not in _excl]
     engineers = db.get_employees_by_role("engineer")
 
     result_days = []
@@ -2245,21 +2295,58 @@ def delta_save():
 @app.route("/delta/download")
 @login_required
 def delta_download():
+    from datetime import timedelta
     product_type = (request.args.get("product_type") or "").strip()
     if not product_type:
         flash("No product type specified.", "danger")
         return redirect(url_for("delta"))
 
-    events = db.get_delta_events_by_product_type(product_type)
-    if not events:
-        flash(f"No delta events found for product type '{product_type}'.", "warning")
+    today = date.today()
+
+    # Priority: explicit from_date/to_date  >  week (Monday)  >  current week
+    from_param = (request.args.get("from_date") or "").strip()
+    to_param   = (request.args.get("to_date")   or "").strip()
+    week_param = (request.args.get("week")       or "").strip()
+
+    try:
+        if from_param and to_param:
+            range_start = date.fromisoformat(from_param)
+            range_end   = date.fromisoformat(to_param)
+            if range_end < range_start:
+                range_end = range_start
+            label = f"{range_start.strftime('%Y%m%d')}_{range_end.strftime('%Y%m%d')}"
+        elif week_param:
+            range_start = date.fromisoformat(week_param)
+            range_end   = range_start + timedelta(days=6)
+            label = range_start.strftime('%Y%m%d')
+        else:
+            range_start = today - timedelta(days=today.weekday())
+            range_end   = range_start + timedelta(days=6)
+            label = range_start.strftime('%Y%m%d')
+    except ValueError:
+        flash("Invalid date parameter.", "danger")
         return redirect(url_for("delta"))
 
-    assignments_by_id = {ev["id"]: db.get_delta_assignments(ev["id"]) for ev in events}
+    all_events = db.get_delta_events_by_product_type(product_type)
+
+    assignments_by_id = {}
+    for ev in all_events:
+        raw = db.get_delta_assignments(ev["id"])
+        filtered = [
+            a for a in raw
+            if range_start <= date.fromisoformat(str(a["assignment_date"])) <= range_end
+        ]
+        if filtered:
+            assignments_by_id[ev["id"]] = filtered
+
+    events = [ev for ev in all_events if ev["id"] in assignments_by_id]
+
+    if not events:
+        flash(f"No delta assignments for '{product_type}' between {range_start} and {range_end}.", "warning")
+        return redirect(url_for("delta"))
 
     output = generate_delta_excel(events, assignments_by_id, product_type)
-    today_str = date.today().strftime("%Y%m%d")
-    filename = f"Delta_{product_type}_{today_str}.xlsx"
+    filename = f"Delta_{product_type}_{label}.xlsx"
     return send_file(
         output,
         as_attachment=True,
@@ -2274,6 +2361,112 @@ def delta_delete(delta_id):
     db.delete_delta_event(delta_id)
     flash("Delta event deleted.", "success")
     return redirect(url_for("delta"))
+
+
+@app.route("/delta/range-data")
+@login_required
+def delta_range_data():
+    from datetime import timedelta
+    from_param = (request.args.get("from_date") or "").strip()
+    to_param   = (request.args.get("to_date")   or "").strip()
+    pt_param   = (request.args.get("product_type") or "").strip()
+
+    if not from_param or not to_param:
+        return jsonify({"error": "Both from_date and to_date are required."}), 400
+
+    try:
+        range_start = date.fromisoformat(from_param)
+        range_end   = date.fromisoformat(to_param)
+    except ValueError:
+        return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
+
+    if range_end < range_start:
+        return jsonify({"error": "End date must be on or after start date."}), 400
+
+    if pt_param:
+        all_events = db.get_delta_events_by_product_type(pt_param)
+    else:
+        all_events = db.get_all_delta_events()
+
+    results = []
+    for ev in all_events:
+        raw = db.get_delta_assignments(ev["id"])
+        filtered = sorted(
+            [a for a in raw
+             if range_start <= date.fromisoformat(str(a["assignment_date"])) <= range_end],
+            key=lambda a: (str(a["assignment_date"]), a["shift_num"])
+        )
+        if filtered:
+            results.append({
+                "project_name": ev["project_name"],
+                "product_type": ev["product_type"],
+                "manager_name": ev.get("manager_name") or "",
+                "start_date":   str(ev["start_date"]),
+                "end_date":     str(ev["end_date"]),
+                "delta_status": ev.get("delta_status") or "active",
+                "assignments":  [
+                    {"date": str(a["assignment_date"]),
+                     "shift": a["shift_num"],
+                     "engineer": a["engineer_name"]}
+                    for a in filtered
+                ],
+            })
+
+    return jsonify({"events": results, "from_date": from_param, "to_date": to_param, "total": len(results)})
+
+
+@app.route("/delta/set-status/<int:delta_id>", methods=["POST"])
+@login_required
+def delta_set_status(delta_id):
+    status = request.form.get("delta_status", "").strip()
+    valid = {"pre_delta", "delta_issues", "final_validation"}
+    if status not in valid:
+        flash("Invalid status.", "danger")
+        return redirect(url_for("delta"))
+
+    db.update_delta_status(delta_id, status)
+
+    if status == "final_validation":
+        project_name = request.form.get("project_name", "").strip()
+        product_type = request.form.get("product_type", "").strip()
+        if project_name and product_type:
+            db.upsert_project_lifecycle(
+                project_name, product_type,
+                migration_status="final_validation",
+                final_validation_date=date.today(),
+            )
+            flash(f"'{project_name}' marked as Final Validation — removed from active roster.", "warning")
+        else:
+            flash("Status updated to Final Validation.", "warning")
+    else:
+        label = {"pre_delta": "Pre-delta", "delta_issues": "Delta Issues"}[status]
+        flash(f"Delta status updated to {label}.", "success")
+
+    return redirect(url_for("delta"))
+
+
+@app.route("/delta/decommission", methods=["POST"])
+@login_required
+def delta_decommission():
+    project_name = request.form.get("project_name", "").strip()
+    product_type = request.form.get("product_type", "").strip()
+    if not project_name or not product_type:
+        flash("Missing project information.", "danger")
+        return redirect(url_for("delta"))
+
+    db.upsert_project_lifecycle(
+        project_name, product_type,
+        migration_status="decommissioned",
+        decommission_date=date.today(),
+    )
+    db.update_delta_events_status_by_project(project_name, product_type, "decommissioned")
+    flash(f"'{project_name}' has been decommissioned as of {date.today()}.", "success")
+    return redirect(url_for("delta"))
+
+
+@app.route("/favicon.ico")
+def favicon():
+    return "", 204
 
 
 if __name__ == "__main__":

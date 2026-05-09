@@ -191,6 +191,23 @@ def init_db():
             engineer_name TEXT NOT NULL
         )
     """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS project_lifecycle (
+            id SERIAL PRIMARY KEY,
+            project_name TEXT NOT NULL,
+            product_type TEXT NOT NULL,
+            migration_status TEXT NOT NULL DEFAULT 'final_validation',
+            final_validation_date DATE,
+            decommission_date DATE,
+            UNIQUE(project_name, product_type)
+        )
+    """)
+    conn.commit()
+    try:
+        cur.execute("ALTER TABLE delta_events ADD COLUMN delta_status TEXT NOT NULL DEFAULT 'active'")
+        conn.commit()
+    except (psycopg2.errors.DuplicateColumn, psycopg2.errors.UndefinedTable):
+        conn.rollback()
     cur.execute("SELECT COUNT(*) FROM users")
     if cur.fetchone()[0] == 0:
         admin_user = os.getenv("ADMIN_USER", "admin")
@@ -1151,6 +1168,70 @@ def delete_delta_event(delta_id):
     conn.commit()
     cur.close()
     conn.close()
+
+
+def update_delta_status(delta_id, status):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE delta_events SET delta_status = %s WHERE id = %s", (status, delta_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def update_delta_events_status_by_project(project_name, product_type, status):
+    """Update delta_status on all delta_events for a given project/product_type."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE delta_events SET delta_status = %s WHERE project_name = %s AND product_type = %s",
+        (status, project_name, product_type)
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def upsert_project_lifecycle(project_name, product_type, migration_status, final_validation_date=None, decommission_date=None):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO project_lifecycle (project_name, product_type, migration_status, final_validation_date, decommission_date)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (project_name, product_type) DO UPDATE
+            SET migration_status = EXCLUDED.migration_status,
+                final_validation_date = COALESCE(EXCLUDED.final_validation_date, project_lifecycle.final_validation_date),
+                decommission_date = COALESCE(EXCLUDED.decommission_date, project_lifecycle.decommission_date)
+    """, (project_name, product_type, migration_status, final_validation_date, decommission_date))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def get_project_lifecycle_by_status(status):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT * FROM project_lifecycle WHERE migration_status = %s ORDER BY project_name, product_type",
+        (status,)
+    )
+    rows = _fetchall(cur)
+    cur.close()
+    conn.close()
+    return rows
+
+
+def get_excluded_projects():
+    """Return set of (project_name, product_type) that are final_validation or decommissioned."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT project_name, product_type FROM project_lifecycle WHERE migration_status IN ('final_validation', 'decommissioned')"
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return {(r[0], r[1]) for r in rows}
 
 
 def get_shift_strength(year, month, shift_assignments):

@@ -184,29 +184,39 @@
             </div>
         </div>
 
-        <!-- Saved Deltas -->
+        <!-- Delta Lifecycle Tabs -->
         <div class="card shadow-sm border-0 animate-in mt-4">
-            <div class="card-header bg-white border-bottom d-flex flex-wrap align-items-center justify-content-between gap-2">
-                <h6 class="mb-0">
-                    <i class="bi bi-archive"></i> Saved Deltas
-                    <span class="badge bg-primary rounded-pill ms-1">{{ delta_events|length }}</span>
-                </h6>
-                {% if delta_events %}
-                <div class="d-flex flex-wrap gap-2">
-                    {% for pt in product_types %}
-                    {% set has_events = delta_events | selectattr("product_type", "equalto", pt) | list %}
-                    {% if has_events %}
-                    <a href="{{ url_for('delta_download', product_type=pt) }}"
-                       class="btn btn-outline-success btn-sm">
-                        <i class="bi bi-download"></i> Download {{ pt }}
-                    </a>
-                    {% endif %}
-                    {% endfor %}
-                </div>
-                {% endif %}
+            <div class="card-header bg-white border-bottom">
+                <ul class="nav nav-tabs card-header-tabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="tab-saved-btn" data-bs-toggle="tab" data-bs-target="#tab-saved" type="button" role="tab">
+                            <i class="bi bi-archive me-1"></i> Saved Deltas
+                            <span class="badge bg-primary rounded-pill ms-1">{{ delta_events|length }}</span>
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-fv-btn" data-bs-toggle="tab" data-bs-target="#tab-fv" type="button" role="tab">
+                            <i class="bi bi-hourglass-split me-1"></i> Final Validation
+                            {% if final_validation_projects %}
+                            <span class="badge bg-warning text-dark rounded-pill ms-1">{{ final_validation_projects|length }}</span>
+                            {% endif %}
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-decom-btn" data-bs-toggle="tab" data-bs-target="#tab-decom" type="button" role="tab">
+                            <i class="bi bi-archive-fill me-1"></i> Decommissioned
+                            {% if decommissioned_projects %}
+                            <span class="badge bg-secondary rounded-pill ms-1">{{ decommissioned_projects|length }}</span>
+                            {% endif %}
+                        </button>
+                    </li>
+                </ul>
             </div>
-            <div class="card-body p-0">
-                {% if delta_events %}
+            <div class="tab-content">
+
+                <!-- ── Tab 1: Saved Deltas ── -->
+                {# Macro: renders the events table for a given list of delta events #}
+                {% macro event_table(events) %}
                 <div class="table-responsive">
                     <table class="table table-sm table-hover align-middle mb-0">
                         <thead class="table-light">
@@ -216,14 +226,16 @@
                                 <th>Manager</th>
                                 <th>Dates</th>
                                 <th>Created By</th>
+                                <th>Phase</th>
                                 <th>Assignments</th>
                                 {% if current_user and current_user.role == 'admin' %}
-                                <th style="width:60px"></th>
+                                <th style="width:50px"></th>
                                 {% endif %}
                             </tr>
                         </thead>
                         <tbody>
-                            {% for ev in delta_events %}
+                            {% for ev in events %}
+                            {% set is_completed = ev.end_date|string <= today_str %}
                             <tr>
                                 <td class="fw-medium small">{{ ev.project_name }}</td>
                                 <td>
@@ -232,16 +244,12 @@
                                     </span>
                                 </td>
                                 <td class="small">
-                                    {% if ev.manager_name %}
-                                    <span class="fw-medium">{{ ev.manager_name }}</span>
-                                    {% else %}
-                                    <span class="text-muted">—</span>
-                                    {% endif %}
+                                    {% if ev.manager_name %}<span class="fw-medium">{{ ev.manager_name }}</span>
+                                    {% else %}<span class="text-muted">—</span>{% endif %}
                                 </td>
                                 <td class="small">
                                     {% if ev.start_date == ev.end_date %}
-                                        {{ ev.start_date }}
-                                        {% if ev.start_time %}<span class="text-muted ms-1">{{ ev.start_time }}</span>{% endif %}
+                                        {{ ev.start_date }}{% if ev.start_time %}<span class="text-muted ms-1">{{ ev.start_time }}</span>{% endif %}
                                     {% else %}
                                         {{ ev.start_date }}{% if ev.start_time %} <span class="text-muted">{{ ev.start_time }}</span>{% endif %}
                                         &rarr;
@@ -249,11 +257,39 @@
                                     {% endif %}
                                 </td>
                                 <td class="small text-muted">{{ ev.created_by or '—' }}</td>
+                                {% set proj_key = ev.project_name ~ "||" ~ ev.product_type %}
+                                <td>
+                                    {% if not is_completed %}
+                                        <span class="badge bg-success">Upcoming</span>
+                                    {% elif proj_key in decommissioned_keys %}
+                                        {# project_lifecycle is authoritative — overrides delta_events.delta_status #}
+                                        <span class="badge bg-dark">Decommissioned</span>
+                                    {% elif proj_key in final_validation_keys %}
+                                        <span class="badge bg-warning text-dark">Final Validation</span>
+                                    {% elif ev.delta_status == 'pre_delta' %}
+                                        <span class="badge bg-info text-dark">Pre-delta</span>
+                                    {% elif ev.delta_status == 'delta_issues' %}
+                                        <span class="badge bg-danger">Delta Issues</span>
+                                    {% else %}
+                                        <form method="POST" action="{{ url_for('delta_set_status', delta_id=ev.id) }}" class="d-flex gap-1 align-items-center">
+                                            <input type="hidden" name="project_name" value="{{ ev.project_name }}">
+                                            <input type="hidden" name="product_type" value="{{ ev.product_type }}">
+                                            <select name="delta_status" class="form-select form-select-sm" style="min-width:140px" required>
+                                                <option value="" disabled selected>Set phase…</option>
+                                                <option value="pre_delta">Pre-delta</option>
+                                                <option value="delta_issues">Delta Issues</option>
+                                                <option value="final_validation">Final Validation</option>
+                                            </select>
+                                            <button type="submit" class="btn btn-sm btn-primary" title="Save phase">
+                                                <i class="bi bi-check-lg"></i>
+                                            </button>
+                                        </form>
+                                    {% endif %}
+                                </td>
                                 <td>
                                     {% if ev.assignments %}
                                     <button class="btn btn-outline-secondary btn-sm" type="button"
-                                            data-bs-toggle="collapse"
-                                            data-bs-target="#assign_{{ ev.id }}">
+                                            data-bs-toggle="collapse" data-bs-target="#assign_{{ ev.id }}">
                                         <i class="bi bi-chevron-down"></i> {{ ev.assignments|length }} rows
                                     </button>
                                     <div class="collapse mt-1" id="assign_{{ ev.id }}">
@@ -280,8 +316,7 @@
                                 <td>
                                     <form method="POST" action="{{ url_for('delta_delete', delta_id=ev.id) }}" class="d-inline">
                                         <button type="submit" class="btn btn-sm btn-outline-danger"
-                                                onclick="return confirm('Delete this delta event?')"
-                                                title="Delete">
+                                                onclick="return confirm('Delete this delta event?')" title="Delete">
                                             <i class="bi bi-trash"></i>
                                         </button>
                                     </form>
@@ -292,14 +327,220 @@
                         </tbody>
                     </table>
                 </div>
-                {% else %}
-                <div class="text-center text-muted py-5">
-                    <i class="bi bi-calendar-event display-5 d-block mb-2" style="opacity:0.2"></i>
-                    <p class="mb-0 fw-medium">No delta events yet</p>
-                    <small>Create your first delta using the form above.</small>
+                {% endmacro %}
+
+                <div class="tab-pane fade show active" id="tab-saved" role="tabpanel">
+
+                    {% if not delta_events %}
+                    <div class="text-center text-muted py-5">
+                        <i class="bi bi-calendar-event display-5 d-block mb-2" style="opacity:0.2"></i>
+                        <p class="mb-0 fw-medium">No delta events yet</p>
+                        <small>Create your first delta using the form above.</small>
+                    </div>
+                    {% else %}
+
+                    <!-- Download bar: only downloads current week data -->
+                    <div class="p-2 d-flex flex-wrap align-items-center gap-2 bg-light border-bottom">
+                        <span class="small text-muted"><i class="bi bi-download me-1"></i><strong>Current week</strong> Excel:</span>
+                        {% set ns = namespace(has_any=false) %}
+                        {% for pt in product_types %}
+                        {% set wk_evts = current_week_events | selectattr("product_type", "equalto", pt) | list %}
+                        {% if wk_evts %}
+                        {% set ns.has_any = true %}
+                        <a href="{{ url_for('delta_download', product_type=pt) }}" class="btn btn-success btn-sm">
+                            <i class="bi bi-file-earmark-excel me-1"></i>{{ pt }}
+                        </a>
+                        {% endif %}
+                        {% endfor %}
+                        {% if not ns.has_any %}
+                        <span class="small text-muted fst-italic">No events in current week</span>
+                        {% endif %}
+                    </div>
+
+                    <!-- ── Running Week ── -->
+                    <div class="d-flex align-items-center gap-2 px-3 py-2 border-bottom"
+                         style="background:rgba(25,135,84,0.08)">
+                        <i class="bi bi-calendar-week text-success fs-5"></i>
+                        <span class="fw-semibold text-success">Running Week &nbsp;
+                            <span class="fw-normal text-dark">{{ week_start }} – {{ week_end }}</span>
+                        </span>
+                        <span class="badge bg-success ms-1">{{ current_week_events|length }}</span>
+                    </div>
+
+                    {% if current_week_events %}
+                    {{ event_table(current_week_events) }}
+                    {% else %}
+                    <div class="text-center text-muted py-3 border-bottom">
+                        <small><i class="bi bi-calendar2-x me-1"></i>No delta events for the current week.</small>
+                    </div>
+                    {% endif %}
+
+                    <!-- ── History ── -->
+                    {% if sorted_history %}
+                    <div class="px-3 py-2 bg-light border-bottom border-top mt-1 d-flex align-items-center justify-content-between">
+                        <span class="fw-semibold text-secondary small">
+                            <i class="bi bi-clock-history me-1"></i>History
+                            <span class="badge bg-secondary ms-1">{{ sorted_history|length }} week(s)</span>
+                        </span>
+                        <button class="btn btn-sm btn-outline-primary py-0" type="button"
+                                id="toggleRangePanel">
+                            <i class="bi bi-calendar-range me-1"></i>View by Date Range
+                        </button>
+                    </div>
+
+                    <!-- Inline date range panel — no modal, so date pickers work on all browsers -->
+                    <div id="rangePanelWrap" style="display:none">
+                        <div class="p-3 border-bottom" style="background:#f0f4ff">
+                            <div class="fw-semibold small mb-2 text-primary">
+                                <i class="bi bi-calendar-range me-1"></i>View Delta Data by Date Range
+                            </div>
+                            <div class="row g-2 align-items-end">
+                                <div class="col-sm-3">
+                                    <label class="form-label small fw-semibold mb-1">Product Type</label>
+                                    <select id="rangeProductType" class="form-select form-select-sm">
+                                        <option value="">All types</option>
+                                        {% for pt in product_types %}
+                                        <option value="{{ pt }}">{{ pt }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-sm-3">
+                                    <label class="form-label small fw-semibold mb-1">From Date</label>
+                                    <input type="date" id="rangeFrom" class="form-control form-control-sm">
+                                </div>
+                                <div class="col-sm-3">
+                                    <label class="form-label small fw-semibold mb-1">To Date</label>
+                                    <input type="date" id="rangeTo" class="form-control form-control-sm">
+                                </div>
+                                <div class="col-sm-2">
+                                    <button id="rangeGetDataBtn" class="btn btn-primary btn-sm w-100">
+                                        <i class="bi bi-search me-1"></i>Get Data
+                                    </button>
+                                </div>
+                                <div class="col-sm-1">
+                                    <button id="closeRangePanel" class="btn btn-outline-secondary btn-sm w-100" title="Close">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="rangeError" class="alert alert-danger py-2 mt-2 mb-0 d-none small"></div>
+                        </div>
+                        <!-- Results render here, inline below the form -->
+                        <div id="rangeResults" class="border-bottom"></div>
+                    </div>
+
+                    {% for week_mon_str, week_sun_str, week_events in sorted_history %}
+                    {% set wid = "wk_" ~ week_mon_str|replace('-','') %}
+                    <div class="border-bottom">
+                        <div class="d-flex align-items-center px-3 py-2 gap-2" style="background:#f8f9fa">
+                            <button class="btn btn-sm btn-link text-decoration-none text-dark p-0 d-flex align-items-center gap-2"
+                                    type="button" data-bs-toggle="collapse" data-bs-target="#{{ wid }}"
+                                    aria-expanded="false" aria-controls="{{ wid }}">
+                                <i class="bi bi-chevron-right text-secondary" style="transition:transform .2s" id="chev_{{ wid }}"></i>
+                                <i class="bi bi-calendar3 text-secondary"></i>
+                                <span class="fw-medium small">{{ week_mon_str }} &ndash; {{ week_sun_str }}</span>
+                                <span class="badge bg-secondary rounded-pill">{{ week_events|length }}</span>
+                            </button>
+                        </div>
+                        <div class="collapse" id="{{ wid }}">
+                            {{ event_table(week_events) }}
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
+
+                    {% endif %}{# end delta_events check #}
                 </div>
-                {% endif %}
-            </div>
+
+                <!-- ── Tab 2: Final Validation ── -->
+                <div class="tab-pane fade" id="tab-fv" role="tabpanel">
+                    {% if final_validation_projects %}
+                    <div class="alert alert-warning m-3 mb-0 py-2">
+                        <i class="bi bi-info-circle me-1"></i>
+                        These projects have completed their delta and are waiting for decommission.
+                        They are <strong>removed from the active roster</strong> and no new delta assignments will be made.
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Project</th>
+                                    <th>Type</th>
+                                    <th>Final Validation Date</th>
+                                    <th style="width:160px"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for proj in final_validation_projects %}
+                                <tr>
+                                    <td class="fw-medium">{{ proj.project_name }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'primary' if proj.product_type == 'Content' else ('info text-dark' if proj.product_type == 'Email' else 'secondary') }}">
+                                            {{ proj.product_type }}
+                                        </span>
+                                    </td>
+                                    <td class="small text-muted">{{ proj.final_validation_date or '—' }}</td>
+                                    <td>
+                                        <form method="POST" action="{{ url_for('delta_decommission') }}" class="d-inline"
+                                              onsubmit="return confirm('Mark {{ proj.project_name }} as decommissioned today?')">
+                                            <input type="hidden" name="project_name" value="{{ proj.project_name }}">
+                                            <input type="hidden" name="product_type" value="{{ proj.product_type }}">
+                                            <button type="submit" class="btn btn-sm btn-danger">
+                                                <i class="bi bi-x-octagon me-1"></i> Decommission
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center text-muted py-5">
+                        <i class="bi bi-hourglass display-5 d-block mb-2" style="opacity:0.2"></i>
+                        <p class="mb-0 fw-medium">No projects in Final Validation</p>
+                        <small>Projects marked as Final Validation will appear here.</small>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- ── Tab 3: Decommissioned ── -->
+                <div class="tab-pane fade" id="tab-decom" role="tabpanel">
+                    {% if decommissioned_projects %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Project</th>
+                                    <th>Type</th>
+                                    <th>Final Validation Date</th>
+                                    <th>Decommission Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for proj in decommissioned_projects %}
+                                <tr>
+                                    <td class="fw-medium">{{ proj.project_name }}</td>
+                                    <td>
+                                        <span class="badge bg-secondary">{{ proj.product_type }}</span>
+                                    </td>
+                                    <td class="small text-muted">{{ proj.final_validation_date or '—' }}</td>
+                                    <td class="small fw-medium text-danger">{{ proj.decommission_date or '—' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center text-muted py-5">
+                        <i class="bi bi-archive-fill display-5 d-block mb-2" style="opacity:0.2"></i>
+                        <p class="mb-0 fw-medium">No decommissioned projects</p>
+                        <small>Projects decommissioned from Final Validation will be listed here with their decommission date.</small>
+                    </div>
+                    {% endif %}
+                </div>
+
+            </div><!-- /tab-content -->
         </div>
     </main>
 
@@ -517,6 +758,167 @@
             previewError.textContent = msg;
             previewError.classList.remove('d-none');
         }
+    })();
+    </script>
+    <script>
+    // Rotate chevron icons when history week collapses expand/collapse
+    document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(function(btn) {
+        var target = btn.getAttribute('data-bs-target');
+        if (!target) return;
+        var collapseEl = document.querySelector(target);
+        if (!collapseEl) return;
+        var chevId = 'chev_' + target.replace('#', '');
+        var chev = document.getElementById(chevId);
+        if (!chev) return;
+        collapseEl.addEventListener('show.bs.collapse', function() {
+            chev.style.transform = 'rotate(90deg)';
+        });
+        collapseEl.addEventListener('hide.bs.collapse', function() {
+            chev.style.transform = 'rotate(0deg)';
+        });
+    });
+
+    // ── View by Date Range (inline panel, no modal) ──────────
+    (function () {
+        var toggleBtn  = document.getElementById('toggleRangePanel');
+        var closeBtn   = document.getElementById('closeRangePanel');
+        var panelWrap  = document.getElementById('rangePanelWrap');
+        var getBtn     = document.getElementById('rangeGetDataBtn');
+        var fromInput  = document.getElementById('rangeFrom');
+        var toInput    = document.getElementById('rangeTo');
+        var ptSel      = document.getElementById('rangeProductType');
+        var errBox     = document.getElementById('rangeError');
+        var results    = document.getElementById('rangeResults');
+
+        if (!toggleBtn || !panelWrap) return;
+
+        function showPanel() {
+            panelWrap.style.display = '';
+            toggleBtn.innerHTML = '<i class="bi bi-calendar-range me-1"></i>View by Date Range';
+            if (fromInput) fromInput.focus();
+        }
+        function hidePanel() {
+            panelWrap.style.display = 'none';
+            results.innerHTML = '';
+            errBox.classList.add('d-none');
+        }
+
+        toggleBtn.addEventListener('click', function () {
+            if (panelWrap.style.display === 'none' || panelWrap.style.display === '') {
+                showPanel();
+            } else {
+                hidePanel();
+            }
+        });
+        if (closeBtn) closeBtn.addEventListener('click', hidePanel);
+
+        var STATUS_LABELS = {
+            'active':           '<span class="badge bg-secondary">Active</span>',
+            'pre_delta':        '<span class="badge bg-info text-dark">Pre-delta</span>',
+            'delta_issues':     '<span class="badge bg-danger">Delta Issues</span>',
+            'final_validation': '<span class="badge bg-warning text-dark">Final Validation</span>',
+            'decommissioned':   '<span class="badge bg-dark">Decommissioned</span>'
+        };
+        var TYPE_COLORS = { 'Content': 'primary', 'Email': 'info' };
+
+        if (!getBtn) return;
+
+        getBtn.addEventListener('click', function () {
+            var from = (fromInput.value || '').trim();
+            var to   = (toInput.value   || '').trim();
+            var pt   = (ptSel.value     || '').trim();
+
+            errBox.classList.add('d-none');
+            results.innerHTML = '';
+
+            if (!from || !to) {
+                errBox.textContent = 'Please select both From Date and To Date.';
+                errBox.classList.remove('d-none');
+                return;
+            }
+            if (to < from) {
+                errBox.textContent = 'To Date must be on or after From Date.';
+                errBox.classList.remove('d-none');
+                return;
+            }
+
+            getBtn.disabled = true;
+            getBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>';
+
+            var url = '/delta/range-data?from_date=' + encodeURIComponent(from) +
+                      '&to_date='   + encodeURIComponent(to) +
+                      (pt ? '&product_type=' + encodeURIComponent(pt) : '');
+
+            fetch(url)
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    getBtn.disabled = false;
+                    getBtn.innerHTML = '<i class="bi bi-search me-1"></i>Get Data';
+
+                    if (data.error) {
+                        errBox.textContent = data.error;
+                        errBox.classList.remove('d-none');
+                        return;
+                    }
+
+                    if (!data.events || data.events.length === 0) {
+                        results.innerHTML =
+                            '<div class="text-center text-muted py-4 px-3">' +
+                            '<i class="bi bi-calendar-x d-block mb-2" style="font-size:2rem;opacity:.3"></i>' +
+                            '<p class="mb-0 small">No delta assignments found between <strong>' +
+                            from + '</strong> and <strong>' + to + '</strong>.</p></div>';
+                        return;
+                    }
+
+                    var html = '<div class="px-3 pt-2 pb-1 border-top bg-white">' +
+                               '<span class="small text-muted">Found <strong>' + data.total +
+                               '</strong> project(s) with assignments between <strong>' +
+                               data.from_date + '</strong> and <strong>' + data.to_date + '</strong></span></div>';
+
+                    data.events.forEach(function (ev) {
+                        var typeColor   = TYPE_COLORS[ev.product_type] || 'secondary';
+                        var statusBadge = STATUS_LABELS[ev.delta_status] || '<span class="badge bg-secondary">—</span>';
+
+                        var byDate = {};
+                        ev.assignments.forEach(function (a) {
+                            if (!byDate[a.date]) byDate[a.date] = {};
+                            byDate[a.date][a.shift] = a.engineer;
+                        });
+
+                        var rows = '';
+                        Object.keys(byDate).sort().forEach(function (d) {
+                            var s = byDate[d];
+                            rows += '<tr>' +
+                                '<td class="small">' + d + '</td>' +
+                                '<td class="text-center small">' + (s[1] || '<span class="text-muted">—</span>') + '</td>' +
+                                '<td class="text-center small">' + (s[2] || '<span class="text-muted">—</span>') + '</td>' +
+                                '<td class="text-center small">' + (s[3] || '<span class="text-muted">—</span>') + '</td>' +
+                                '</tr>';
+                        });
+
+                        html += '<div class="mx-3 my-2 card border">' +
+                            '<div class="card-header py-1 bg-white d-flex flex-wrap align-items-center gap-2">' +
+                            '<span class="fw-semibold small">' + ev.project_name + '</span>' +
+                            '<span class="badge bg-' + typeColor + (typeColor === 'info' ? ' text-dark' : '') + '">' + ev.product_type + '</span>' +
+                            statusBadge +
+                            (ev.manager_name ? '<span class="text-muted small ms-auto"><i class="bi bi-person-badge me-1"></i>' + ev.manager_name + '</span>' : '') +
+                            '</div>' +
+                            '<div class="table-responsive"><table class="table table-sm table-bordered mb-0">' +
+                            '<thead class="table-light"><tr>' +
+                            '<th>Date</th><th class="text-center">Shift 1</th><th class="text-center">Shift 2</th><th class="text-center">Shift 3</th>' +
+                            '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+                    });
+
+                    results.innerHTML = html;
+                    results.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                })
+                .catch(function () {
+                    getBtn.disabled = false;
+                    getBtn.innerHTML = '<i class="bi bi-search me-1"></i>Get Data';
+                    errBox.textContent = 'Network error. Please try again.';
+                    errBox.classList.remove('d-none');
+                });
+        });
     })();
     </script>
     <button class="chat-fab" id="chatFab" title="Ask me anything"><i class="bi bi-chat-dots"></i></button>
