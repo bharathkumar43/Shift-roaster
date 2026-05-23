@@ -28,7 +28,7 @@ from roster_engine import (
     pattern_for_calendar_month,
     coerce_to_five_day_pattern,
 )
-from excel_export import generate_excel, generate_delta_excel
+from excel_export import generate_excel, generate_delta_image
 from project_engine import generate_project_coverage
 from file_parser import parse_file
 import database as db
@@ -2111,15 +2111,23 @@ def delta():
     week_start = today - timedelta(days=today.weekday())   # Monday
     week_end   = week_start + timedelta(days=6)             # Sunday
 
+    # Bucket by assignment dates, not event start_date, so multi-week events
+    # only show each week's assignments in the correct week section.
     current_week_events = []
-    history_by_week = {}  # {week_monday_date: [events]}
+    history_by_week = {}  # {week_monday_date: [event_copies_with_filtered_assignments]}
     for ev in delta_events:
-        ev_start = date.fromisoformat(str(ev["start_date"]))
-        ev_week_mon = ev_start - timedelta(days=ev_start.weekday())
-        if ev_week_mon == week_start:
-            current_week_events.append(ev)
-        else:
-            history_by_week.setdefault(ev_week_mon, []).append(ev)
+        week_assignments = {}  # {week_monday_date: [assignments]}
+        for a in ev.get("assignments", []):
+            a_date = date.fromisoformat(str(a["assignment_date"]))
+            a_week_mon = a_date - timedelta(days=a_date.weekday())
+            week_assignments.setdefault(a_week_mon, []).append(a)
+
+        for wk_mon, wk_assigns in sorted(week_assignments.items()):
+            ev_for_week = {**ev, "assignments": wk_assigns}
+            if wk_mon == week_start:
+                current_week_events.append(ev_for_week)
+            else:
+                history_by_week.setdefault(wk_mon, []).append(ev_for_week)
 
     sorted_history = [
         (ws.isoformat(), (ws + timedelta(days=6)).isoformat(), evts)
@@ -2345,13 +2353,13 @@ def delta_download():
         flash(f"No delta assignments for '{product_type}' between {range_start} and {range_end}.", "warning")
         return redirect(url_for("delta"))
 
-    output = generate_delta_excel(events, assignments_by_id, product_type)
-    filename = f"Delta_{product_type}_{label}.xlsx"
+    output = generate_delta_image(events, assignments_by_id, product_type)
+    filename = f"Delta_{product_type}_{label}.png"
     return send_file(
         output,
         as_attachment=True,
         download_name=filename,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        mimetype="image/png",
     )
 
 

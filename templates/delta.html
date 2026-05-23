@@ -341,14 +341,14 @@
 
                     <!-- Download bar: only downloads current week data -->
                     <div class="p-2 d-flex flex-wrap align-items-center gap-2 bg-light border-bottom">
-                        <span class="small text-muted"><i class="bi bi-download me-1"></i><strong>Current week</strong> Excel:</span>
+                        <span class="small text-muted"><i class="bi bi-download me-1"></i><strong>Current week</strong> Image:</span>
                         {% set ns = namespace(has_any=false) %}
                         {% for pt in product_types %}
                         {% set wk_evts = current_week_events | selectattr("product_type", "equalto", pt) | list %}
                         {% if wk_evts %}
                         {% set ns.has_any = true %}
                         <a href="{{ url_for('delta_download', product_type=pt) }}" class="btn btn-success btn-sm">
-                            <i class="bi bi-file-earmark-excel me-1"></i>{{ pt }}
+                            <i class="bi bi-file-earmark-image me-1"></i>{{ pt }}
                         </a>
                         {% endif %}
                         {% endfor %}

@@ -7,7 +7,10 @@
       "Bash(python -c \":*)",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\Roaster_Automation\" -Recurse -Filter \"*.py\")",
       "Bash(Select-Object -ExpandProperty FullName)",
-      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\Roaster_Automation\" -Recurse -File)"
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\Roaster_Automation\" -Recurse -File)",
+      "Bash(pip list *)",
+      "Bash(findstr /i \"matplotlib pillow PIL reportlab weasyprint imgkit\")",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\Roaster_Automation\" -Recurse -File | Where-Object {$_.Extension -in @\\('.py', '.html', '.js'\\)} | Select-Object -First 30 | Format-Table FullName)"
     ]
   }
 }

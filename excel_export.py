@@ -371,6 +371,150 @@ def generate_delta_excel(events, assignments_by_id, product_type):
     return output
 
 
+def generate_delta_image(events, assignments_by_id, product_type):
+    from PIL import Image, ImageDraw, ImageFont
+
+    columns = [
+        ("Project Name", 230),
+        ("Product Type", 110),
+        ("Manager", 180),
+        ("Start Date", 110),
+        ("End Date", 110),
+        ("Date", 110),
+        ("Shift 1", 180),
+        ("Shift 2", 180),
+        ("Shift 3", 180),
+    ]
+
+    PADDING = 6
+    ROW_H = 28
+    TITLE_H = 44
+    HEADER_H = 32
+    SEP_H = 6
+    total_w = sum(c[1] for c in columns)
+
+    rows = []
+    for event in events:
+        event_assignments = assignments_by_id.get(event["id"], [])
+        date_map = {}
+        for a in event_assignments:
+            d = str(a["assignment_date"])
+            if d not in date_map:
+                date_map[d] = {}
+            date_map[d][a["shift_num"]] = a["engineer_name"]
+
+        sorted_dates = sorted(date_map.keys())
+        if not sorted_dates:
+            continue
+
+        for i, d_str in enumerate(sorted_dates):
+            shifts = date_map[d_str]
+            is_first = (i == 0)
+            rows.append({
+                "project_name": event["project_name"] if is_first else "",
+                "product_type": event["product_type"] if is_first else "",
+                "manager": (event.get("manager_name") or "") if is_first else "",
+                "start_date": str(event["start_date"]) if is_first else "",
+                "end_date": str(event["end_date"]) if is_first else "",
+                "date": d_str,
+                "shifts": shifts,
+            })
+        rows.append(None)
+
+    while rows and rows[-1] is None:
+        rows.pop()
+
+    data_height = sum(ROW_H if r is not None else SEP_H for r in rows)
+    total_h = TITLE_H + HEADER_H + data_height + 2
+
+    img = Image.new("RGB", (total_w, total_h), color=(255, 255, 255))
+    draw = ImageDraw.Draw(img)
+
+    def load_font(size, bold=False):
+        candidates = [
+            "C:/Windows/Fonts/calibrib.ttf" if bold else "C:/Windows/Fonts/calibri.ttf",
+            "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
+        ]
+        for path in candidates:
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+        return ImageFont.load_default()
+
+    title_font = load_font(16, bold=True)
+    header_font = load_font(11, bold=True)
+    cell_font = load_font(10)
+
+    # Title bar
+    draw.rectangle([0, 0, total_w, TITLE_H], fill=(44, 62, 80))
+    draw.text((PADDING, 12), f"Delta Calendar — {product_type}", fill=(255, 255, 255), font=title_font)
+
+    # Header row
+    y = TITLE_H
+    x = 0
+    draw.rectangle([0, y, total_w, y + HEADER_H], fill=(44, 62, 80))
+    for col_name, col_w in columns:
+        draw.text((x + PADDING, y + 8), col_name, fill=(255, 255, 255), font=header_font)
+        draw.line([(x + col_w, y), (x + col_w, y + HEADER_H)], fill=(80, 100, 120), width=1)
+        x += col_w
+
+    y += HEADER_H
+
+    shift_colors = {
+        1: (213, 245, 227),
+        2: (214, 234, 248),
+        3: (249, 231, 159),
+    }
+    off_color = (242, 242, 242)
+
+    for ri, row in enumerate(rows):
+        if row is None:
+            draw.rectangle([0, y, total_w, y + SEP_H], fill=(224, 224, 224))
+            y += SEP_H
+            continue
+
+        bg = (248, 250, 252) if ri % 2 == 0 else (255, 255, 255)
+        draw.rectangle([0, y, total_w, y + ROW_H], fill=bg)
+
+        values = [
+            row["project_name"],
+            row["product_type"],
+            row["manager"],
+            row["start_date"],
+            row["end_date"],
+            row["date"],
+        ]
+
+        x = 0
+        for val, (_, col_w) in zip(values, columns[:6]):
+            draw.text((x + PADDING, y + 6), str(val or ""), fill=(40, 40, 40), font=cell_font)
+            draw.line([(x + col_w, y), (x + col_w, y + ROW_H)], fill=(200, 200, 200), width=1)
+            x += col_w
+
+        for sni, (_, col_w) in enumerate(columns[6:]):
+            sn = sni + 1
+            sv = row["shifts"].get(sn)
+            if sv:
+                draw.rectangle([x + 1, y + 1, x + col_w - 1, y + ROW_H - 1], fill=shift_colors[sn])
+                draw.text((x + PADDING, y + 6), str(sv), fill=(40, 40, 40), font=cell_font)
+            else:
+                draw.rectangle([x + 1, y + 1, x + col_w - 1, y + ROW_H - 1], fill=off_color)
+                draw.text((x + PADDING, y + 6), "—", fill=(160, 160, 160), font=cell_font)
+            draw.line([(x + col_w, y), (x + col_w, y + ROW_H)], fill=(200, 200, 200), width=1)
+            x += col_w
+
+        draw.line([(0, y + ROW_H), (total_w, y + ROW_H)], fill=(200, 200, 200), width=1)
+        y += ROW_H
+
+    draw.rectangle([0, 0, total_w - 1, total_h - 1], outline=(80, 80, 80), width=1)
+
+    output = BytesIO()
+    img.save(output, format="PNG")
+    output.seek(0)
+    return output
+
+
 def _style_header(cell):
     cell.font = HEADER_FONT
     cell.fill = HEADER_FILL
