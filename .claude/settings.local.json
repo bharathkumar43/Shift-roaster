@@ -10,7 +10,13 @@
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\Roaster_Automation\" -Recurse -File)",
       "Bash(pip list *)",
       "Bash(findstr /i \"matplotlib pillow PIL reportlab weasyprint imgkit\")",
-      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\Roaster_Automation\" -Recurse -File | Where-Object {$_.Extension -in @\\('.py', '.html', '.js'\\)} | Select-Object -First 30 | Format-Table FullName)"
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\Roaster_Automation\" -Recurse -File | Where-Object {$_.Extension -in @\\('.py', '.html', '.js'\\)} | Select-Object -First 30 | Format-Table FullName)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\Roaster_Automation\" -Recurse -Force)",
+      "Bash(Select-Object -First 100)",
+      "Bash(Format-Table FullName)",
+      "Bash(Get-ChildItem -Name)",
+      "Bash(awk '/^def / {fname=$2; line=NR} /pattern_for_calendar_month|rotate_week_offs_forward/ && NR > line && NR < line+50 {print line\": \"fname}' app.py)",
+      "Bash(Select-Object FullName)"
     ]
   }
 }

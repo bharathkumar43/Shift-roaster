@@ -151,16 +151,16 @@ def _working_days_from_off_block_start(start_idx):
     return [DAY_NAMES[i] for i in range(7) if i not in off_i]
 
 
-def rotate_week_offs_forward(prev_working_days):
+def rotate_week_offs_backward(prev_working_days):
     """
-    Move the two consecutive off-days forward by two weekdays on the cycle
-    (e.g. Mon-Tue off -> Wed-Thu off), keeping five working days.
+    Move the two consecutive off-days backward by two weekdays on the cycle
+    (e.g. Wed-Thu off -> Mon-Tue off), keeping five working days.
     """
     prev = coerce_to_five_day_pattern(prev_working_days)
     start = _infer_consecutive_off_block_start(prev)
     if start is None:
         return list(DEFAULT_FIVE_DAY_WEEK)
-    new_start = (start + 2) % 7
+    new_start = (start - 2) % 7
     return _working_days_from_off_block_start(new_start)
 
 
@@ -188,7 +188,7 @@ def pattern_for_calendar_month(emp, year, month):
     - Stored monthly snapshot for YYYY-MM when present (written on roster Save, or
       on Generate draft so the next month can rotate without an extra Save).
     - Else: start from the latest snapshot strictly before this month, then apply
-      rotate_week_offs_forward once for each calendar month from that anchor up to
+      rotate_week_offs_backward once for each calendar month from that anchor up to
       this month. So if only April exists, May rotates once from April, June twice.
     - If there is no snapshot before this month, use employee profile working_days
       (or Mon-Fri default).
@@ -210,7 +210,7 @@ def pattern_for_calendar_month(emp, year, month):
     if n <= 0:
         return pat
     for _ in range(n):
-        pat = rotate_week_offs_forward(pat)
+        pat = rotate_week_offs_backward(pat)
     return pat
 
 
@@ -457,7 +457,7 @@ def assign_shifts(
         sorted_emps, assignments, assigned, night_shift_counts, prev_night, targets, shift_counts
     )
     _distribute_remaining(sorted_emps, assignments, assigned, targets, night_shift_counts, prev_night)
-    _fix_daily_gaps(assignments, sorted_emps)
+    _fix_daily_gaps(assignments, sorted_emps, prev_night)
 
     return assignments
 
@@ -660,32 +660,38 @@ def _pick_best_shift(emp, shift_counts, targets, type_shift_counts, type_targets
     Pick the best shift for an employee considering:
       1. Which shifts still need more people (overall targets)
       2. Which shifts need this employee's product type(s) most
-      3. Penalize shift 3 if they were on night shift last month (no back-to-back months)
+      3. Hard-block Shift 3 if they were on night shift last month (no back-to-back months).
+         Shift 3 is only used as an absolute last resort when all other shifts are also full.
     """
+    on_night_last = bool(emp.get("id") in prev_month_night_ids)
     scores = {}
     for s in [1, 2, 3]:
         if shift_counts[s] >= targets[s]:
-            scores[s] = -100
+            scores[s] = -9999
+            continue
+        # Hard constraint: exclude Shift 3 for employees who were on night shift last month
+        if s == 3 and on_night_last:
+            scores[s] = -9999
             continue
 
         score = targets[s] - shift_counts[s]
-
         for ct in emp["content_types"]:
             if ct in type_targets:
                 needed = type_targets[ct][s] - type_shift_counts[ct][s]
                 score += needed * 2
-
-        if s == 3 and emp.get("id") in prev_month_night_ids:
-            score -= 250
-
         scores[s] = score
 
     best = max(scores, key=scores.get)
-    if scores[best] == -100:
+    if scores[best] <= -9999:
+        # All preferred shifts are blocked — last resort: pick any open slot
         eligible = [s for s in (1, 2, 3) if shift_counts[s] < targets[s]]
-        if eligible:
-            return min(eligible, key=lambda s: shift_counts[s])
-        return 1
+        if not eligible:
+            eligible = [1, 2, 3]
+        # Still prefer non-night for last-month-night employees even in last resort
+        if on_night_last:
+            non_night = [s for s in eligible if s != 3]
+            return min(non_night or eligible, key=lambda s: shift_counts[s])
+        return min(eligible, key=lambda s: shift_counts[s])
     return best
 
 
@@ -693,12 +699,15 @@ def _get_off_days(emp):
     return set(DAY_NAMES) - set(emp["working_days"])
 
 
-def _fix_daily_gaps(assignments, employees):
+def _fix_daily_gaps(assignments, employees, prev_month_night_ids=None):
     """
     Final pass: for each day, if a shift has zero people working,
     try to move someone from a shift with 2+ people that day.
+    Respects the consecutive-night-shift constraint: never moves a last-month
+    night-shift employee into Shift 3.
     """
     emp_lookup = {e["name"]: e for e in employees}
+    prev_night = frozenset(prev_month_night_ids or ())
 
     for day in DAY_NAMES:
         for shift_num in [1, 2, 3]:
@@ -724,6 +733,9 @@ def _fix_daily_gaps(assignments, employees):
                 moved = False
                 for candidate in reversed(donors_working_today):
                     if is_pinned_shift_1(candidate) and assignments.get(candidate) == 1 and shift_num != 1:
+                        continue
+                    # Hard constraint: don't move a last-month-night employee to Shift 3
+                    if shift_num == 3 and emp_lookup[candidate].get("id") in prev_night:
                         continue
                     remaining_donors = [n for n in donor_names if n != candidate]
                     would_break = any(
