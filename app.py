@@ -340,12 +340,15 @@ def index():
     if imported is not None:
         flash(f"Successfully imported {imported} employee(s).", "success")
 
+    shift_assignments = db.get_shift_assignments_for_month(ctx_y, ctx_m)
+
     engineers_display = []
     for e in engineers:
         row = dict(e)
         pat = coerce_to_five_day_pattern(pattern_for_calendar_month(e, ctx_y, ctx_m))
         row["generated_working_days"] = pat
         row["generated_week_offs"] = [d for d in DAY_NAMES if d not in pat]
+        row["shift"] = shift_assignments.get(e["name"])
         engineers_display.append(row)
 
     return render_template("index.html",

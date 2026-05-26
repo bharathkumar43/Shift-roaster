@@ -399,15 +399,47 @@
                         </form>
                         {% endif %}
                     </div>
-                    {% if current_user and current_user.role == 'admin' %}
-                    <div class="px-3 pt-2 pb-2 border-bottom bg-white small text-muted">
-                        Rows use the <strong>generated</strong> working pattern for
-                        <strong>{{ app_context_month_name }} {{ app_context_year }}</strong>
-                        (your <strong>application month</strong>; same default as Generate Roster &mdash; working days / week-offs below).
-                        Ratio <strong>6 / 7 / 8</strong> shifts when there are 21 engineers.
-                        Week-offs move back by two weekdays each new calendar month from the latest saved monthly snapshot (or your profile if none).
+                    <div class="px-3 py-2 border-bottom bg-white">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-auto">
+                                <label class="form-label fw-semibold small mb-1" for="empShiftFilter">Shift</label>
+                                <select class="form-select form-select-sm" id="empShiftFilter" style="min-width:130px">
+                                    <option value="all">All shifts</option>
+                                    <option value="1">Shift 1</option>
+                                    <option value="2">Shift 2</option>
+                                    <option value="3">Shift 3</option>
+                                </select>
+                            </div>
+                            <div class="col-auto">
+                                <label class="form-label fw-semibold small mb-1" for="empDayFilter">Day</label>
+                                <select class="form-select form-select-sm" id="empDayFilter" style="min-width:130px">
+                                    <option value="all">All days</option>
+                                    <option value="Monday">Mon</option>
+                                    <option value="Tuesday">Tue</option>
+                                    <option value="Wednesday">Wed</option>
+                                    <option value="Thursday">Thu</option>
+                                    <option value="Friday">Fri</option>
+                                    <option value="Saturday">Sat</option>
+                                    <option value="Sunday">Sun</option>
+                                </select>
+                            </div>
+                            <div class="col-auto">
+                                <label class="form-label fw-semibold small mb-1" for="empPersonFilter">Person</label>
+                                <select class="form-select form-select-sm" id="empPersonFilter" style="min-width:160px">
+                                    <option value="all">All people</option>
+                                    {% for emp in employees %}
+                                    <option value="{{ emp.name | e }}">{{ emp.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-auto ms-auto text-end">
+                                <span class="small text-muted">
+                                    <i class="bi bi-calendar2-week me-1"></i>{{ app_context_month_name }} {{ app_context_year }}
+                                </span><br>
+                                <span class="small text-muted">Showing <strong id="engVisibleCount">{{ employees|length }}</strong> of {{ employees|length }}</span>
+                            </div>
+                        </div>
                     </div>
-                    {% endif %}
                     <div class="card-body p-0">
                         {% if employees|length == 0 %}
                         <div class="empty-state text-center">
@@ -422,18 +454,22 @@
                                     <tr>
                                         <th style="width:40px">#</th>
                                         <th>Name</th>
-                                        <th>Product Types</th>
+                                        {% if current_user and current_user.role == 'admin' %}<th>Product Types</th>{% endif %}
+                                        <th>Shift</th>
                                         <th>Working Days</th>
                                         <th>Week-offs</th>
-                                        <th>Projects</th>
+                                        {% if current_user and current_user.role == 'admin' %}<th>Projects</th>{% endif %}
                                         <th style="width:80px"></th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody id="engineerTableBody">
                                     {% for emp in employees %}
-                                    <tr>
+                                    <tr data-shift="{{ emp.shift or '' }}"
+                                        data-working-days="{{ emp.generated_working_days | join(' ') }}"
+                                        data-name="{{ emp.name | e }}">
                                         <td class="text-muted">{{ loop.index }}</td>
                                         <td class="fw-semibold">{{ emp.name }}</td>
+                                        {% if current_user and current_user.role == 'admin' %}
                                         <td>
                                             {% for ct in emp.content_types %}
                                             {% if ct == 'Content' %}
@@ -445,6 +481,18 @@
                                             {% endif %}
                                             {% endfor %}
                                         </td>
+                                        {% endif %}
+                                        <td>
+                                            {% if emp.shift == 1 %}
+                                            <span class="badge bg-success">S1</span>
+                                            {% elif emp.shift == 2 %}
+                                            <span class="badge bg-primary">S2</span>
+                                            {% elif emp.shift == 3 %}
+                                            <span class="badge bg-warning text-dark">S3</span>
+                                            {% else %}
+                                            <span class="text-muted small">—</span>
+                                            {% endif %}
+                                        </td>
                                         <td>
                                             {% for d in emp.generated_working_days %}
                                             <span class="badge bg-light text-dark border">{{ d[:3] }}</span>
@@ -455,6 +503,7 @@
                                             <span class="badge bg-secondary">{{ d[:3] }}</span>
                                             {% endfor %}
                                         </td>
+                                        {% if current_user and current_user.role == 'admin' %}
                                         <td>
                                             {% set emp_projects = all_projects | selectattr('employee_id', 'equalto', emp.id) | list %}
                                             {% if emp_projects %}
@@ -465,6 +514,7 @@
                                             <span class="text-muted small">None</span>
                                             {% endif %}
                                         </td>
+                                        {% endif %}
                                         <td>
                                             {% if current_user and current_user.role == 'admin' %}
                                             <div class="d-flex gap-1">
@@ -1738,6 +1788,41 @@
         function send(){var q=inp.value.trim();if(!q)return;add(q,'user');inp.value='';fetch('/bot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})}).then(function(r){return r.json();}).then(function(d){add(d.answer||'No answer.','bot');}).catch(function(){add('Error. Try again.','bot');});}
         document.getElementById('chatSend').addEventListener('click',send);
         inp.addEventListener('keydown',function(e){if(e.key==='Enter')send();});
+    })();
+    </script>
+
+    <script>
+    (function () {
+        var total = document.querySelectorAll('#engineerTableBody tr[data-name]').length;
+
+        function applyEngFilters() {
+            var shift  = document.getElementById('empShiftFilter').value;
+            var day    = document.getElementById('empDayFilter').value;
+            var person = document.getElementById('empPersonFilter').value;
+            var visible = 0;
+
+            document.querySelectorAll('#engineerTableBody tr[data-name]').forEach(function (row) {
+                var rowShift = row.dataset.shift;
+                var rowDays  = (row.dataset.workingDays || '').split(' ');
+                var rowName  = row.dataset.name;
+
+                var show = true;
+                if (shift  !== 'all' && rowShift !== shift)          show = false;
+                if (day    !== 'all' && !rowDays.includes(day))       show = false;
+                if (person !== 'all' && rowName  !== person)          show = false;
+
+                row.style.display = show ? '' : 'none';
+                if (show) visible++;
+            });
+
+            var badge = document.getElementById('engVisibleCount');
+            if (badge) badge.textContent = visible;
+        }
+
+        ['empShiftFilter', 'empDayFilter', 'empPersonFilter'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.addEventListener('change', applyEngFilters);
+        });
     })();
     </script>
 </body>
