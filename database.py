@@ -119,6 +119,13 @@ def init_db():
         conn.commit()
     except psycopg2.errors.DuplicateColumn:
         conn.rollback()
+    try:
+        cur.execute(
+            "ALTER TABLE employees ADD COLUMN learning_content_types TEXT NOT NULL DEFAULT '{}'"
+        )
+        conn.commit()
+    except psycopg2.errors.DuplicateColumn:
+        conn.rollback()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS leaves (
             id SERIAL PRIMARY KEY,
@@ -223,13 +230,15 @@ def init_db():
 
 # ── Employee CRUD ────────────────────────────────────────
 
-def add_employee(name, content_types, working_days, emp_role="engineer"):
+def add_employee(name, content_types, working_days, emp_role="engineer", learning_content_types=None):
+    if learning_content_types is None:
+        learning_content_types = {}
     conn = get_db()
     cur = conn.cursor()
     try:
         cur.execute(
-            "INSERT INTO employees (name, content_types, working_days, emp_role) VALUES (%s, %s, %s, %s) RETURNING id",
-            (name, json.dumps(content_types), json.dumps(working_days), emp_role)
+            "INSERT INTO employees (name, content_types, working_days, emp_role, learning_content_types) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+            (name, json.dumps(content_types), json.dumps(working_days), emp_role, json.dumps(learning_content_types))
         )
         emp_id = cur.fetchone()[0]
         conn.commit()
@@ -262,18 +271,20 @@ def get_employee_by_id(emp_id):
     return _row_to_employee(row) if row else None
 
 
-def update_employee(emp_id, content_types, working_days, name=None):
+def update_employee(emp_id, content_types, working_days, name=None, learning_content_types=None):
+    if learning_content_types is None:
+        learning_content_types = {}
     conn = get_db()
     cur = conn.cursor()
     if name:
         cur.execute(
-            "UPDATE employees SET name = %s, content_types = %s, working_days = %s WHERE id = %s",
-            (name, json.dumps(content_types), json.dumps(working_days), emp_id)
+            "UPDATE employees SET name = %s, content_types = %s, working_days = %s, learning_content_types = %s WHERE id = %s",
+            (name, json.dumps(content_types), json.dumps(working_days), json.dumps(learning_content_types), emp_id)
         )
     else:
         cur.execute(
-            "UPDATE employees SET content_types = %s, working_days = %s WHERE id = %s",
-            (json.dumps(content_types), json.dumps(working_days), emp_id)
+            "UPDATE employees SET content_types = %s, working_days = %s, learning_content_types = %s WHERE id = %s",
+            (json.dumps(content_types), json.dumps(working_days), json.dumps(learning_content_types), emp_id)
         )
     conn.commit()
     cur.close()
@@ -365,6 +376,7 @@ def _row_to_employee(row):
     ct = row["content_types"]
     wd = row["working_days"]
     mwd = row.get("monthly_working_days", "{}")
+    lct = row.get("learning_content_types", "{}")
     if mwd is None:
         mwd = "{}"
     if isinstance(mwd, str):
@@ -372,12 +384,20 @@ def _row_to_employee(row):
             mwd = json.loads(mwd) if mwd else {}
         except json.JSONDecodeError:
             mwd = {}
+    if lct is None:
+        lct = "{}"
+    if isinstance(lct, str):
+        try:
+            lct = json.loads(lct) if lct else {}
+        except json.JSONDecodeError:
+            lct = {}
     return {
         "id": row["id"],
         "name": row["name"],
         "content_types": json.loads(ct) if isinstance(ct, str) else ct,
         "working_days": json.loads(wd) if isinstance(wd, str) else wd,
         "monthly_working_days": mwd if isinstance(mwd, dict) else {},
+        "learning_content_types": lct if isinstance(lct, dict) else {},
         "emp_role": row.get("emp_role", "engineer") if isinstance(row, dict) else "engineer",
     }
 

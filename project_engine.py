@@ -30,23 +30,14 @@ def _pick_min_coverage(candidates, coverage_load, shift_num, product_type, emp_l
     )
 
 
-def _stable_pick(candidates, project_name, shift_num, emp_lookup):
-    """Pick one candidate deterministically based on project name + shift.
-
-    Sorting by employee id first ensures the pool is ordered consistently.
-    The hash is a simple polynomial roll that avoids Python's randomised hash().
-    Result depends only on the project name and the pool, never on what other
-    projects were processed before this one — so adding a new project cannot
-    reshuffle assignments for existing projects.
-    """
+def _greedy_pick(candidates, assignment_count, shift_num, emp_lookup):
+    """Pick the candidate with the fewest total assignments in this shift (tiebreak by id)."""
     if not candidates:
         return None
-    pool = sorted(candidates, key=lambda n: _emp_sort_key(emp_lookup, n))
-    h = 0
-    for ch in project_name.lower():
-        h = (h * 31 + ord(ch)) & 0x7FFFFFFF
-    h = (h * 7 + shift_num) & 0x7FFFFFFF
-    return pool[h % len(pool)]
+    return min(
+        candidates,
+        key=lambda n: (assignment_count[(n, shift_num)], _emp_sort_key(emp_lookup, n)),
+    )
 
 
 def generate_project_coverage(projects, employees, shift_assignments, year, month, leave_dates=None):
@@ -208,17 +199,17 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
 
 def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_owner, all_projects=None):
     """
-    Assign a fixed handler per shift for each project.
+    Assign a fixed handler per shift for each project using a greedy load-balanced approach.
 
-    Priority:
-      1. Engineers who already have this project assigned in that shift (from DB).
-      2. Any eligible engineer in that shift — chosen via a stable hash of the
-         project name so the result never changes when unrelated projects are
-         added or removed.
+    Priority order for non-owner shifts:
+      1. Engineers already explicitly assigned to this project in the DB for that shift.
+      2. Primary candidates: same shift, product_type in content_types — pick whoever
+         has the fewest total assignments so far (equalises load across the month).
+      3. Learning candidates: same shift, product_type in learning_content_types,
+         and their quota for this type/shift has not been exhausted.
 
-    Eligibility for a non-owner shift: same shift, content_types includes
-    product_type. (Working days and leaves are applied per day in the
-    coverage loop via backup.)
+    This replaces the previous hash-based stable pick, which caused some engineers to
+    receive far more projects than others due to deterministic but uneven hash mapping.
     """
     emp_lookup = {e["name"]: e for e in employees}
     fixed = {}
@@ -230,6 +221,10 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_o
     for p in all_projects:
         if p["employee_name"] in emp_lookup:
             proj_assigned[p["name"].lower()].append(p["employee_name"])
+
+    # Greedy counters — reset each time this function runs (i.e. once per roster generation)
+    assignment_count = defaultdict(int)   # (name, shift_num) -> total non-owner assignments
+    learning_used = defaultdict(int)      # (name, shift_num, product_type) -> learning slots used
 
     for proj in projects:
         owner_name = proj["employee_name"]
@@ -249,29 +244,57 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_o
                 fixed[proj_key][shift_num] = owner_name
                 continue
 
-            # Priority: engineers explicitly assigned to this project in this shift
+            # Priority 1: engineers explicitly assigned to this project in DB
             assigned_in_shift = [
                 name for name in proj_assigned.get(proj["name"].lower(), [])
                 if name != owner_name
                 and shift_assignments.get(name) == shift_num
-                and product_type in emp_lookup[name]["content_types"]
+                and (
+                    product_type in emp_lookup[name].get("content_types", [])
+                    or product_type in emp_lookup[name].get("learning_content_types", {})
+                )
             ]
             if assigned_in_shift:
-                fixed[proj_key][shift_num] = _stable_pick(
-                    assigned_in_shift, proj["name"], shift_num, emp_lookup
-                )
+                chosen = _greedy_pick(assigned_in_shift, assignment_count, shift_num, emp_lookup)
+                fixed[proj_key][shift_num] = chosen
+                if chosen:
+                    assignment_count[(chosen, shift_num)] += 1
+                    if product_type in emp_lookup[chosen].get("learning_content_types", {}):
+                        learning_used[(chosen, shift_num, product_type)] += 1
                 continue
 
-            # Fallback: any eligible engineer in this shift
-            candidates = [
+            # Priority 2: primary candidates (product_type is in their primary content_types)
+            primary = [
                 emp["name"] for emp in employees
                 if emp["name"] != owner_name
                 and shift_assignments.get(emp["name"]) == shift_num
-                and product_type in emp["content_types"]
+                and product_type in emp.get("content_types", [])
             ]
-            fixed[proj_key][shift_num] = _stable_pick(
-                candidates, proj["name"], shift_num, emp_lookup
-            )
+            if primary:
+                chosen = _greedy_pick(primary, assignment_count, shift_num, emp_lookup)
+                fixed[proj_key][shift_num] = chosen
+                if chosen:
+                    assignment_count[(chosen, shift_num)] += 1
+                continue
+
+            # Priority 3: learning candidates with remaining quota
+            learning = [
+                emp["name"] for emp in employees
+                if emp["name"] != owner_name
+                and shift_assignments.get(emp["name"]) == shift_num
+                and product_type in emp.get("learning_content_types", {})
+                and learning_used[(emp["name"], shift_num, product_type)]
+                    < emp["learning_content_types"].get(product_type, 0)
+            ]
+            if learning:
+                chosen = _greedy_pick(learning, assignment_count, shift_num, emp_lookup)
+                fixed[proj_key][shift_num] = chosen
+                if chosen:
+                    assignment_count[(chosen, shift_num)] += 1
+                    learning_used[(chosen, shift_num, product_type)] += 1
+                continue
+
+            fixed[proj_key][shift_num] = None
 
     return fixed
 
@@ -300,7 +323,8 @@ def _find_backup(product_type, exclude_name, shift_num,
             continue
         if shift_assignments.get(emp["name"]) != shift_num:
             continue
-        if product_type not in emp["content_types"]:
+        if (product_type not in emp.get("content_types", [])
+                and product_type not in emp.get("learning_content_types", {})):
             continue
         if not is_emp_scheduled_work_day(emp, date.fromisoformat(date_str)):
             continue

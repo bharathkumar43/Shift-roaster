@@ -428,7 +428,15 @@ def add_employee():
         flash("Please enter a name.", "danger")
         return redirect(url_for("index"))
 
-    emp_id = db.add_employee(name, content_types, working_days, emp_role=emp_role)
+    # Collect learning quotas — server-side: must not overlap with primary types
+    learning_content_types = {}
+    for ct in CONTENT_TYPES:
+        quota_str = request.form.get(f"learning_quota_{ct}", "").strip()
+        if quota_str.isdigit() and int(quota_str) > 0 and ct not in content_types:
+            learning_content_types[ct] = int(quota_str)
+
+    emp_id = db.add_employee(name, content_types, working_days, emp_role=emp_role,
+                             learning_content_types=learning_content_types)
     if emp_id is None:
         flash(f"'{name}' already exists.", "warning")
         return redirect(url_for("index"))
@@ -452,11 +460,23 @@ def edit_employee(emp_id):
     new_name = (data.get("name") or "").strip() or None
     content_types = data.get("content_types") or ["Content"]
     working_days = data.get("working_days") or ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+    # Learning types: dict of {type: quota}, must not overlap with primary
+    raw_lct = data.get("learning_content_types") or {}
+    learning_content_types = {}
+    if isinstance(raw_lct, dict):
+        for k, v in raw_lct.items():
+            try:
+                q = int(v)
+            except (TypeError, ValueError):
+                continue
+            if q > 0 and k not in content_types:
+                learning_content_types[k] = q
     try:
         working_days = normalize_five_day_pattern(working_days)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    db.update_employee(emp_id, content_types, working_days, name=new_name)
+    db.update_employee(emp_id, content_types, working_days, name=new_name,
+                       learning_content_types=learning_content_types)
     # Keep app-month week-offs aligned with edits so roster updates immediately.
     emp_row = db.get_employee_by_id(emp_id)
     if emp_row and emp_row.get("emp_role") == "engineer":
