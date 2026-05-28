@@ -18,8 +18,9 @@ DAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 DEFAULT_FIVE_DAY_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 
-# Mandated shift headcount ratio (Shift 1 : Shift 2 : Shift 3) for a full team of 21.
-SHIFT_MANDATE_WEIGHTS = (6, 7, 8)
+# Default mandated shift headcount ratio (Shift 1 : Shift 2 : Shift 3).
+# Admin can override via the Shift Configuration panel — stored in shift_config DB table.
+SHIFT_MANDATE_WEIGHTS = (6, 6, 7)
 
 # Comma-separated engineer names always kept on Shift 1 (Edit Shifts and generation honor this).
 # Optional: set PINNED_SHIFT_1_NAMES in .env, e.g. PINNED_SHIFT_1_NAMES=Alice,Bob
@@ -164,14 +165,15 @@ def rotate_week_offs_backward(prev_working_days):
     return _working_days_from_off_block_start(new_start)
 
 
-def compute_mandated_shift_targets(n):
+def compute_mandated_shift_targets(n, weights=None):
     """
-    Shift sizes summing to n with ratio 6:7:8 (exact 6,7,8 when n==21).
-    Uses largest-remainder fair apportionment for other team sizes.
+    Shift sizes summing to n using the given weights ratio.
+    Uses largest-remainder fair apportionment.
+    weights: (w1, w2, w3) tuple — defaults to SHIFT_MANDATE_WEIGHTS if not provided.
     """
     if n <= 0:
         return {1: 0, 2: 0, 3: 0}
-    w1, w2, w3 = SHIFT_MANDATE_WEIGHTS
+    w1, w2, w3 = weights if weights is not None else SHIFT_MANDATE_WEIGHTS
     W = w1 + w2 + w3
     parts = [n * w1 / W, n * w2 / W, n * w3 / W]
     floors = [int(p) for p in parts]
@@ -398,23 +400,14 @@ def assign_shifts(
     fixed_assignments=None,
     *,
     relax_fixed_caps=False,
+    shift_targets=None,
 ):
     """
     Assign each employee to a shift (1, 2, or 3).
 
     fixed_assignments: name -> shift for people already locked (e.g. Shift 1 pins).
-    Mandated targets use len(employees) (6/7/8 for 21); remaining slots are filled
-    after fixed placements.
-
-    relax_fixed_caps: If True, do not raise when fixed_assignments already exceed
-    per-shift targets (used for fully manual Edit Shifts saves).
-
-    Strategy:
-      1. Guarantee: place at least 1 employee of each product type in each shift
-         without exceeding mandated per-shift caps
-      2. Distribute remaining to mandated shift sizes (ratio 6:7:8 for 21 people)
-      3. Night shift rotation via round-robin + avoid shift 3 if on night last month
-      4. Fix daily gaps from off-day overlaps
+    shift_targets: optional {1: n, 2: n, 3: n} from admin config; overrides computed targets.
+    relax_fixed_caps: If True, do not raise when fixed_assignments already exceed targets.
     """
     n = len(employees)
     if n == 0:
@@ -438,7 +431,10 @@ def assign_shifts(
         )
 
     total = len(sorted_emps)
-    targets = compute_mandated_shift_targets(total)
+    if shift_targets:
+        targets = dict(shift_targets)
+    else:
+        targets = compute_mandated_shift_targets(total)
 
     assignments = dict(fixed_assignments)
     assigned = set(assignments.keys())
@@ -759,39 +755,32 @@ def generate_roster(
     prev_month_night_ids=None,
     *,
     relax_fixed_caps=False,
+    shift_targets=None,
 ):
     """
     Generate a full monthly roster.
 
     predefined_shifts: optional fixed placements (e.g. Shift 1 pins). Everyone else
-    is assigned so mandated shift sizes (6/7/8 for 21 engineers) are met.
+    is assigned to meet mandated shift sizes.
+
+    shift_targets: optional {1: n, 2: n, 3: n} from admin config; overrides the
+    default 6/6/7 weights. Applied after apportioning to actual team size.
 
     relax_fixed_caps: passed through to assign_shifts when fixed placements exceed targets.
-
-    Employees are prepared with a normalized 5-day pattern for (year, month) and
-    compensatory OFF days on ISO weeks that cross month boundaries when week-offs
-    differ between months (effective from the 1st).
-
-    prev_month_night_ids: employee ids who were on shift 3 last calendar month;
-    they are deprioritized for shift 3 this month.
-
-    Returns:
-        roster: dict mapping date -> {shift_num: [employee_names]}
-        warnings: list of warning strings for coverage gaps
-        shift_assignments: dict mapping employee_name -> shift_num
     """
     employees, prep_warnings = prepare_employees_for_roster_month(employees, year, month)
 
     prev_night = frozenset(prev_month_night_ids or ())
     roster_size = len(employees)
     mandate_msgs = list(prep_warnings)
-    if roster_size != 21:
+    if shift_targets:
+        t = shift_targets
+    else:
         t = compute_mandated_shift_targets(roster_size)
-        mandate_msgs.append(
-            f"SHIFT MANDATE: Ideal split is 6 / 7 / 8 (21 engineers). "
-            f"With {roster_size} engineer(s) using fair apportionment: "
-            f"Shift 1={t[1]}, Shift 2={t[2]}, Shift 3={t[3]}."
-        )
+    mandate_msgs.append(
+        f"SHIFT TARGETS: Shift 1={t[1]}, Shift 2={t[2]}, Shift 3={t[3]} "
+        f"(team size {roster_size})."
+    )
 
     shift_assignments = assign_shifts(
         employees,
@@ -799,6 +788,7 @@ def generate_roster(
         prev_night,
         fixed_assignments=dict(predefined_shifts or {}),
         relax_fixed_caps=relax_fixed_caps,
+        shift_targets=t,
     )
     emp_lookup = {emp["name"]: emp for emp in employees}
 

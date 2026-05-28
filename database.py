@@ -209,6 +209,32 @@ def init_db():
             UNIQUE(project_name, product_type)
         )
     """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS shift_config (
+            id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+            shift1_target INTEGER NOT NULL DEFAULT 6,
+            shift2_target INTEGER NOT NULL DEFAULT 6,
+            shift3_target INTEGER NOT NULL DEFAULT 7
+        )
+    """)
+    conn.commit()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS project_shift_handlers (
+            project_name TEXT NOT NULL,
+            product_type TEXT NOT NULL,
+            shift_num INTEGER NOT NULL,
+            handler_name TEXT NOT NULL,
+            backup_handler_name TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (project_name, product_type, shift_num)
+        )
+    """)
+    try:
+        cur.execute(
+            "ALTER TABLE project_shift_handlers ADD COLUMN backup_handler_name TEXT NOT NULL DEFAULT ''"
+        )
+        conn.commit()
+    except (psycopg2.errors.DuplicateColumn, psycopg2.errors.UndefinedTable):
+        conn.rollback()
     conn.commit()
     try:
         cur.execute("ALTER TABLE delta_events ADD COLUMN delta_status TEXT NOT NULL DEFAULT 'active'")
@@ -223,6 +249,84 @@ def init_db():
             "INSERT INTO users (username, password_hash, full_name, role) VALUES (%s, %s, %s, %s)",
             (admin_user, generate_password_hash(admin_pass), "Administrator", "admin")
         )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+# ── Shift Configuration ──────────────────────────────────
+
+def get_shift_config():
+    """Return {1: n, 2: n, 3: n} target headcounts, or the default (6,6,7) if not set."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT shift1_target, shift2_target, shift3_target FROM shift_config WHERE id = 1")
+    row = _fetchone(cur)
+    cur.close()
+    conn.close()
+    if row:
+        return {1: row["shift1_target"], 2: row["shift2_target"], 3: row["shift3_target"]}
+    return {1: 6, 2: 6, 3: 7}
+
+
+def save_shift_config(s1, s2, s3):
+    """Persist admin-configured shift target headcounts."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO shift_config (id, shift1_target, shift2_target, shift3_target)
+        VALUES (1, %s, %s, %s)
+        ON CONFLICT (id) DO UPDATE SET
+            shift1_target = EXCLUDED.shift1_target,
+            shift2_target = EXCLUDED.shift2_target,
+            shift3_target = EXCLUDED.shift3_target
+    """, (s1, s2, s3))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+# ── Project Shift Handlers ───────────────────────────────
+
+def get_project_shift_handlers():
+    """Return {(project_name, product_type, shift_num): (handler_name, backup_handler_name|None)}."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT project_name, product_type, shift_num, handler_name, backup_handler_name "
+        "FROM project_shift_handlers"
+    )
+    rows = _fetchall(cur)
+    cur.close()
+    conn.close()
+    return {
+        (r["project_name"], r["product_type"], r["shift_num"]): (
+            r["handler_name"],
+            r["backup_handler_name"] or None,
+        )
+        for r in rows
+    }
+
+
+def save_project_shift_handlers(handlers):
+    """Upsert {(project_name, product_type, shift_num): (primary, backup|None)}."""
+    if not handlers:
+        return
+    conn = get_db()
+    cur = conn.cursor()
+    for (proj_name, prod_type, shift_num), handler_info in handlers.items():
+        if isinstance(handler_info, tuple):
+            primary, backup = handler_info
+        else:
+            primary, backup = handler_info, None
+        cur.execute("""
+            INSERT INTO project_shift_handlers
+                (project_name, product_type, shift_num, handler_name, backup_handler_name)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (project_name, product_type, shift_num)
+            DO UPDATE SET handler_name = EXCLUDED.handler_name,
+                          backup_handler_name = EXCLUDED.backup_handler_name
+        """, (proj_name, prod_type, shift_num, primary or '', backup or ''))
     conn.commit()
     cur.close()
     conn.close()

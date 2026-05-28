@@ -8,6 +8,7 @@ from roster_engine import (
     prepare_employees_for_roster_month,
     is_emp_scheduled_work_day,
 )
+import database as _db
 
 
 def _emp_sort_key(emp_lookup, name):
@@ -66,19 +67,12 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
         seen_proj_keys.add(key)
         unique_projects.append(p)
 
-    projects_by_owner = defaultdict(list)
-    for p in unique_projects:
-        projects_by_owner[p["employee_name"]].append(p)
-
-    emps_by_shift = defaultdict(list)
-    for emp in employees:
-        shift = shift_assignments.get(emp["name"])
-        if shift:
-            emps_by_shift[shift].append(emp)
-
-    fixed_assignments = _assign_fixed_handlers(
-        unique_projects, employees, shift_assignments, projects_by_owner, projects
+    saved_handlers = _db.get_project_shift_handlers()
+    fixed_assignments, new_handlers = _assign_fixed_handlers(
+        unique_projects, employees, shift_assignments, saved_handlers
     )
+    if new_handlers:
+        _db.save_project_shift_handlers(new_handlers)
 
     num_days = calendar.monthrange(year, month)[1]
     coverage = []
@@ -115,20 +109,20 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
             for shift_num in [1, 2, 3]:
                 fixed_person = fixed_assignments.get(proj_key, {}).get(shift_num)
 
-                if shift_num == owner_shift:
-                    owner_off_weekly = not is_emp_scheduled_work_day(owner, d)
-                    owner_on_leave = date_str in leave_dates.get(owner_name, [])
-                    owner_available = not owner_off_weekly and not owner_on_leave
+                if fixed_person:
+                    fixed_emp = emp_lookup.get(fixed_person)
+                    fixed_off = not is_emp_scheduled_work_day(fixed_emp, d) if fixed_emp else True
+                    fixed_on_leave = date_str in leave_dates.get(fixed_person, [])
 
-                    if owner_available:
+                    if fixed_emp and not fixed_off and not fixed_on_leave:
                         shift_handlers[shift_num] = {
-                            "handler": owner_name,
+                            "handler": fixed_person,
                             "is_secondary": False,
-                            "is_owner_shift": True,
+                            "is_owner_shift": (shift_num == owner_shift),
                         }
                     else:
                         backup = _find_backup(
-                            product_type, owner_name, shift_num,
+                            product_type, fixed_person, shift_num,
                             employees, shift_assignments, day_name,
                             date_str, leave_dates,
                             backup_load=backup_load,
@@ -137,52 +131,25 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
                             shift_handlers[shift_num] = {
                                 "handler": backup,
                                 "is_secondary": True,
-                                "is_owner_shift": True,
+                                "is_owner_shift": (shift_num == owner_shift),
                             }
                         else:
                             shift_handlers[shift_num] = {
                                 "handler": None,
                                 "is_secondary": True,
-                                "is_owner_shift": True,
+                                "is_owner_shift": (shift_num == owner_shift),
                             }
                             warnings.append(
                                 f"{d.strftime('%b %d')} ({day_name}): No handler in "
                                 f"{SHIFTS[shift_num]['name']} for project '{proj['name']}' "
-                                f"({owner_name} is off)"
+                                f"(assigned engineer is off)"
                             )
                 else:
-                    if fixed_person:
-                        fixed_emp = emp_lookup.get(fixed_person)
-                        fixed_off_weekly = (
-                            not is_emp_scheduled_work_day(fixed_emp, d) if fixed_emp else True
-                        )
-                        fixed_on_leave = date_str in leave_dates.get(fixed_person, [])
-                        fixed_available = fixed_emp and not fixed_off_weekly and not fixed_on_leave
-
-                        if fixed_available:
-                            shift_handlers[shift_num] = {
-                                "handler": fixed_person,
-                                "is_secondary": False,
-                                "is_owner_shift": False,
-                            }
-                        else:
-                            backup = _find_backup(
-                                product_type, fixed_person, shift_num,
-                                employees, shift_assignments, day_name,
-                                date_str, leave_dates,
-                                backup_load=backup_load,
-                            )
-                            shift_handlers[shift_num] = {
-                                "handler": backup,
-                                "is_secondary": True,
-                                "is_owner_shift": False,
-                            }
-                    else:
-                        shift_handlers[shift_num] = {
-                            "handler": None,
-                            "is_secondary": False,
-                            "is_owner_shift": False,
-                        }
+                    shift_handlers[shift_num] = {
+                        "handler": None,
+                        "is_secondary": False,
+                        "is_owner_shift": (shift_num == owner_shift),
+                    }
 
             day_info["projects"].append({
                 "project_name": proj["name"],
@@ -197,106 +164,108 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
     return coverage, warnings
 
 
-def _assign_fixed_handlers(projects, employees, shift_assignments, projects_by_owner, all_projects=None):
+def _assign_fixed_handlers(projects, employees, shift_assignments, saved_handlers=None):
     """
-    Assign a fixed handler per shift for each project using a greedy load-balanced approach.
+    Assign one fixed handler per (project, shift).
 
-    Priority order for non-owner shifts:
-      1. Engineers already explicitly assigned to this project in the DB for that shift.
-      2. Primary candidates: same shift, product_type in content_types — pick whoever
-         has the fewest total assignments so far (equalises load across the month).
-      3. Learning candidates: same shift, product_type in learning_content_types,
-         and their quota for this type/shift has not been exhausted.
+    Rule 1 — Owner pinning: in the owner's own shift the project is always assigned to
+    the owner. This counts as +1 towards their load.
 
-    This replaces the previous hash-based stable pick, which caused some engineers to
-    receive far more projects than others due to deterministic but uneven hash mapping.
+    Rule 2 — Equal distribution for non-owner shifts: for every other shift, greedy
+    picks the engineer with the lowest total project count (owned + already-assigned),
+    so the overall workload is as equal as possible across everyone in each shift.
+
+    Rule 3 — Stability: saved handlers (from project_shift_handlers DB) are reused
+    as-is when still valid, preventing reshuffling when a new project is added.
+
+    Two-pass approach:
+      Pass 1 — lock in all determined assignments (owner-pinned + valid saved handlers)
+               and seed the assignment counter with their counts.
+      Pass 2 — greedy-fill anything still unassigned, using the seeded counter so new
+               picks go to whoever is least loaded overall.
     """
+    if saved_handlers is None:
+        saved_handlers = {}
+
     emp_lookup = {e["name"]: e for e in employees}
     fixed = {}
+    new_handlers = {}
+    assignment_count = defaultdict(int)
+    learning_used = defaultdict(int)
 
-    if all_projects is None:
-        all_projects = projects
+    def _is_valid_saved(handler_name, shift_num, product_type):
+        emp = emp_lookup.get(handler_name)
+        return (emp and shift_assignments.get(handler_name) == shift_num
+                and (product_type in emp.get("content_types", [])
+                     or product_type in emp.get("learning_content_types", {})))
 
-    proj_assigned = defaultdict(list)
-    for p in all_projects:
-        if p["employee_name"] in emp_lookup:
-            proj_assigned[p["name"].lower()].append(p["employee_name"])
-
-    # Greedy counters — reset each time this function runs (i.e. once per roster generation)
-    assignment_count = defaultdict(int)   # (name, shift_num) -> total non-owner assignments
-    learning_used = defaultdict(int)      # (name, shift_num, product_type) -> learning slots used
-
+    # ── Pass 1: lock determined assignments and seed the load counter ──────────
     for proj in projects:
         owner_name = proj["employee_name"]
-        owner = emp_lookup.get(owner_name)
-        if not owner:
+        if not emp_lookup.get(owner_name):
             continue
-
         owner_shift = shift_assignments.get(owner_name)
         product_type = proj["product_type"]
         proj_key = (proj["name"], product_type)
-
         if proj_key not in fixed:
             fixed[proj_key] = {}
 
         for shift_num in [1, 2, 3]:
             if shift_num == owner_shift:
+                # Owner always handles their own project in their shift
                 fixed[proj_key][shift_num] = owner_name
-                continue
+                assignment_count[(owner_name, shift_num)] += 1
+            else:
+                saved_pair = saved_handlers.get((proj["name"], product_type, shift_num))
+                if saved_pair and _is_valid_saved(saved_pair[0], shift_num, product_type):
+                    fixed[proj_key][shift_num] = saved_pair[0]
+                    assignment_count[(saved_pair[0], shift_num)] += 1
+                    emp = emp_lookup.get(saved_pair[0])
+                    if emp and product_type in emp.get("learning_content_types", {}):
+                        learning_used[(saved_pair[0], shift_num, product_type)] += 1
 
-            # Priority 1: engineers explicitly assigned to this project in DB
-            assigned_in_shift = [
-                name for name in proj_assigned.get(proj["name"].lower(), [])
-                if name != owner_name
-                and shift_assignments.get(name) == shift_num
-                and (
-                    product_type in emp_lookup[name].get("content_types", [])
-                    or product_type in emp_lookup[name].get("learning_content_types", {})
-                )
-            ]
-            if assigned_in_shift:
-                chosen = _greedy_pick(assigned_in_shift, assignment_count, shift_num, emp_lookup)
-                fixed[proj_key][shift_num] = chosen
-                if chosen:
-                    assignment_count[(chosen, shift_num)] += 1
-                    if product_type in emp_lookup[chosen].get("learning_content_types", {}):
-                        learning_used[(chosen, shift_num, product_type)] += 1
+    # ── Pass 2: greedy for anything still unassigned ────────────────────────────
+    def _candidates(shift_num, product_type, learning_check=False):
+        result = []
+        for emp in employees:
+            if shift_assignments.get(emp["name"]) != shift_num:
                 continue
+            if learning_check:
+                if product_type not in emp.get("learning_content_types", {}):
+                    continue
+                if (learning_used[(emp["name"], shift_num, product_type)]
+                        >= emp["learning_content_types"].get(product_type, 0)):
+                    continue
+            else:
+                if product_type not in emp.get("content_types", []):
+                    continue
+            result.append(emp["name"])
+        return result
 
-            # Priority 2: primary candidates (product_type is in their primary content_types)
-            primary = [
-                emp["name"] for emp in employees
-                if emp["name"] != owner_name
-                and shift_assignments.get(emp["name"]) == shift_num
-                and product_type in emp.get("content_types", [])
-            ]
-            if primary:
-                chosen = _greedy_pick(primary, assignment_count, shift_num, emp_lookup)
-                fixed[proj_key][shift_num] = chosen
-                if chosen:
-                    assignment_count[(chosen, shift_num)] += 1
-                continue
+    for proj in projects:
+        owner_name = proj["employee_name"]
+        if not emp_lookup.get(owner_name):
+            continue
+        product_type = proj["product_type"]
+        proj_key = (proj["name"], product_type)
 
-            # Priority 3: learning candidates with remaining quota
-            learning = [
-                emp["name"] for emp in employees
-                if emp["name"] != owner_name
-                and shift_assignments.get(emp["name"]) == shift_num
-                and product_type in emp.get("learning_content_types", {})
-                and learning_used[(emp["name"], shift_num, product_type)]
-                    < emp["learning_content_types"].get(product_type, 0)
-            ]
-            if learning:
-                chosen = _greedy_pick(learning, assignment_count, shift_num, emp_lookup)
-                fixed[proj_key][shift_num] = chosen
-                if chosen:
-                    assignment_count[(chosen, shift_num)] += 1
+        for shift_num in [1, 2, 3]:
+            if shift_num in fixed.get(proj_key, {}):
+                continue  # already locked in pass 1
+
+            pool = (_candidates(shift_num, product_type)
+                    or _candidates(shift_num, product_type, learning_check=True))
+
+            chosen = _greedy_pick(pool, assignment_count, shift_num, emp_lookup)
+            fixed[proj_key][shift_num] = chosen
+
+            if chosen:
+                assignment_count[(chosen, shift_num)] += 1
+                if product_type in emp_lookup[chosen].get("learning_content_types", {}):
                     learning_used[(chosen, shift_num, product_type)] += 1
-                continue
+                new_handlers[(proj["name"], product_type, shift_num)] = (chosen, None)
 
-            fixed[proj_key][shift_num] = None
-
-    return fixed
+    return fixed, new_handlers
 
 
 def _find_backup(product_type, exclude_name, shift_num,

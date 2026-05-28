@@ -204,29 +204,40 @@ def _generate_roster_with_saved_month(
     employees, year, month, night_counts=None, *, strict=False
 ):
     """
-    Run roster generation honoring saved month shifts where possible.
+    Run roster generation honoring saved month shifts.
 
-    If strict=True, invalid saved combinations propagate ValueError.
-    If strict=False and mandate caps are exceeded, still honor rotation_history by
-    building the calendar from saved engineer shifts (no pin-only fallback that
-    dropped manual Edit Shifts — that broke search/project coverage vs DB).
+    If admin has assigned ALL engineers via Edit Shifts, those assignments are used
+    directly with no cap enforcement. Otherwise auto-distributes unassigned engineers.
     """
     nc = night_counts if night_counts is not None else db.get_night_shift_counts()
+    saved = db.get_shift_assignments_for_month(year, month) or {}
+
+    # Build complete map: pins override, then saved Edit Shifts assignments
+    complete = {}
+    for e in employees:
+        nm = e["name"]
+        if is_pinned_shift_1(nm):
+            complete[nm] = 1
+        elif nm in saved:
+            complete[nm] = int(saved[nm])
+
+    # Admin has assigned every engineer — use those directly, no cap enforcement
+    if len(complete) == len(employees) and complete:
+        return generate_roster_from_manual_assignments(
+            employees,
+            year,
+            month,
+            complete,
+            prev_month_night_ids=_prev_month_night_ids(year, month),
+        )
+
+    # Partial or no assignments — auto-distribute remaining engineers
     pre = _predefined_with_saved_shifts(year, month)
     try:
         return _generate_roster(employees, year, month, nc, pre)
     except ValueError:
         if strict:
             raise
-        saved = db.get_shift_assignments_for_month(year, month) or {}
-        eng_names = {e["name"] for e in employees}
-        complete = {}
-        for e in employees:
-            nm = e["name"]
-            if is_pinned_shift_1(nm):
-                complete[nm] = 1
-            elif nm in saved and nm in eng_names:
-                complete[nm] = int(saved[nm])
         if len(complete) < len(employees):
             _, _, guess = _generate_roster(employees, year, month, nc, _predefined(year, month))
             for e in employees:
