@@ -1081,11 +1081,14 @@ def search():
     shift_assignments = {}
     prepared_lookup = {}
     if employees:
-        _, _, shift_assignments = _generate_roster_with_saved_month(
-            employees, year, month, night_counts
-        )
-        prepared, _ = prepare_employees_for_roster_month(employees, year, month)
-        prepared_lookup = {e["name"]: e for e in prepared}
+        try:
+            _, _, shift_assignments = _generate_roster_with_saved_month(
+                employees, year, month, night_counts
+            )
+            prepared, _ = prepare_employees_for_roster_month(employees, year, month)
+            prepared_lookup = {e["name"]: e for e in prepared}
+        except Exception:
+            pass
 
     emp_results = []
     matched_emps = db.search_employees(q)
@@ -1134,10 +1137,13 @@ def search():
     all_projects = db.get_all_projects()
     proj_coverage = []
     if employees and shift_assignments:
-        proj_coverage_data, _ = generate_project_coverage(
-            all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
-        )
-        proj_coverage = proj_coverage_data
+        try:
+            proj_coverage_data, _ = generate_project_coverage(
+                all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
+            )
+            proj_coverage = proj_coverage_data
+        except Exception:
+            pass
 
     all_managers = db.get_employees_by_role("manager")
     all_leads = db.get_employees_by_role("shift_lead")
