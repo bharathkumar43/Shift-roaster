@@ -2098,7 +2098,16 @@ def delta():
     all_people = db.get_all_employees()
     emp_role_map = {e["name"]: e.get("emp_role", "engineer") for e in all_people}
 
-    excluded = db.get_excluded_projects()
+    # Only final_validation projects are excluded from the dropdown (still in active management).
+    # Decommissioned projects stay selectable so users can add/delete delta events for them.
+    final_validation_set = {
+        (p["project_name"], p["product_type"])
+        for p in db.get_project_lifecycle_by_status("final_validation")
+    }
+    decommissioned_set = {
+        (p["project_name"], p["product_type"])
+        for p in db.get_project_lifecycle_by_status("decommissioned")
+    }
 
     seen = set()
     unique_projects = []
@@ -2106,11 +2115,15 @@ def delta():
         if emp_role_map.get(p["employee_name"]) != "engineer":
             continue
         key = (p["name"], p["product_type"])
-        if key in excluded:
+        if key in final_validation_set:
             continue
         if key not in seen:
             seen.add(key)
-            unique_projects.append({"name": p["name"], "product_type": p["product_type"]})
+            unique_projects.append({
+                "name":          p["name"],
+                "product_type":  p["product_type"],
+                "decommissioned": key in decommissioned_set,
+            })
     unique_projects.sort(key=lambda p: (p["name"].lower(), p["product_type"].lower()))
 
     proj_manager_map = {}
@@ -2509,6 +2522,40 @@ def delta_decommission():
 @app.route("/favicon.ico")
 def favicon():
     return "", 204
+
+
+# ── Drive Change Dashboard ───────────────────────────────
+
+@app.route("/drive-change")
+@login_required
+def drive_change():
+    from datetime import datetime, timezone, timedelta
+    ist_today = datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d")
+    date_str = request.args.get("date", ist_today)
+    return render_template("drive_change.html",
+                           app_name=APP_NAME,
+                           selected_date=date_str,
+                           today_ist=ist_today)
+
+
+@app.route("/api/drive-change/refresh", methods=["POST"])
+@login_required
+def drive_change_refresh():
+    from drive_change_reader import fetch_drive_change_emails
+    from drive_change_parser import parse_all
+    from drive_change_grouper import group_alerts
+
+    payload  = request.get_json(silent=True) or {}
+    date_str = payload.get("date")
+
+    try:
+        emails  = fetch_drive_change_emails(date_str=date_str)
+        grouped = group_alerts(parse_all(emails))
+        # Serialize: integer window keys → string keys; parse_failures stays as-is
+        serialized = {str(k): v for k, v in grouped.items()}
+        return jsonify({"success": True, "grouped": serialized, "total_emails": len(emails)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 if __name__ == "__main__":

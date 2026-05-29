@@ -73,11 +73,16 @@
                             <select class="form-select form-select-sm" id="deltaProject">
                                 <option value="">Select project...</option>
                                 {% for p in unique_projects %}
-                                <option value="{{ p.name }}" data-type="{{ p.product_type }}">
-                                    {{ p.name }} &mdash; {{ p.product_type }}
+                                <option value="{{ p.name }}" data-type="{{ p.product_type }}"
+                                        {% if p.decommissioned %}data-decommissioned="1"{% endif %}>
+                                    {{ p.name }} &mdash; {{ p.product_type }}{% if p.decommissioned %} (Decommissioned){% endif %}
                                 </option>
                                 {% endfor %}
                             </select>
+                            <div id="decommissionedWarning" class="alert alert-warning alert-sm py-1 px-2 mt-1 mb-0 d-none" style="font-size:.8rem">
+                                <i class="bi bi-exclamation-triangle me-1"></i>
+                                This project is decommissioned. You can still add or delete delta events for it.
+                            </div>
                         </div>
 
                         <!-- Manager field: auto-filled or manual dropdown -->
@@ -583,8 +588,16 @@
 
         if (!projectSel) return;
 
+        var decommWarn = document.getElementById('decommissionedWarning');
+
         projectSel.addEventListener('change', function () {
             var projectName = this.value;
+            var opt = this.options[this.selectedIndex];
+            if (decommWarn) {
+                opt && opt.getAttribute('data-decommissioned') === '1'
+                    ? decommWarn.classList.remove('d-none')
+                    : decommWarn.classList.add('d-none');
+            }
             if (!projectName) {
                 managerRow.style.display = 'none';
                 saveManager.value = '';

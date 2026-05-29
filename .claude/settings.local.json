@@ -17,7 +17,9 @@
       "Bash(Get-ChildItem -Name)",
       "Bash(awk '/^def / {fname=$2; line=NR} /pattern_for_calendar_month|rotate_week_offs_forward/ && NR > line && NR < line+50 {print line\": \"fname}' app.py)",
       "Bash(Select-Object FullName)",
-      "Bash(python -c \"import project_engine; import database; print\\('OK'\\)\")"
+      "Bash(python -c \"import project_engine; import database; print\\('OK'\\)\")",
+      "Bash(ls \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\Roaster_Automation\\\\\")",
+      "Read(//c/Users/BharathTummaganti/OneDrive - CloudFuze, Inc/Documents/**)"
     ]
   }
 }
