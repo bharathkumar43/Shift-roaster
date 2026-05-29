@@ -73,16 +73,11 @@
                             <select class="form-select form-select-sm" id="deltaProject">
                                 <option value="">Select project...</option>
                                 {% for p in unique_projects %}
-                                <option value="{{ p.name }}" data-type="{{ p.product_type }}"
-                                        {% if p.decommissioned %}data-decommissioned="1"{% endif %}>
-                                    {{ p.name }} &mdash; {{ p.product_type }}{% if p.decommissioned %} (Decommissioned){% endif %}
+                                <option value="{{ p.name }}" data-type="{{ p.product_type }}">
+                                    {{ p.name }} &mdash; {{ p.product_type }}
                                 </option>
                                 {% endfor %}
                             </select>
-                            <div id="decommissionedWarning" class="alert alert-warning alert-sm py-1 px-2 mt-1 mb-0 d-none" style="font-size:.8rem">
-                                <i class="bi bi-exclamation-triangle me-1"></i>
-                                This project is decommissioned. You can still add or delete delta events for it.
-                            </div>
                         </div>
 
                         <!-- Manager field: auto-filled or manual dropdown -->
@@ -464,7 +459,6 @@
                         <i class="bi bi-info-circle me-1"></i>
                         These projects have completed their delta and are waiting for decommission.
                         They are <strong>removed from the active roster</strong> and no new delta assignments will be made.
-                        Use <strong>Reactivate</strong> to remove a project from this phase and add it back to the delta calendar.
                     </div>
                     <div class="table-responsive">
                         <table class="table table-sm table-hover align-middle mb-0">
@@ -473,7 +467,7 @@
                                     <th>Project</th>
                                     <th>Type</th>
                                     <th>Final Validation Date</th>
-                                    <th style="width:220px"></th>
+                                    <th style="width:160px"></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -486,25 +480,15 @@
                                         </span>
                                     </td>
                                     <td class="small text-muted">{{ proj.final_validation_date or '—' }}</td>
-                                    <td class="d-flex gap-2">
-                                        {% if current_user and current_user.role == 'admin' %}
-                                        <form method="POST" action="{{ url_for('delta_reactivate') }}" class="d-inline"
-                                              onsubmit="return confirm('Remove {{ proj.project_name | e }} from Final Validation? It will become available for new delta events again.')">
-                                            <input type="hidden" name="project_name" value="{{ proj.project_name }}">
-                                            <input type="hidden" name="product_type" value="{{ proj.product_type }}">
-                                            <button type="submit" class="btn btn-sm btn-outline-success">
-                                                <i class="bi bi-arrow-counterclockwise me-1"></i>Reactivate
-                                            </button>
-                                        </form>
+                                    <td>
                                         <form method="POST" action="{{ url_for('delta_decommission') }}" class="d-inline"
-                                              onsubmit="return confirm('Mark {{ proj.project_name | e }} as decommissioned today?')">
+                                              onsubmit="return confirm('Mark {{ proj.project_name }} as decommissioned today?')">
                                             <input type="hidden" name="project_name" value="{{ proj.project_name }}">
                                             <input type="hidden" name="product_type" value="{{ proj.product_type }}">
                                             <button type="submit" class="btn btn-sm btn-danger">
-                                                <i class="bi bi-x-octagon me-1"></i>Decommission
+                                                <i class="bi bi-x-octagon me-1"></i> Decommission
                                             </button>
                                         </form>
-                                        {% endif %}
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -531,7 +515,6 @@
                                     <th>Type</th>
                                     <th>Final Validation Date</th>
                                     <th>Decommission Date</th>
-                                    {% if current_user and current_user.role == 'admin' %}<th style="width:130px"></th>{% endif %}
                                 </tr>
                             </thead>
                             <tbody>
@@ -543,18 +526,6 @@
                                     </td>
                                     <td class="small text-muted">{{ proj.final_validation_date or '—' }}</td>
                                     <td class="small fw-medium text-danger">{{ proj.decommission_date or '—' }}</td>
-                                    {% if current_user and current_user.role == 'admin' %}
-                                    <td>
-                                        <form method="POST" action="{{ url_for('delta_reactivate') }}" class="d-inline"
-                                              onsubmit="return confirm('Reactivate {{ proj.project_name | e }}? It will be removed from decommissioned status and become available for new delta events.')">
-                                            <input type="hidden" name="project_name" value="{{ proj.project_name }}">
-                                            <input type="hidden" name="product_type" value="{{ proj.product_type }}">
-                                            <button type="submit" class="btn btn-sm btn-outline-success" title="Reactivate for delta">
-                                                <i class="bi bi-arrow-counterclockwise me-1"></i>Reactivate
-                                            </button>
-                                        </form>
-                                    </td>
-                                    {% endif %}
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -612,16 +583,8 @@
 
         if (!projectSel) return;
 
-        var decommWarn = document.getElementById('decommissionedWarning');
-
         projectSel.addEventListener('change', function () {
             var projectName = this.value;
-            var opt = this.options[this.selectedIndex];
-            if (decommWarn) {
-                opt && opt.getAttribute('data-decommissioned') === '1'
-                    ? decommWarn.classList.remove('d-none')
-                    : decommWarn.classList.add('d-none');
-            }
             if (!projectName) {
                 managerRow.style.display = 'none';
                 saveManager.value = '';
