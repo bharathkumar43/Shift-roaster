@@ -228,6 +228,7 @@ def init_db():
             PRIMARY KEY (project_name, product_type, shift_num)
         )
     """)
+    conn.commit()  # must commit CREATE TABLE before ALTER TABLE; rollback would undo the CREATE
     try:
         cur.execute(
             "ALTER TABLE project_shift_handlers ADD COLUMN backup_handler_name TEXT NOT NULL DEFAULT ''"
@@ -235,7 +236,6 @@ def init_db():
         conn.commit()
     except (psycopg2.errors.DuplicateColumn, psycopg2.errors.UndefinedTable):
         conn.rollback()
-    conn.commit()
     try:
         cur.execute("ALTER TABLE delta_events ADD COLUMN delta_status TEXT NOT NULL DEFAULT 'active'")
         conn.commit()
