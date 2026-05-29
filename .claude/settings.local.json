@@ -22,7 +22,10 @@
       "Read(//c/Users/BharathTummaganti/OneDrive - CloudFuze, Inc/Documents/**)",
       "Bash(python -m py_compile app.py)",
       "Bash(python -m py_compile database.py)",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

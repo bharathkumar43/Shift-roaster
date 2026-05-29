@@ -2506,6 +2506,19 @@ def delta_decommission():
     return redirect(url_for("delta"))
 
 
+@app.route("/delta/reactivate", methods=["POST"])
+@login_required
+def delta_reactivate():
+    project_name = request.form.get("project_name", "").strip()
+    product_type = request.form.get("product_type", "").strip()
+    if not project_name or not product_type:
+        flash("Missing project information.", "danger")
+        return redirect(url_for("delta"))
+    db.delete_project_lifecycle(project_name, product_type)
+    flash(f"'{project_name}' has been reactivated and is available for new delta events.", "success")
+    return redirect(url_for("delta"))
+
+
 @app.route("/favicon.ico")
 def favicon():
     return "", 204

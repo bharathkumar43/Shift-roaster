@@ -1358,6 +1358,19 @@ def get_excluded_projects():
     return {(r[0], r[1]) for r in rows}
 
 
+def delete_project_lifecycle(project_name, product_type):
+    """Remove a project from project_lifecycle so it becomes active again."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "DELETE FROM project_lifecycle WHERE project_name = %s AND product_type = %s",
+        (project_name, product_type),
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
 def get_shift_strength(year, month, shift_assignments):
     """Return per-day, per-shift headcount accounting for weekly offs and leaves."""
     from datetime import date as dt_date
