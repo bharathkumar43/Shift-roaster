@@ -2603,17 +2603,23 @@ def drive_change_refresh():
     window_totals = {
         str(w): grouped.get(w, {}).get("total", 0) for w in [1, 2, 3]
     }
-    window_labels = {
-        str(w): grouped.get(w, {}).get("label", "") for w in [1, 2, 3]
-    }
+
+    windows_data = {}
+    for w in [1, 2, 3]:
+        w_info = grouped.get(w, {})
+        windows_data[str(w)] = {
+            "label":  w_info.get("label", ""),
+            "total":  w_info.get("total", 0),
+            "groups": w_info.get("groups", []),
+        }
 
     return jsonify({
-        "date": date_str,
-        "total_emails": len(emails),
+        "date":           date_str,
+        "total_emails":   len(emails),
         "parse_failures": grouped.get("parse_failures", 0),
-        "window_totals": window_totals,
-        "window_labels": window_labels,
-        "projects": grouped.get("projects", []),
+        "window_totals":  window_totals,
+        "windows":        windows_data,
+        "projects":       grouped.get("projects", []),
     })
 
 

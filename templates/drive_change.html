@@ -80,30 +80,34 @@ body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkM
 .empty-title { font-size:16px;font-weight:600; }
 .empty-sub   { font-size:13px; }
 
-/* ── Window summary header ── */
-.win-summary-row {
-    display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:18px;
+/* ── Window section ── */
+.win-section { margin-bottom:32px; }
+
+.win-header {
+    display:flex; align-items:center; gap:16px;
+    background:var(--bg2); border:1px solid var(--border);
+    border-radius:10px; padding:14px 20px; margin-bottom:14px;
 }
-.win-pill {
-    background:var(--bg2); border:1px solid var(--border); border-radius:8px;
-    padding:10px 16px; display:flex; align-items:center; justify-content:space-between;
-}
-.win-pill.is-current { border-color:var(--accent); background:var(--ag); }
-.win-pill-label { font-size:12px; font-weight:700; }
-.win-pill-count { font-size:20px; font-weight:800; }
+.win-header.is-current { border-color:var(--accent); background:var(--ag); }
+
+.win-header-left { display:flex; flex-direction:column; gap:3px; }
+.win-num-lbl { font-size:10px; font-weight:800; color:var(--muted); letter-spacing:.7px; text-transform:uppercase; }
+.win-time-range { font-size:15px; font-weight:700; }
+
 .badge-cur-sm {
     background:rgba(56,139,253,.13);color:var(--accent);
     border:1px solid rgba(56,139,253,.3);border-radius:4px;
-    padding:1px 6px;font-size:10px;font-weight:700;
+    padding:2px 8px;font-size:10px;font-weight:700;
 }
 
-/* ── Section heading ── */
-.section-head {
-    display:flex; align-items:center; justify-content:space-between;
-    margin-bottom:12px;
+.win-header-right { margin-left:auto; text-align:right; }
+.win-total-count { font-size:30px; font-weight:800; line-height:1; }
+.win-total-lbl { font-size:10px; color:var(--muted); font-weight:700; letter-spacing:.4px; margin-top:2px; }
+
+.win-empty-msg {
+    color:var(--muted); font-size:13px; text-align:center; padding:22px;
+    background:var(--bg2); border:1px dashed var(--border); border-radius:8px;
 }
-.section-head h2 { font-size:16px; font-weight:700; }
-.section-head span { color:var(--muted); font-size:13px; }
 
 /* ── Project cards grid ── */
 .cards-grid {
@@ -129,14 +133,6 @@ body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkM
 .b-c { border:1px solid var(--conflict);color:var(--conflict);background:rgba(248,81,73,.08);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700; }
 .b-e { border:1px solid var(--accent);color:var(--accent);background:rgba(56,139,253,.08);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700; }
 .b-o { border:1px solid var(--warn);color:var(--warn);background:rgba(210,153,34,.08);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700; }
-
-/* ── Window breakdown pills inside card ── */
-.win-breakdown { display:flex; gap:6px; flex-wrap:wrap; }
-.wb-pill {
-    background:var(--bg3); border:1px solid var(--border); border-radius:4px;
-    padding:2px 8px; font-size:10px; color:var(--muted); font-weight:600;
-}
-.wb-pill.has-data { border-color:rgba(56,139,253,.3); color:var(--accent); background:var(--ag); }
 
 .ws-list {
     background:#0d1117;border:1px solid var(--border);border-radius:6px;
@@ -179,7 +175,7 @@ body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkM
 @keyframes spin{to{transform:rotate(360deg)}}
 .toast { position:fixed;bottom:22px;right:22px;background:#3d1a1a;border:1px solid var(--conflict);color:#ffa8a8;border-radius:8px;padding:11px 16px;max-width:380px;font-size:13px;z-index:300;display:none; }
 .toast.show { display:block; }
-@media(max-width:600px){ .stat{padding:10px 14px;} .ws-big{font-size:26px;} .win-summary-row{grid-template-columns:1fr;} }
+@media(max-width:600px){ .stat{padding:10px 14px;} .ws-big{font-size:26px;} }
 </style>
 </head>
 <body>
@@ -244,14 +240,7 @@ body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkM
         <div class="empty-sub">Emails are grouped by 8-hour IST time window &middot; No data is modified</div>
     </div>
     <div id="dataWrap" style="display:none">
-        <!-- Window summary pills -->
-        <div class="win-summary-row" id="winSummary"></div>
-        <!-- Project cards -->
-        <div class="section-head">
-            <h2 id="projHeading">Projects</h2>
-            <span id="projSubtitle"></span>
-        </div>
-        <div class="cards-grid" id="cardsGrid"></div>
+        <div id="windowsContainer"></div>
     </div>
 </div>
 
@@ -281,9 +270,11 @@ var IST_MS = (5*60+30)*60*1000;
 var DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 var MONS   = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 var WIN_LBL = {1:'12:00 AM – 8:00 AM IST', 2:'8:00 AM – 4:00 PM IST', 3:'4:00 PM – 12:00 AM IST'};
-var WIN_SHORT = {1:'12 AM–8 AM', 2:'8 AM–4 PM', 3:'4 PM–12 AM'};
 
-function nowIST(){ return new Date(Date.now() + IST_MS - new Date().getTimezoneOffset()*60000); }
+// Always returns current time as if in IST, using UTC methods to read it.
+// Correct formula: UTC + 5h30m offset. Never adjust for local timezone
+// because Date.now() is already UTC regardless of browser locale.
+function nowIST(){ return new Date(Date.now() + IST_MS); }
 function pad(n){ return String(n).padStart(2,'0'); }
 
 function todayStr(){
@@ -307,12 +298,10 @@ function fmtDateStr(s){
 
 // ── Clock ──────────────────────────────────────────────────────────────────
 function tickClock(){
-    // Time always shows current IST
     var d = nowIST();
     document.getElementById('clockTime').textContent =
         pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUTCSeconds());
 
-    // Date shows the SELECTED date when viewing past, otherwise today
     var displayDate;
     if(selDate){
         var p = selDate.split('-');
@@ -409,7 +398,6 @@ function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 
 function renderAll(data){
     var wt = data.window_totals || {};
-    var wl = data.window_labels  || {};
     document.getElementById('sTotal').textContent = data.total_emails;
     document.getElementById('sDate').textContent  = '('+fmtDateStr(data.date)+')';
     document.getElementById('s1').textContent = wt['1']||0;
@@ -423,36 +411,52 @@ function renderAll(data){
     document.getElementById('emptyState').style.display = 'none';
     document.getElementById('dataWrap').style.display   = '';
 
-    // Window summary pills
-    var ws = document.getElementById('winSummary');
-    ws.innerHTML = '';
+    var container = document.getElementById('windowsContainer');
+    container.innerHTML = '';
+    var windows = data.windows || {};
     var cw = curWin();
+
     [1,2,3].forEach(function(n){
-        var d2 = document.createElement('div');
-        var isC = isToday() && n===cw;
-        d2.className = 'win-pill'+(isC?' is-current':'');
-        d2.innerHTML =
-            '<div>'+
-              '<div class="win-pill-label">'+esc(wl[String(n)]||WIN_LBL[n])+'</div>'+
-              (isC ? '<span class="badge-cur-sm">CURRENT</span>' : '<span style="color:var(--muted);font-size:10px">PAST</span>')+
-            '</div>'+
-            '<div class="win-pill-count">'+(wt[String(n)]||0)+'</div>';
-        ws.appendChild(d2);
+        var wdata = windows[String(n)] || {label:'', total:0, groups:[]};
+        container.appendChild(buildWindowSection(n, wdata, cw));
     });
+}
 
-    // Projects
-    var projects = data.projects || [];
-    var grid = document.getElementById('cardsGrid');
-    grid.innerHTML = '';
+function buildWindowSection(n, wdata, curWindow){
+    var sec = document.createElement('div');
+    sec.className = 'win-section';
 
-    document.getElementById('projHeading').textContent =
-        projects.length ? 'Drive Change Alerts' : 'No alerts for this date';
-    document.getElementById('projSubtitle').textContent =
-        projects.length ? projects.length+' project'+(projects.length!==1?'s':'')+' · '+data.total_emails+' emails' : '';
+    var isC = isToday() && n === curWindow;
+    var groups = wdata.groups || [];
+    var label = wdata.label || WIN_LBL[n];
 
-    projects.forEach(function(proj){
-        grid.appendChild(buildCard(proj));
-    });
+    // Section header
+    var head = document.createElement('div');
+    head.className = 'win-header' + (isC ? ' is-current' : '');
+    head.innerHTML =
+        '<div class="win-header-left">'+
+          '<div class="win-num-lbl">Window '+n+'</div>'+
+          '<div class="win-time-range">'+esc(label)+'</div>'+
+        '</div>'+
+        (isC ? '<span class="badge-cur-sm">CURRENT</span>' : '')+
+        '<div class="win-header-right">'+
+          '<div class="win-total-count">'+(wdata.total||0)+'</div>'+
+          '<div class="win-total-lbl">WORKSPACE IDs</div>'+
+        '</div>';
+    sec.appendChild(head);
+
+    if(groups.length === 0){
+        var msg = document.createElement('div');
+        msg.className = 'win-empty-msg';
+        msg.textContent = 'No alerts in this time window';
+        sec.appendChild(msg);
+    } else {
+        var grid = document.createElement('div');
+        grid.className = 'cards-grid';
+        groups.forEach(function(proj){ grid.appendChild(buildCard(proj)); });
+        sec.appendChild(grid);
+    }
+    return sec;
 }
 
 function buildCard(proj){
@@ -461,23 +465,14 @@ function buildCard(proj){
     var hasC = sc['CONFLICT'] > 0 || (proj.primary_status||'').toUpperCase()==='CONFLICT';
     card.className = 'proj-card'+(hasC?' conflict':'');
 
-    var wsIds   = proj.workspace_ids || [];
-    var emails  = proj.count || 0;
-    var wc      = proj.window_counts || {};
+    var wsIds  = proj.workspace_ids || [];
+    var emails = proj.count || 0;
 
     // Status badges
     var bHtml = '';
     if(sc['CONFLICT']) bHtml += '<span class="b-c">CONFLICT '+sc['CONFLICT']+'</span>';
     for(var st in sc){ if(st!=='CONFLICT') bHtml += '<span class="b-o">'+esc(st)+' '+sc[st]+'</span>'; }
     bHtml += '<span class="b-e">'+emails+' EMAIL'+(emails!==1?'S':'')+'</span>';
-
-    // Window breakdown pills
-    var wbHtml = '';
-    [1,2,3].forEach(function(n){
-        var cnt = wc[n]||wc[String(n)]||0;
-        wbHtml += '<span class="wb-pill'+(cnt>0?' has-data':'')+'">'
-            + WIN_SHORT[n]+': '+cnt+'</span>';
-    });
 
     var wsHtml = wsIds.map(function(id){ return esc(id); }).join('<br>');
     var clientHtml = proj.client_name
@@ -495,7 +490,6 @@ function buildCard(proj){
           '</div>'+
         '</div>'+
         '<div class="badges">'+bHtml+'</div>'+
-        '<div class="win-breakdown">'+wbHtml+'</div>'+
         '<div class="ws-list">'+wsHtml+'</div>'+
         clientHtml+
         '<button class="btn-copy">Copy Workspace IDs</button>';
