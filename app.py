@@ -813,7 +813,7 @@ def _render_saved_roster(year, month, saved):
 
 # ── Project Coverage ─────────────────────────────────────
 
-@app.route("/projects", methods=["POST"])
+@app.route("/projects", methods=["GET", "POST"])
 @login_required
 def projects():
     employees = db.get_employees_by_role("engineer")
@@ -824,8 +824,8 @@ def projects():
         return redirect(url_for("index"))
 
     cy, cm = get_app_context_ym()
-    year = int(request.form.get("year", cy))
-    month = int(request.form.get("month", cm))
+    year = int(request.form.get("year", request.args.get("year", cy)))
+    month = int(request.form.get("month", request.args.get("month", cm)))
 
     night_counts = db.get_night_shift_counts()
     try:
