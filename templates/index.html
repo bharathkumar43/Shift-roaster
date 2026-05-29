@@ -410,6 +410,20 @@
                         <i class="bi bi-chevron-right ms-auto text-muted"></i>
                     </a>
                 </div>
+
+                {% if current_user and current_user.role == 'admin' %}
+                <!-- User Management Link (admin only) -->
+                <div class="card shadow-sm border-0 mt-3 animate-in">
+                    <a href="{{ url_for('admin_users') }}" class="card-body d-flex align-items-center gap-2 text-decoration-none text-dark py-3">
+                        <i class="bi bi-people-fill fs-5 text-primary"></i>
+                        <div>
+                            <span class="fw-semibold">User Management</span>
+                            <br><small class="text-muted">Link users to employees, manage roles &amp; access</small>
+                        </div>
+                        <i class="bi bi-chevron-right ms-auto text-muted"></i>
+                    </a>
+                </div>
+                {% endif %}
             </div>
 
             <!-- Employee List -->
@@ -1501,8 +1515,19 @@
             var m = searchMonth.value;
             var y = searchYear.value;
             fetch('/search?q=' + encodeURIComponent(q) + '&month=' + m + '&year=' + y)
-                .then(function(r) { return r.json(); })
-                .then(function(data) { renderResults(data, q); });
+                .then(function(r) {
+                    if (r.status === 401 || r.redirected) {
+                        searchResults.classList.remove('d-none');
+                        searchContent.innerHTML = '<p class="text-warning text-center mb-0"><i class="bi bi-exclamation-triangle me-1"></i>Session expired — <a href="/login">log in again</a>.</p>';
+                        return null;
+                    }
+                    return r.json();
+                })
+                .then(function(data) { if (data) renderResults(data, q); })
+                .catch(function() {
+                    searchResults.classList.remove('d-none');
+                    searchContent.innerHTML = '<p class="text-danger text-center mb-0"><i class="bi bi-exclamation-circle me-1"></i>Search failed. Please refresh and try again.</p>';
+                });
         }
 
         searchInput.addEventListener('input', function () {

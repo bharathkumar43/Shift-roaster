@@ -867,22 +867,54 @@ def add_user(username, password_hash, full_name="", role="user", employee_id=Non
         conn.close()
 
 
-def auto_link_user(full_name):
+def auto_link_user(full_name, email=""):
     """
-    Search employees by name (case-insensitive exact match).
-    Returns the employee dict if exactly 1 match, otherwise None.
+    Try to link a new user to an existing employee by name/email.
+    Tries, in order:
+      1. Exact case-insensitive name match
+      2. Email local-part converted to name  (bharath.tummaganti → "bharath tummaganti")
+      3. Employee name normalised to dots matches email local-part
+      4. Employee name fully contained in display name or vice-versa
+    Returns the employee dict only when exactly one candidate matches.
     """
     conn = get_db()
     cur = conn.cursor()
-    cur.execute(
-        "SELECT * FROM employees WHERE LOWER(name) = LOWER(%s)",
-        (full_name.strip(),)
-    )
-    rows = _fetchall(cur)
+    cur.execute("SELECT * FROM employees")
+    all_rows = _fetchall(cur)
     cur.close()
     conn.close()
-    if len(rows) == 1:
-        return _row_to_employee(rows[0])
+    employees = [_row_to_employee(r) for r in all_rows]
+
+    name_q = (full_name or "").strip().lower()
+
+    # 1. Exact match
+    exact = [e for e in employees if e["name"].strip().lower() == name_q]
+    if len(exact) == 1:
+        return exact[0]
+
+    # 2 & 3. Email-based matching
+    if email and "@" in email:
+        local = email.split("@")[0].lower()
+        # "bharath.tummaganti" → "bharath tummaganti"
+        local_as_name = local.replace(".", " ").replace("_", " ")
+        by_local = [e for e in employees if e["name"].strip().lower() == local_as_name]
+        if len(by_local) == 1:
+            return by_local[0]
+        # employee "Bharath Tummaganti" → "bharath.tummaganti"
+        for emp in employees:
+            emp_dot = emp["name"].strip().lower().replace(" ", ".")
+            if emp_dot == local:
+                return emp
+
+    # 4. Containment (one is a substring of the other, case-insensitive)
+    if name_q:
+        contained = [
+            e for e in employees
+            if e["name"].strip().lower() in name_q or name_q in e["name"].strip().lower()
+        ]
+        if len(contained) == 1:
+            return contained[0]
+
     return None
 
 
@@ -951,11 +983,26 @@ def update_user_profile(user_id, full_name):
 def get_all_users():
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("SELECT id, username, full_name, role, created_at FROM users ORDER BY id")
+    cur.execute("""
+        SELECT u.id, u.username, u.full_name, u.role, u.employee_id, u.created_at,
+               e.name AS employee_name, e.emp_role AS employee_role
+        FROM users u
+        LEFT JOIN employees e ON e.id = u.employee_id
+        ORDER BY u.id
+    """)
     rows = _fetchall(cur)
     cur.close()
     conn.close()
     return rows
+
+
+def update_user_role(user_id, role):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET role = %s WHERE id = %s", (role, user_id))
+    conn.commit()
+    cur.close()
+    conn.close()
 
 
 # ── Leaves ───────────────────────────────────────────────

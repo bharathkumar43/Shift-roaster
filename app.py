@@ -1513,7 +1513,7 @@ def azure_callback():
 
     user = db.get_user_by_username(email)
     if not user:
-        matched_emp = db.auto_link_user(display_name)
+        matched_emp = db.auto_link_user(display_name, email=email)
         emp_id = matched_emp["id"] if matched_emp else None
         uid = db.add_user(
             username=email,
@@ -1526,6 +1526,13 @@ def azure_callback():
             user = db.get_user_by_id(uid)
         else:
             user = db.get_user_by_username(email)
+    else:
+        # Returning user: try to auto-link employee if not already linked
+        if not user.get("employee_id"):
+            matched_emp = db.auto_link_user(display_name, email=email)
+            if matched_emp:
+                db.link_user_to_employee(user["id"], matched_emp["id"])
+                user = db.get_user_by_id(user["id"])
 
     if user:
         session.clear()
@@ -1575,6 +1582,51 @@ def logout():
     session.clear()
     flash("You have been logged out.", "info")
     return redirect(url_for("login"))
+
+
+# ── Admin: User Management ───────────────────────────────
+
+@app.route("/admin/users")
+@admin_required
+def admin_users():
+    users = db.get_all_users()
+    all_employees = db.get_all_employees()
+    return render_template("admin_users.html", app_name=APP_NAME,
+                           users=users, all_employees=all_employees)
+
+
+@app.route("/admin/users/<int:user_id>/role", methods=["POST"])
+@admin_required
+def admin_set_user_role(user_id):
+    new_role = request.form.get("role", "user")
+    if new_role not in ("user", "admin"):
+        flash("Invalid role.", "danger")
+        return redirect(url_for("admin_users"))
+    if user_id == g.user["id"]:
+        flash("You cannot change your own role.", "warning")
+        return redirect(url_for("admin_users"))
+    db.update_user_role(user_id, new_role)
+    flash(f"Role updated to '{new_role}'.", "success")
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/<int:user_id>/link", methods=["POST"])
+@admin_required
+def admin_link_user_employee(user_id):
+    emp_id = request.form.get("employee_id")
+    if emp_id == "" or emp_id is None:
+        db.link_user_to_employee(user_id, None)
+        flash("Employee link removed.", "success")
+    else:
+        try:
+            emp_id = int(emp_id)
+        except (ValueError, TypeError):
+            flash("Invalid employee.", "danger")
+            return redirect(url_for("admin_users"))
+        db.link_user_to_employee(user_id, emp_id)
+        emp = db.get_employee_by_id(emp_id)
+        flash(f"User linked to '{emp['name'] if emp else emp_id}'.", "success")
+    return redirect(url_for("admin_users"))
 
 
 @app.route("/profile", methods=["GET", "POST"])
