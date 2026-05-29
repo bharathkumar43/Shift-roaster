@@ -840,7 +840,10 @@ def projects():
         coverage, proj_warnings = generate_project_coverage(
             all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
         )
-    except Exception:
+    except Exception as e:
+        app.logger.exception("generate_project_coverage failed")
+        if g.user and g.user.get("role") == "admin":
+            flash(f"Coverage error: {e}", "danger")
         coverage, proj_warnings = [], []
 
     month_name = calendar.month_name[month]
