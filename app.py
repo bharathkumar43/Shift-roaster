@@ -733,12 +733,18 @@ def save_roster():
     _excl = db.get_excluded_projects()
     all_projects = [p for p in all_projects if (p["name"], p["product_type"]) not in _excl]
     night_counts = db.get_night_shift_counts()
-    roster, _, _ = _generate_roster_with_saved_month(
-        employees, year, month, night_counts
-    )
-    proj_coverage, proj_warnings = generate_project_coverage(
-        all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
-    )
+    try:
+        roster, _, _ = _generate_roster_with_saved_month(
+            employees, year, month, night_counts
+        )
+    except Exception:
+        roster = []
+    try:
+        proj_coverage, proj_warnings = generate_project_coverage(
+            all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
+        )
+    except Exception:
+        proj_coverage, proj_warnings = [], []
 
     excel_output = generate_excel(
         roster, draft["warnings"], shift_assignments, employees, year, month,
@@ -822,13 +828,20 @@ def projects():
     month = int(request.form.get("month", cm))
 
     night_counts = db.get_night_shift_counts()
-    _, _, shift_assignments = _generate_roster_with_saved_month(
-        employees, year, month, night_counts
-    )
+    try:
+        _, _, shift_assignments = _generate_roster_with_saved_month(
+            employees, year, month, night_counts
+        )
+    except Exception:
+        flash("Roster not yet generated for this month. Please generate and save the roster first.", "warning")
+        return redirect(url_for("index"))
 
-    coverage, proj_warnings = generate_project_coverage(
-        all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
-    )
+    try:
+        coverage, proj_warnings = generate_project_coverage(
+            all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
+        )
+    except Exception:
+        coverage, proj_warnings = [], []
 
     month_name = calendar.month_name[month]
     session["last_roster"] = {"year": year, "month": month}
@@ -943,14 +956,21 @@ def download():
 
     employees = db.get_employees_by_role("engineer")
     night_counts = db.get_night_shift_counts()
-    roster, warnings, shift_assignments = _generate_roster_with_saved_month(
-        employees, year, month, night_counts
-    )
+    try:
+        roster, warnings, shift_assignments = _generate_roster_with_saved_month(
+            employees, year, month, night_counts
+        )
+    except Exception:
+        flash("Roster not yet generated for this month. Please generate and save the roster first.", "warning")
+        return redirect(url_for("index"))
 
     all_projects = db.get_all_projects()
-    proj_coverage, proj_warnings = generate_project_coverage(
-        all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
-    )
+    try:
+        proj_coverage, proj_warnings = generate_project_coverage(
+            all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
+        )
+    except Exception:
+        proj_coverage, proj_warnings = [], []
 
     output = generate_excel(
         roster, warnings, shift_assignments, employees, year, month,
@@ -1268,14 +1288,20 @@ def summary():
 
     if employees:
         night_counts = db.get_night_shift_counts()
-        _, _, shift_assignments = _generate_roster_with_saved_month(
-            employees, year, month, night_counts
-        )
-
-        if all_projects:
-            proj_coverage, proj_warnings = generate_project_coverage(
-                all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
+        try:
+            _, _, shift_assignments = _generate_roster_with_saved_month(
+                employees, year, month, night_counts
             )
+        except Exception:
+            shift_assignments = {}
+
+        if all_projects and shift_assignments:
+            try:
+                proj_coverage, proj_warnings = generate_project_coverage(
+                    all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
+                )
+            except Exception:
+                pass
 
     month_name = calendar.month_name[month]
     month_names = [calendar.month_name[m] for m in range(1, 13)]
@@ -1318,10 +1344,13 @@ def get_shifts():
     merged = {}
     if len(engineers) >= 2:
         night_counts = db.get_night_shift_counts()
-        _, _, gen_assign = _generate_roster_with_saved_month(
-            engineers, year, month, night_counts
-        )
-        merged = dict(gen_assign)
+        try:
+            _, _, gen_assign = _generate_roster_with_saved_month(
+                engineers, year, month, night_counts
+            )
+            merged = dict(gen_assign)
+        except Exception:
+            merged = {}
     merged.update(saved)
     for e in engineers:
         if is_pinned_shift_1(e["name"]):
@@ -1646,9 +1675,12 @@ def leaves():
     shift_assignments = {}
     if engineers:
         night_counts = db.get_night_shift_counts()
-        _, _, shift_assignments = _generate_roster_with_saved_month(
-            engineers, year, month, night_counts
-        )
+        try:
+            _, _, shift_assignments = _generate_roster_with_saved_month(
+                engineers, year, month, night_counts
+            )
+        except Exception:
+            shift_assignments = {}
 
     strength = db.get_shift_strength(year, month, shift_assignments) if is_admin else {}
 
@@ -1785,9 +1817,12 @@ def leave_impact():
 
     engineers = db.get_employees_by_role("engineer")
     night_counts = db.get_night_shift_counts()
-    _, _, shift_assignments = _generate_roster_with_saved_month(
-        engineers, year, month, night_counts
-    )
+    try:
+        _, _, shift_assignments = _generate_roster_with_saved_month(
+            engineers, year, month, night_counts
+        )
+    except Exception:
+        shift_assignments = {}
 
     emp_shift = shift_assignments.get(emp["name"])
 
