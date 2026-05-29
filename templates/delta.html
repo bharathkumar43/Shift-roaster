@@ -520,6 +520,7 @@
                                     <th>Type</th>
                                     <th>Final Validation Date</th>
                                     <th>Decommission Date</th>
+                                    {% if current_user and current_user.role == 'admin' %}<th style="width:130px"></th>{% endif %}
                                 </tr>
                             </thead>
                             <tbody>
@@ -531,6 +532,18 @@
                                     </td>
                                     <td class="small text-muted">{{ proj.final_validation_date or '—' }}</td>
                                     <td class="small fw-medium text-danger">{{ proj.decommission_date or '—' }}</td>
+                                    {% if current_user and current_user.role == 'admin' %}
+                                    <td>
+                                        <form method="POST" action="{{ url_for('delta_reactivate') }}" class="d-inline"
+                                              onsubmit="return confirm('Reactivate {{ proj.project_name | e }}? It will be removed from decommissioned status and become available for new delta events.')">
+                                            <input type="hidden" name="project_name" value="{{ proj.project_name }}">
+                                            <input type="hidden" name="product_type" value="{{ proj.product_type }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-success" title="Reactivate for delta">
+                                                <i class="bi bi-arrow-counterclockwise me-1"></i>Reactivate
+                                            </button>
+                                        </form>
+                                    </td>
+                                    {% endif %}
                                 </tr>
                                 {% endfor %}
                             </tbody>

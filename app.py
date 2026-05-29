@@ -2237,8 +2237,13 @@ def delta_preview():
         dates_by_month[(d.year, d.month)].append(d)
 
     all_projects = db.get_all_projects()
-    _excl = db.get_excluded_projects()
-    all_projects = [p for p in all_projects if (p["name"], p["product_type"]) not in _excl]
+    # Only exclude final_validation projects from coverage (still in active management pipeline).
+    # Decommissioned projects are allowed in the preview so engineer suggestions still work.
+    _fv_excl = {
+        (p["project_name"], p["product_type"])
+        for p in db.get_project_lifecycle_by_status("final_validation")
+    }
+    all_projects = [p for p in all_projects if (p["name"], p["product_type"]) not in _fv_excl]
     engineers = db.get_employees_by_role("engineer")
 
     result_days = []
@@ -2497,6 +2502,19 @@ def delta_set_status(delta_id):
         label = {"pre_delta": "Pre-delta", "delta_issues": "Delta Issues"}[status]
         flash(f"Delta status updated to {label}.", "success")
 
+    return redirect(url_for("delta"))
+
+
+@app.route("/delta/reactivate", methods=["POST"])
+@admin_required
+def delta_reactivate():
+    project_name = request.form.get("project_name", "").strip()
+    product_type = request.form.get("product_type", "").strip()
+    if not project_name or not product_type:
+        flash("Missing project information.", "danger")
+        return redirect(url_for("delta"))
+    db.delete_project_lifecycle(project_name, product_type)
+    flash(f"'{project_name}' has been reactivated and is now available for new delta events.", "success")
     return redirect(url_for("delta"))
 
 
