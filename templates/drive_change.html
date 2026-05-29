@@ -80,33 +80,47 @@ body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkM
 .empty-title { font-size:16px;font-weight:600; }
 .empty-sub   { font-size:13px; }
 
-/* ── Window section ── */
-.win-section { margin-bottom:32px; }
+/* ── Window section box ── */
+.win-section {
+    background:var(--bg2); border:1px solid var(--border);
+    border-radius:10px; margin-bottom:10px; overflow:hidden;
+}
+.win-section.is-current { border-color:var(--accent); }
 
 .win-header {
-    display:flex; align-items:center; gap:16px;
-    background:var(--bg2); border:1px solid var(--border);
-    border-radius:10px; padding:14px 20px; margin-bottom:14px;
+    display:flex; align-items:center; gap:12px;
+    padding:14px 20px; cursor:pointer; user-select:none;
+    transition:background .15s;
 }
-.win-header.is-current { border-color:var(--accent); background:var(--ag); }
+.win-section.is-current .win-header { background:var(--ag); }
+.win-header:hover { background:rgba(255,255,255,.04); }
+.win-section.is-current .win-header:hover { background:rgba(56,139,253,.2); }
 
-.win-header-left { display:flex; flex-direction:column; gap:3px; }
-.win-num-lbl { font-size:10px; font-weight:800; color:var(--muted); letter-spacing:.7px; text-transform:uppercase; }
 .win-time-range { font-size:15px; font-weight:700; }
 
 .badge-cur-sm {
-    background:rgba(56,139,253,.13);color:var(--accent);
-    border:1px solid rgba(56,139,253,.3);border-radius:4px;
-    padding:2px 8px;font-size:10px;font-weight:700;
+    background:rgba(56,139,253,.13); color:var(--accent);
+    border:1px solid rgba(56,139,253,.3); border-radius:4px;
+    padding:2px 7px; font-size:10px; font-weight:700;
+}
+.badge-past-lbl {
+    background:var(--bg3); color:var(--muted);
+    border:1px solid var(--border); border-radius:4px;
+    padding:2px 7px; font-size:10px; font-weight:700;
+    text-transform:uppercase;
 }
 
-.win-header-right { margin-left:auto; text-align:right; }
-.win-total-count { font-size:30px; font-weight:800; line-height:1; }
-.win-total-lbl { font-size:10px; color:var(--muted); font-weight:700; letter-spacing:.4px; margin-top:2px; }
+.win-right { margin-left:auto; display:flex; align-items:center; gap:10px; }
+.win-summary-txt { color:var(--muted); font-size:12px; }
+.win-no-alerts-txt { color:var(--muted); font-size:12px; }
+.win-arrow { color:var(--muted); font-size:11px; width:14px; text-align:center; }
 
-.win-empty-msg {
-    color:var(--muted); font-size:13px; text-align:center; padding:22px;
-    background:var(--bg2); border:1px dashed var(--border); border-radius:8px;
+/* ── Collapsible body ── */
+.win-body { padding:0 14px 14px; border-top:1px solid var(--border); padding-top:14px; }
+.win-section.collapsed .win-body { display:none; }
+
+.win-empty-body {
+    color:var(--muted); font-size:13px; text-align:center; padding:20px;
 }
 
 /* ── Project cards grid ── */
@@ -116,7 +130,7 @@ body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkM
 
 /* ── Project card ── */
 .proj-card {
-    background:var(--bg2); border:1px solid var(--bg3); border-radius:8px;
+    background:var(--bg3); border:1px solid var(--border); border-radius:8px;
     padding:16px; display:flex; flex-direction:column; gap:10px;
     transition:border-color .15s;
 }
@@ -135,7 +149,7 @@ body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkM
 .b-o { border:1px solid var(--warn);color:var(--warn);background:rgba(210,153,34,.08);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700; }
 
 .ws-list {
-    background:#0d1117;border:1px solid var(--border);border-radius:6px;
+    background:var(--bg);border:1px solid var(--border);border-radius:6px;
     padding:9px 12px;max-height:155px;overflow-y:auto;
     font-family:"SFMono-Regular",Consolas,monospace;font-size:11.5px;
     color:#c9d1d9;line-height:1.8;
@@ -146,7 +160,7 @@ body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkM
 .card-client { color:var(--muted); font-size:12px; }
 
 .btn-copy {
-    background:var(--bg3);color:var(--text);border:1px solid var(--border);
+    background:var(--bg2);color:var(--text);border:1px solid var(--border);
     border-radius:6px;padding:7px;font-size:12px;cursor:pointer;
     width:100%;text-align:center;margin-top:auto;transition:background .15s,border-color .15s;
 }
@@ -261,7 +275,7 @@ body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkM
 <script>
 (function(){
 
-var selDate  = null;   // null = today IST
+var selDate  = null;
 var cdSec    = 0;
 var cdTimer  = null;
 var AUTO_MIN = 30;
@@ -271,9 +285,7 @@ var DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 var MONS   = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 var WIN_LBL = {1:'12:00 AM – 8:00 AM IST', 2:'8:00 AM – 4:00 PM IST', 3:'4:00 PM – 12:00 AM IST'};
 
-// Always returns current time as if in IST, using UTC methods to read it.
-// Correct formula: UTC + 5h30m offset. Never adjust for local timezone
-// because Date.now() is already UTC regardless of browser locale.
+// UTC + IST offset — browser local timezone does NOT affect this calculation
 function nowIST(){ return new Date(Date.now() + IST_MS); }
 function pad(n){ return String(n).padStart(2,'0'); }
 
@@ -422,53 +434,73 @@ function renderAll(data){
     });
 }
 
-function buildWindowSection(n, wdata, curWindow){
-    var sec = document.createElement('div');
-    sec.className = 'win-section';
-
-    var isC = isToday() && n === curWindow;
+function buildWindowSection(n, wdata, cw){
+    var isC    = isToday() && n === cw;
     var groups = wdata.groups || [];
-    var label = wdata.label || WIN_LBL[n];
+    var total  = wdata.total  || 0;
+    var label  = wdata.label  || WIN_LBL[n];
+    var hasData = groups.length > 0;
 
-    // Section header
+    var sec = document.createElement('div');
+    sec.className = 'win-section' + (isC ? ' is-current' : '') + (hasData ? '' : ' collapsed');
+
+    // ── Header ──
     var head = document.createElement('div');
-    head.className = 'win-header' + (isC ? ' is-current' : '');
+    head.className = 'win-header';
+
+    var badgeHtml = isC
+        ? '<span class="badge-cur-sm">&#9679; CURRENT</span>'
+        : '<span class="badge-past-lbl">PAST</span>';
+
+    var rightTxt = hasData
+        ? '<span class="win-summary-txt">'+groups.length+' project'+(groups.length!==1?'s':'')+' &middot; '+total+' workspace ID'+(total!==1?'s':'')+'</span>'
+        : '<span class="win-no-alerts-txt">No alerts</span>';
+
+    var arrowChr = hasData ? '&#9660;' : '&#9658;';  // ▼ or ▶
+
     head.innerHTML =
-        '<div class="win-header-left">'+
-          '<div class="win-num-lbl">Window '+n+'</div>'+
-          '<div class="win-time-range">'+esc(label)+'</div>'+
-        '</div>'+
-        (isC ? '<span class="badge-cur-sm">CURRENT</span>' : '')+
-        '<div class="win-header-right">'+
-          '<div class="win-total-count">'+(wdata.total||0)+'</div>'+
-          '<div class="win-total-lbl">WORKSPACE IDs</div>'+
+        '<span class="win-time-range">'+esc(label)+'</span>'+
+        badgeHtml+
+        '<div class="win-right">'+
+          rightTxt+
+          '<span class="win-arrow">'+arrowChr+'</span>'+
         '</div>';
+
+    head.addEventListener('click', function(){
+        var nowCollapsed = sec.classList.toggle('collapsed');
+        sec.querySelector('.win-arrow').innerHTML = nowCollapsed ? '&#9658;' : '&#9660;';
+    });
     sec.appendChild(head);
 
-    if(groups.length === 0){
-        var msg = document.createElement('div');
-        msg.className = 'win-empty-msg';
-        msg.textContent = 'No alerts in this time window';
-        sec.appendChild(msg);
-    } else {
+    // ── Body ──
+    var body = document.createElement('div');
+    body.className = 'win-body';
+
+    if(hasData){
         var grid = document.createElement('div');
         grid.className = 'cards-grid';
         groups.forEach(function(proj){ grid.appendChild(buildCard(proj)); });
-        sec.appendChild(grid);
+        body.appendChild(grid);
+    } else {
+        var msg = document.createElement('div');
+        msg.className = 'win-empty-body';
+        msg.textContent = 'No drive change alerts in this time window.';
+        body.appendChild(msg);
     }
+    sec.appendChild(body);
+
     return sec;
 }
 
 function buildCard(proj){
     var card = document.createElement('div');
-    var sc = proj.status_counts || {};
+    var sc   = proj.status_counts || {};
     var hasC = sc['CONFLICT'] > 0 || (proj.primary_status||'').toUpperCase()==='CONFLICT';
     card.className = 'proj-card'+(hasC?' conflict':'');
 
     var wsIds  = proj.workspace_ids || [];
     var emails = proj.count || 0;
 
-    // Status badges
     var bHtml = '';
     if(sc['CONFLICT']) bHtml += '<span class="b-c">CONFLICT '+sc['CONFLICT']+'</span>';
     for(var st in sc){ if(st!=='CONFLICT') bHtml += '<span class="b-o">'+esc(st)+' '+sc[st]+'</span>'; }
