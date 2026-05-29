@@ -5,404 +5,518 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Drive Change Dashboard</title>
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0d0e18;color:#e2e8f0;min-height:100vh;font-size:14px}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+    --bg:       #0d1117;
+    --bg2:      #161b22;
+    --bg3:      #21262d;
+    --border:   #30363d;
+    --text:     #e6edf3;
+    --muted:    #8b949e;
+    --accent:   #388bfd;
+    --ag:       rgba(56,139,253,0.14);
+    --conflict: #f85149;
+    --success:  #3fb950;
+    --warn:     #d29922;
+}
+body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:14px; min-height:100vh; }
 
-/* ── Topbar ─────────────────────────────────────── */
-.topbar{display:flex;align-items:center;gap:12px;padding:0 20px;height:56px;background:#0d0e18;border-bottom:1px solid rgba(255,255,255,.06);position:sticky;top:0;z-index:100;flex-shrink:0}
-.app-brand{display:flex;align-items:center;gap:10px;min-width:190px}
-.status-dot{width:10px;height:10px;border-radius:50%;background:#4a6cf7;flex-shrink:0;box-shadow:0 0 6px rgba(74,108,247,.6)}
-.brand-title{font-size:13px;font-weight:700;color:#e2e8f0;line-height:1.2}
-.brand-sub{font-size:11px;color:#4a5268;line-height:1}
+/* ── Top bar ── */
+.topbar {
+    background:var(--bg2); border-bottom:1px solid var(--border);
+    padding:10px 20px; display:flex; align-items:center; gap:10px;
+    flex-wrap:wrap; position:sticky; top:0; z-index:100;
+}
+.brand { display:flex; align-items:center; gap:8px; flex:1; min-width:160px; }
+.dot { width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent);flex-shrink:0; }
+.dot.live { animation:pulse 2s infinite; }
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.brand-title { font-weight:700; font-size:15px; }
+.brand-sub   { color:var(--muted); font-size:11px; }
 
-.topbar-mid{display:flex;align-items:center;gap:10px;flex:1;justify-content:center}
+.pill {
+    background:var(--bg3); border:1px solid var(--border); border-radius:20px;
+    padding:5px 14px; font-size:13px; display:flex; align-items:center; gap:6px; white-space:nowrap;
+}
+.pill-clk { font-weight:600; }
+#clockDate { cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px; }
+#clockDate:hover { color:var(--accent); }
+.badge-past { background:#7d4e17;color:#f5c842;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700; }
+.pill-win   { color:var(--accent); font-weight:700; }
+.pill-cd    { color:var(--muted); font-size:12px; }
 
-.date-chip{display:flex;align-items:center;gap:8px;background:#181b2e;border:1px solid rgba(255,255,255,.09);border-radius:8px;padding:6px 14px;cursor:pointer;user-select:none;position:relative;transition:border-color .15s}
-.date-chip:hover{border-color:rgba(255,255,255,.18)}
-#displayDate{font-weight:600;color:#e2e8f0;font-size:13px;text-decoration:underline;text-underline-offset:2px}
-.chip-sep{color:#3a4060}
-#istClock{color:#8892b0;font-size:13px;font-variant-numeric:tabular-nums}
-.past-badge{background:rgba(237,137,54,.14);color:#ed8936;font-size:10px;padding:2px 7px;border-radius:20px;border:1px solid rgba(237,137,54,.28);font-weight:600}
-#hiddenDate{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none;top:0;left:0}
+.btn-refresh {
+    background:var(--accent);color:#fff;border:none;border-radius:6px;
+    padding:7px 16px;font-size:13px;font-weight:700;cursor:pointer;
+    display:flex;align-items:center;gap:6px;margin-left:auto;transition:opacity .2s;
+}
+.btn-refresh:hover { opacity:.85; }
+.btn-refresh:disabled { opacity:.45;cursor:default; }
+.btn-back {
+    background:transparent;color:var(--muted);border:1px solid var(--border);
+    border-radius:6px;padding:6px 12px;font-size:13px;cursor:pointer;
+    text-decoration:none;display:flex;align-items:center;gap:5px;
+}
+.btn-back:hover { color:var(--text);border-color:var(--muted); }
 
-.window-pill{background:rgba(91,120,245,.13);color:#7c9fff;border:1px solid rgba(91,120,245,.25);border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;white-space:nowrap}
+/* ── Stats bar ── */
+.statsbar { background:var(--bg2);border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap; }
+.stat { padding:14px 24px;border-right:1px solid var(--border);min-width:120px; }
+.stat:last-child { border-right:none; }
+.stat-lbl { color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;margin-bottom:4px; }
+.stat-val { font-size:26px;font-weight:800;line-height:1; }
+.stat-val.cyan { color:var(--accent); }
+.stat-val.red  { color:var(--conflict); }
+.stat-sub { color:var(--muted);font-size:12px;margin-top:2px; }
 
-.topbar-right{display:flex;align-items:center;gap:12px;margin-left:auto}
-.countdown-text{font-size:12px;color:#4a5268;white-space:nowrap}
-.back-link{color:#4a5268;text-decoration:none;font-size:12px;padding:5px 10px;border-radius:6px;transition:color .15s,background .15s;white-space:nowrap}
-.back-link:hover{color:#a0aec0;background:rgba(255,255,255,.04)}
-.refresh-btn{background:#4a6cf7;color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:7px;transition:background .15s;white-space:nowrap}
-.refresh-btn:hover{background:#3a5ce5}
-.refresh-btn:disabled{background:#2a3780;cursor:not-allowed;opacity:.7}
+/* ── Main ── */
+.content { padding:20px; max-width:1400px; margin:0 auto; }
 
-/* ── Stats Strip ─────────────────────────────────── */
-.stats-strip{display:flex;background:#11121f;border-bottom:1px solid rgba(255,255,255,.06)}
-.stat-cell{flex:1;padding:14px 20px;border-right:1px solid rgba(255,255,255,.05)}
-.stat-cell:last-child{border-right:none}
-.stat-lbl{font-size:10px;font-weight:700;letter-spacing:.08em;color:#4a5268;text-transform:uppercase;margin-bottom:5px}
-.stat-val{font-size:22px;font-weight:800;color:#e2e8f0;line-height:1}
-.stat-val.cyan{color:#22d3ee}
-.stat-val.red{color:#fc8181}
+.empty-state {
+    display:flex;flex-direction:column;align-items:center;
+    justify-content:center;padding:80px 20px;color:var(--muted);gap:14px;
+}
+.empty-icon  { font-size:58px;opacity:.25; }
+.empty-title { font-size:16px;font-weight:600; }
+.empty-sub   { font-size:13px; }
 
-/* ── Main ────────────────────────────────────────── */
-.main{padding:20px;max-width:1440px;margin:0 auto}
+/* ── Window summary header ── */
+.win-summary-row {
+    display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:18px;
+}
+.win-pill {
+    background:var(--bg2); border:1px solid var(--border); border-radius:8px;
+    padding:10px 16px; display:flex; align-items:center; justify-content:space-between;
+}
+.win-pill.is-current { border-color:var(--accent); background:var(--ag); }
+.win-pill-label { font-size:12px; font-weight:700; }
+.win-pill-count { font-size:20px; font-weight:800; }
+.badge-cur-sm {
+    background:rgba(56,139,253,.13);color:var(--accent);
+    border:1px solid rgba(56,139,253,.3);border-radius:4px;
+    padding:1px 6px;font-size:10px;font-weight:700;
+}
 
-/* ── Empty / Loading ─────────────────────────────── */
-.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:400px;text-align:center;gap:10px}
-.empty-icon{font-size:56px;margin-bottom:6px;opacity:.7}
-.empty-state p{font-size:14px;color:#8892b0;line-height:1.6}
-.empty-state p strong{color:#c6ccdf}
-.empty-sub{font-size:12px!important;color:#4a5268!important}
+/* ── Section heading ── */
+.section-head {
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:12px;
+}
+.section-head h2 { font-size:16px; font-weight:700; }
+.section-head span { color:var(--muted); font-size:13px; }
 
-/* ── Window Panel ────────────────────────────────── */
-.win-panel{background:#12141f;border:1px solid rgba(255,255,255,.07);border-radius:12px;margin-bottom:16px;overflow:hidden}
-.win-header{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;transition:background .12s}
-.win-header:hover{background:rgba(255,255,255,.02)}
-.win-label{font-size:14px;font-weight:700;color:#e2e8f0}
-.badge-current{background:rgba(91,120,245,.15);color:#7c9fff;border:1px solid rgba(91,120,245,.3);font-size:11px;padding:3px 9px;border-radius:20px;font-weight:700}
-.badge-past{background:rgba(255,255,255,.04);color:#4a5268;border:1px solid rgba(255,255,255,.08);font-size:11px;padding:3px 9px;border-radius:20px}
-.win-summary{margin-left:auto;font-size:12px;color:#4a5268;display:flex;align-items:center;gap:6px}
-.win-arrow{display:inline-block;transition:transform .2s;font-size:10px}
+/* ── Project cards grid ── */
+.cards-grid {
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px;
+}
 
-.win-body{padding:16px 18px}
+/* ── Project card ── */
+.proj-card {
+    background:var(--bg2); border:1px solid var(--bg3); border-radius:8px;
+    padding:16px; display:flex; flex-direction:column; gap:10px;
+    transition:border-color .15s;
+}
+.proj-card:hover { border-color:#444c56; }
+.proj-card.conflict { border-left:3px solid var(--conflict); }
 
-/* ── Projects Grid ───────────────────────────────── */
-.proj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.card-top { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+.proj-name   { font-weight:800; font-size:15px; letter-spacing:.4px; }
+.proj-server { color:var(--muted); font-size:11px; margin-top:2px; }
+.ws-big  { font-size:34px;font-weight:800;line-height:1;text-align:right;flex-shrink:0; }
+.ws-lbl  { color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.4px;text-align:right;margin-top:2px; }
 
-/* ── Project Card ────────────────────────────────── */
-.proj-card{background:#1a1d2e;border:1px solid rgba(255,255,255,.07);border-left:3px solid #c53030;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px}
-.card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
-.proj-name{font-size:15px;font-weight:800;color:#e2e8f0;text-transform:uppercase;letter-spacing:.02em;line-height:1.2}
-.proj-domain{font-size:11px;color:#4a5268;margin-top:2px}
-.ws-count-wrap{text-align:right;flex-shrink:0}
-.ws-count-num{font-size:28px;font-weight:800;color:#e2e8f0;line-height:1}
-.ws-count-lbl{font-size:9px;color:#4a5268;text-transform:uppercase;letter-spacing:.06em}
-.card-badges{display:flex;gap:6px;flex-wrap:wrap}
-.b-conflict{background:rgba(197,48,48,.18);color:#fc8181;border:1px solid rgba(197,48,48,.3);font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px}
-.b-emails{background:rgba(255,255,255,.04);color:#5a6280;border:1px solid rgba(255,255,255,.08);font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px}
-.ws-box{background:#0f1120;border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:10px 12px;max-height:160px;overflow-y:auto;font-family:"SF Mono","Fira Code","Courier New",monospace;font-size:11px;color:#8892b0;line-height:1.9}
-.ws-box::-webkit-scrollbar{width:4px}
-.ws-box::-webkit-scrollbar-track{background:transparent}
-.ws-box::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
-.ws-entry{display:block}
-.card-client{font-size:11px;color:#4a5268}
-.copy-btn{width:100%;background:#1e2235;color:#8892b0;border:1px solid rgba(255,255,255,.07);border-radius:6px;padding:9px;font-size:12px;font-weight:500;cursor:pointer;text-align:center;transition:background .15s,color .15s}
-.copy-btn:hover{background:#252840;color:#e2e8f0}
-.copy-btn.copied{background:rgba(72,187,120,.1);color:#68d391;border-color:rgba(72,187,120,.2)}
+.badges { display:flex; gap:6px; flex-wrap:wrap; }
+.b-c { border:1px solid var(--conflict);color:var(--conflict);background:rgba(248,81,73,.08);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700; }
+.b-e { border:1px solid var(--accent);color:var(--accent);background:rgba(56,139,253,.08);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700; }
+.b-o { border:1px solid var(--warn);color:var(--warn);background:rgba(210,153,34,.08);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700; }
 
-.no-alerts{padding:24px;text-align:center;font-size:12px;color:#3a4060}
+/* ── Window breakdown pills inside card ── */
+.win-breakdown { display:flex; gap:6px; flex-wrap:wrap; }
+.wb-pill {
+    background:var(--bg3); border:1px solid var(--border); border-radius:4px;
+    padding:2px 8px; font-size:10px; color:var(--muted); font-weight:600;
+}
+.wb-pill.has-data { border-color:rgba(56,139,253,.3); color:var(--accent); background:var(--ag); }
 
-/* ── Spinner ─────────────────────────────────────── */
-.spin{width:13px;height:13px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:sp .65s linear infinite;display:inline-block;vertical-align:middle}
-@keyframes sp{to{transform:rotate(360deg)}}
+.ws-list {
+    background:#0d1117;border:1px solid var(--border);border-radius:6px;
+    padding:9px 12px;max-height:155px;overflow-y:auto;
+    font-family:"SFMono-Regular",Consolas,monospace;font-size:11.5px;
+    color:#c9d1d9;line-height:1.8;
+}
+.ws-list::-webkit-scrollbar{width:4px;}
+.ws-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 
-/* ── Toast ───────────────────────────────────────── */
-.toast{position:fixed;bottom:22px;right:22px;background:#1a1d2e;border:1px solid rgba(255,255,255,.1);color:#68d391;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:500;box-shadow:0 4px 20px rgba(0,0,0,.5);z-index:200;opacity:0;transform:translateY(8px);transition:opacity .18s,transform .18s;pointer-events:none}
-.toast.show{opacity:1;transform:translateY(0)}
+.card-client { color:var(--muted); font-size:12px; }
 
-.hidden{display:none!important}
+.btn-copy {
+    background:var(--bg3);color:var(--text);border:1px solid var(--border);
+    border-radius:6px;padding:7px;font-size:12px;cursor:pointer;
+    width:100%;text-align:center;margin-top:auto;transition:background .15s,border-color .15s;
+}
+.btn-copy:hover { background:#2d333b;border-color:#555; }
+.btn-copy.ok    { background:rgba(63,185,80,.13);border-color:var(--success);color:var(--success); }
+
+/* ── Date picker ── */
+.dp-overlay {
+    position:fixed;inset:0;background:rgba(0,0,0,.6);
+    display:flex;align-items:center;justify-content:center;z-index:200;
+}
+.dp-box { background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:24px;width:300px; }
+.dp-box h3 { font-size:14px;margin-bottom:14px; }
+.dp-box input[type=date] {
+    width:100%;background:var(--bg3);border:1px solid var(--border);
+    border-radius:6px;padding:8px 12px;color:var(--text);font-size:14px;margin-bottom:12px;
+}
+.dp-box input[type=date]::-webkit-calendar-picker-indicator { filter:invert(1); }
+.dp-row { display:flex;gap:8px; }
+.dp-row button { flex:1;padding:8px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:700; }
+.dp-ok     { background:var(--accent);color:#fff;border:none; }
+.dp-cancel { background:transparent;color:var(--muted);border:1px solid var(--border); }
+
+/* ── Misc ── */
+.spinner { width:13px;height:13px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block;vertical-align:middle; }
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast { position:fixed;bottom:22px;right:22px;background:#3d1a1a;border:1px solid var(--conflict);color:#ffa8a8;border-radius:8px;padding:11px 16px;max-width:380px;font-size:13px;z-index:300;display:none; }
+.toast.show { display:block; }
+@media(max-width:600px){ .stat{padding:10px 14px;} .ws-big{font-size:26px;} .win-summary-row{grid-template-columns:1fr;} }
 </style>
 </head>
 <body>
 
-<!-- ── Topbar ── -->
-<header class="topbar">
-    <div class="app-brand">
-        <span class="status-dot"></span>
+<!-- Top bar -->
+<div class="topbar">
+    <div class="brand">
+        <div class="dot live" id="dotInd"></div>
         <div>
             <div class="brand-title">Drive Change Dashboard</div>
             <div class="brand-sub">CloudFuze &middot; Neutara Technologies</div>
         </div>
     </div>
 
-    <div class="topbar-mid">
-        <div class="date-chip" id="dateChip">
-            <span id="displayDate">—</span>
-            <span class="chip-sep">|</span>
-            <span id="istClock">--:--:-- IST</span>
-            <span id="pastBadge" class="past-badge hidden">past date</span>
-            <input type="date" id="hiddenDate" value="{{ selected_date }}" max="{{ today_ist }}">
-        </div>
-        <div class="window-pill" id="windowPill">NOW: —</div>
+    <div class="pill pill-clk">
+        <span id="clockDate" title="Click to view another date"></span>
+        <span id="clockTime"></span>
+        <span>IST</span>
+        <span class="badge-past" id="pastBadge" style="display:none">past date</span>
+    </div>
+    <div class="pill">
+        <span class="pill-win" id="winLabel">—</span>
+    </div>
+    <div class="pill pill-cd" id="cdPill" style="display:none">
+        Refresh in <span id="cdText"></span>
     </div>
 
-    <div class="topbar-right">
-        <span class="countdown-text hidden" id="countdown"></span>
-        <a href="{{ url_for('index') }}" class="back-link">&#8592; Back</a>
-        <button class="refresh-btn" id="refreshBtn">&#8635; Refresh Emails</button>
-    </div>
-</header>
-
-<!-- ── Stats Strip ── -->
-<div class="stats-strip">
-    <div class="stat-cell"><div class="stat-lbl">Emails Fetched</div><div class="stat-val cyan" id="sEmails">—</div></div>
-    <div class="stat-cell"><div class="stat-lbl">12 AM – 8 AM</div><div class="stat-val" id="sW1">—</div></div>
-    <div class="stat-cell"><div class="stat-lbl">8 AM – 4 PM</div><div class="stat-val" id="sW2">—</div></div>
-    <div class="stat-cell"><div class="stat-lbl">4 PM – 12 AM</div><div class="stat-val" id="sW3">—</div></div>
-    <div class="stat-cell"><div class="stat-lbl">Parse Failures</div><div class="stat-val" id="sFailures">—</div></div>
+    <a href="{{ url_for('index') }}" class="btn-back">&#8592; Back</a>
+    <button class="btn-refresh" id="refreshBtn" onclick="doRefresh()">Refresh Emails</button>
 </div>
 
-<!-- ── Main ── -->
-<main class="main">
-    <div id="emptyState" class="empty-state">
+<!-- Stats bar -->
+<div class="statsbar">
+    <div class="stat">
+        <div class="stat-lbl">Emails Fetched</div>
+        <div class="stat-val cyan" id="sTotal">—</div>
+        <div class="stat-sub" id="sDate"></div>
+    </div>
+    <div class="stat">
+        <div class="stat-lbl">12 AM – 8 AM</div>
+        <div class="stat-val" id="s1">—</div>
+    </div>
+    <div class="stat">
+        <div class="stat-lbl">8 AM – 4 PM</div>
+        <div class="stat-val" id="s2">—</div>
+    </div>
+    <div class="stat">
+        <div class="stat-lbl">4 PM – 12 AM</div>
+        <div class="stat-val" id="s3">—</div>
+    </div>
+    <div class="stat">
+        <div class="stat-lbl">Parse Failures</div>
+        <div class="stat-val" id="sFail">—</div>
+    </div>
+</div>
+
+<!-- Main -->
+<div class="content">
+    <div class="empty-state" id="emptyState">
         <div class="empty-icon">📬</div>
-        <p>Click <strong>Refresh Emails</strong> to load drive change alerts</p>
-        <p class="empty-sub">Emails are grouped by 8-hour IST time window &middot; No data is modified</p>
+        <div class="empty-title">Click <strong>Refresh Emails</strong> to load drive change alerts</div>
+        <div class="empty-sub">Emails are grouped by 8-hour IST time window &middot; No data is modified</div>
     </div>
-
-    <div id="panels" class="hidden">
-        <div id="panel1" class="win-panel"></div>
-        <div id="panel2" class="win-panel"></div>
-        <div id="panel3" class="win-panel"></div>
+    <div id="dataWrap" style="display:none">
+        <!-- Window summary pills -->
+        <div class="win-summary-row" id="winSummary"></div>
+        <!-- Project cards -->
+        <div class="section-head">
+            <h2 id="projHeading">Projects</h2>
+            <span id="projSubtitle"></span>
+        </div>
+        <div class="cards-grid" id="cardsGrid"></div>
     </div>
-</main>
+</div>
 
-<div class="toast" id="toast">&#10003; Copied to clipboard</div>
+<!-- Date picker modal -->
+<div class="dp-overlay" id="dpOverlay" style="display:none" onclick="if(event.target===this)closeDp()">
+    <div class="dp-box">
+        <h3>View alerts for date</h3>
+        <input type="date" id="dpInput" max="">
+        <div class="dp-row">
+            <button class="dp-ok"     onclick="applyDate()">View</button>
+            <button class="dp-cancel" onclick="closeDp()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
 
 <script>
-var SEL_DATE   = "{{ selected_date }}";
-var TODAY_IST  = "{{ today_ist }}";
-var WIN_LABELS = ["12:00 AM – 8:00 AM IST","8:00 AM – 4:00 PM IST","4:00 PM – 12:00 AM IST"];
+(function(){
 
-// ── IST helpers ──────────────────────────────────────────────
-function nowIST() {
-    return new Date(new Date().toLocaleString("en-US",{timeZone:"Asia/Kolkata"}));
+var selDate  = null;   // null = today IST
+var cdSec    = 0;
+var cdTimer  = null;
+var AUTO_MIN = 30;
+
+var IST_MS = (5*60+30)*60*1000;
+var DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+var MONS   = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var WIN_LBL = {1:'12:00 AM – 8:00 AM IST', 2:'8:00 AM – 4:00 PM IST', 3:'4:00 PM – 12:00 AM IST'};
+var WIN_SHORT = {1:'12 AM–8 AM', 2:'8 AM–4 PM', 3:'4 PM–12 AM'};
+
+function nowIST(){ return new Date(Date.now() + IST_MS - new Date().getTimezoneOffset()*60000); }
+function pad(n){ return String(n).padStart(2,'0'); }
+
+function todayStr(){
+    var d = nowIST();
+    return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate());
 }
-function istWindow() {
-    var h = nowIST().getHours();
+
+function curWin(){
+    var h = nowIST().getUTCHours();
     return h < 8 ? 1 : h < 16 ? 2 : 3;
 }
-function fmtDate(ds) {
-    var d = new Date(ds + "T00:00:00");
-    var days   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-    var months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-    return days[d.getDay()] + ", " + d.getDate() + " " + months[d.getMonth()];
-}
-function fmtDateLong(ds) {
-    var d = new Date(ds + "T00:00:00");
-    var months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-    return d.getDate() + " " + months[d.getMonth()] + " " + d.getFullYear();
+
+function isToday(){ return !selDate || selDate === todayStr(); }
+
+function fmtDateStr(s){
+    if(!s) return '';
+    var p = s.split('-');
+    if(p.length!==3) return s;
+    return parseInt(p[2])+' '+MONS[parseInt(p[1])-1]+' '+p[0];
 }
 
-// ── Clock ────────────────────────────────────────────────────
-function tickClock() {
+// ── Clock ──────────────────────────────────────────────────────────────────
+function tickClock(){
+    // Time always shows current IST
     var d = nowIST();
-    var pad = function(n){ return String(n).padStart(2,"0"); };
-    document.getElementById("istClock").textContent =
-        pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()) + " IST";
-    var w = istWindow();
-    document.getElementById("windowPill").textContent = "NOW: " + WIN_LABELS[w-1];
+    document.getElementById('clockTime').textContent =
+        pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUTCSeconds());
+
+    // Date shows the SELECTED date when viewing past, otherwise today
+    var displayDate;
+    if(selDate){
+        var p = selDate.split('-');
+        var sd = new Date(Date.UTC(parseInt(p[0]),parseInt(p[1])-1,parseInt(p[2])));
+        displayDate = DAYS[sd.getUTCDay()]+', '+sd.getUTCDate()+' '+MONS[sd.getUTCMonth()];
+    } else {
+        displayDate = DAYS[d.getUTCDay()]+', '+d.getUTCDate()+' '+MONS[d.getUTCMonth()];
+    }
+    document.getElementById('clockDate').textContent = displayDate;
+    document.getElementById('winLabel').textContent = 'NOW: '+WIN_LBL[curWin()];
+    document.getElementById('pastBadge').style.display = isToday() ? 'none' : '';
 }
-tickClock();
 setInterval(tickClock, 1000);
+tickClock();
 
-// ── Date display ─────────────────────────────────────────────
-function setDateDisplay(ds) {
-    document.getElementById("displayDate").textContent = fmtDate(ds);
-    var pb = document.getElementById("pastBadge");
-    ds !== TODAY_IST ? pb.classList.remove("hidden") : pb.classList.add("hidden");
-}
-setDateDisplay(SEL_DATE);
+// ── Date picker ────────────────────────────────────────────────────────────
+document.getElementById('clockDate').onclick = function(){
+    var inp = document.getElementById('dpInput');
+    inp.max = todayStr();
+    inp.value = selDate || todayStr();
+    document.getElementById('dpOverlay').style.display = 'flex';
+};
+function closeDp(){ document.getElementById('dpOverlay').style.display='none'; }
+window.closeDp = closeDp;
 
-// ── Date picker ──────────────────────────────────────────────
-var hiddenDate = document.getElementById("hiddenDate");
-document.getElementById("dateChip").addEventListener("click", function(e) {
-    if (e.target === hiddenDate) return;
-    hiddenDate.style.position = "absolute";
-    hiddenDate.style.pointerEvents = "auto";
-    hiddenDate.style.opacity = "0";
-    try { hiddenDate.showPicker(); } catch(_) { hiddenDate.click(); }
-});
-hiddenDate.addEventListener("change", function() {
-    if (!this.value) return;
-    SEL_DATE = this.value;
-    setDateDisplay(this.value);
+function applyDate(){
+    var v = document.getElementById('dpInput').value;
+    if(!v) return;
+    if(v > todayStr()){ showErr('Cannot select a future date.'); return; }
+    selDate = (v === todayStr()) ? null : v;
+    closeDp();
+    stopCd();
+    if(isToday()) startCd();
     doRefresh();
-});
+}
+window.applyDate = applyDate;
 
-// ── Auto-refresh countdown ───────────────────────────────────
-var cdSecs = 0, cdTimer = null;
-function startCountdown(s) {
-    cdSecs = s;
-    var el = document.getElementById("countdown");
-    el.classList.remove("hidden");
-    if (cdTimer) clearInterval(cdTimer);
-    cdTimer = setInterval(function() {
-        cdSecs--;
-        if (cdSecs <= 0) {
-            clearInterval(cdTimer); el.classList.add("hidden"); doRefresh();
-        } else {
-            el.textContent = "Refresh in " + Math.floor(cdSecs/60) + "m " +
-                String(cdSecs % 60).padStart(2,"0") + "s";
-        }
+// ── Countdown ──────────────────────────────────────────────────────────────
+function startCd(){
+    stopCd();
+    cdSec = AUTO_MIN*60;
+    updateCdUI();
+    document.getElementById('cdPill').style.display = '';
+    cdTimer = setInterval(function(){
+        cdSec--;
+        if(cdSec<=0){ doRefresh(); } else { updateCdUI(); }
     }, 1000);
 }
-
-// ── Copy ─────────────────────────────────────────────────────
-var toastTimer = null;
-function showToast() {
-    var t = document.getElementById("toast");
-    t.classList.add("show");
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(function(){ t.classList.remove("show"); }, 2000);
+function stopCd(){
+    clearInterval(cdTimer); cdTimer=null;
+    document.getElementById('cdPill').style.display = 'none';
 }
-function copyText(txt) {
-    if (navigator.clipboard) {
-        navigator.clipboard.writeText(txt).then(showToast).catch(function(){ fallbackCopy(txt); });
-    } else { fallbackCopy(txt); }
-}
-function fallbackCopy(txt) {
-    var ta = document.createElement("textarea");
-    ta.value = txt; ta.style.cssText = "position:fixed;opacity:0;top:-9999px";
-    document.body.appendChild(ta); ta.select();
-    document.execCommand("copy"); document.body.removeChild(ta); showToast();
+function updateCdUI(){
+    document.getElementById('cdText').textContent =
+        Math.floor(cdSec/60)+'m '+pad(cdSec%60)+'s';
 }
 
-// ── Render helpers ───────────────────────────────────────────
-function esc(s) {
-    return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-}
+// ── Refresh ────────────────────────────────────────────────────────────────
+function doRefresh(){
+    stopCd();
+    var btn = document.getElementById('refreshBtn');
+    btn.disabled=true;
+    btn.innerHTML='<span class="spinner"></span> Loading...';
+    document.getElementById('dotInd').classList.remove('live');
 
-function renderPanel(el, wNum, wData, curWin) {
-    var label  = WIN_LABELS[wNum - 1];
-    var groups = (wData && wData.groups) || [];
-    var total  = (wData && wData.total)  || 0;
-    var isCur  = (wNum === curWin);
+    var body = {};
+    if(selDate) body.date = selDate;
 
-    var statusBadge = isCur
-        ? '<span class="badge-current">+ CURRENT</span>'
-        : '<span class="badge-past">PAST</span>';
-    var summaryTxt = groups.length > 0
-        ? groups.length + " project" + (groups.length !== 1 ? "s" : "") +
-          " · " + total + " workspace ID" + (total !== 1 ? "s" : "")
-        : "No alerts";
-
-    var bodyHtml = "";
-    if (groups.length === 0) {
-        bodyHtml = '<div class="no-alerts">No alerts in this window</div>';
-    } else {
-        var cards = groups.map(function(g, idx) {
-            var ids    = g.workspace_ids || [];
-            var ps     = g.primary_status || "";
-            var sc     = g.status_counts  || {};
-            var pCount = sc[ps] || ids.length;
-
-            var badges = ps
-                ? '<span class="b-conflict">' + esc(ps) + " " + pCount + "</span>" +
-                  '<span class="b-emails">'   + g.count  + " EMAIL" + (g.count !== 1 ? "S" : "") + "</span>"
-                : '<span class="b-emails">'   + g.count  + " EMAIL" + (g.count !== 1 ? "S" : "") + "</span>";
-
-            var idLines = ids.map(function(id){ return '<span class="ws-entry">' + esc(id) + "</span>"; }).join("");
-            var clientLine = g.client_name
-                ? '<span class="card-client">Client: ' + esc(g.client_name) + "</span>"
-                : "";
-
-            return '<div class="proj-card">' +
-                '<div class="card-top">' +
-                  '<div><div class="proj-name">' + esc(g.project_name || g.server_name || "(unknown)") + "</div>" +
-                  (g.server_name ? '<div class="proj-domain">' + esc(g.server_name) + "</div>" : "") + "</div>" +
-                  '<div class="ws-count-wrap"><div class="ws-count-num">' + ids.length + "</div>" +
-                  '<div class="ws-count-lbl">WORKSPACE IDs</div></div>' +
-                "</div>" +
-                '<div class="card-badges">' + badges + "</div>" +
-                '<div class="ws-box">' + idLines + "</div>" +
-                clientLine +
-                '<button class="copy-btn" data-ids="' + esc(ids.join("\n")) + '">Copy Workspace IDs</button>' +
-                "</div>";
-        }).join("");
-        bodyHtml = '<div class="proj-grid">' + cards + "</div>";
-    }
-
-    el.innerHTML =
-        '<div class="win-header">' +
-          '<span class="win-label">' + esc(label) + "</span>" +
-          statusBadge +
-          '<span class="win-summary">' + esc(summaryTxt) + ' <span class="win-arrow">▼</span></span>' +
-        "</div>" +
-        '<div class="win-body">' + bodyHtml + "</div>";
-
-    // Copy buttons
-    el.querySelectorAll(".copy-btn").forEach(function(btn) {
-        btn.addEventListener("click", function() {
-            copyText(this.dataset.ids || "");
-            var self = this;
-            self.textContent = "✓ Copied!";
-            self.classList.add("copied");
-            setTimeout(function(){ self.textContent = "Copy Workspace IDs"; self.classList.remove("copied"); }, 2000);
-        });
-    });
-
-    // Collapse toggle
-    var header = el.querySelector(".win-header");
-    var body   = el.querySelector(".win-body");
-    var arrow  = el.querySelector(".win-arrow");
-    header.addEventListener("click", function() {
-        var hidden = body.style.display === "none";
-        body.style.display  = hidden ? "" : "none";
-        arrow.style.transform = hidden ? "" : "rotate(-90deg)";
-    });
-}
-
-function renderAll(grouped, totalEmails, dateStr) {
-    var curWin = istWindow();
-    document.getElementById("sEmails").textContent   = totalEmails + " (" + fmtDateLong(dateStr) + ")";
-    document.getElementById("sW1").textContent        = ((grouped["1"] || {}).total) || 0;
-    document.getElementById("sW2").textContent        = ((grouped["2"] || {}).total) || 0;
-    document.getElementById("sW3").textContent        = ((grouped["3"] || {}).total) || 0;
-    var fails = grouped["parse_failures"] || 0;
-    var fEl = document.getElementById("sFailures");
-    fEl.textContent  = fails;
-    fEl.className    = "stat-val" + (fails > 0 ? " red" : "");
-
-    [1,2,3].forEach(function(w) {
-        renderPanel(document.getElementById("panel" + w), w, grouped[String(w)], curWin);
-    });
-
-    document.getElementById("emptyState").classList.add("hidden");
-    document.getElementById("panels").classList.remove("hidden");
-}
-
-// ── Refresh ──────────────────────────────────────────────────
-function doRefresh() {
-    var btn = document.getElementById("refreshBtn");
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spin"></span> Loading…';
-
-    document.getElementById("panels").classList.add("hidden");
-    var es = document.getElementById("emptyState");
-    es.classList.remove("hidden");
-    es.innerHTML = '<div class="empty-icon" style="opacity:.5">⌛</div>' +
-        '<p>Loading alerts for <strong>' + esc(fmtDate(SEL_DATE)) + '</strong>…</p>';
-
-    fetch("/api/drive-change/refresh", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({date: SEL_DATE})
+    fetch('/drive-change/refresh',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(body)
     })
     .then(function(r){ return r.json(); })
-    .then(function(data) {
-        if (!data.success) {
-            es.innerHTML = '<div class="empty-icon">⚠️</div>' +
-                '<p>Error: ' + esc(data.error || "Unknown error") + '</p>' +
-                '<p class="empty-sub">Check Azure credentials and DC_OUTLOOK_USER_EMAIL in .env</p>';
-            return;
-        }
-        renderAll(data.grouped, data.total_emails, SEL_DATE);
-        if (SEL_DATE === TODAY_IST && cdTimer === null) {
-            startCountdown(30 * 60);
-        }
+    .then(function(data){
+        btn.disabled=false;
+        btn.innerHTML='Refresh Emails';
+        document.getElementById('dotInd').classList.add('live');
+        if(data.error){ showErr(data.error); return; }
+        renderAll(data);
+        if(isToday()) startCd();
     })
-    .catch(function(e) {
-        es.innerHTML = '<div class="empty-icon">⚠️</div>' +
-            '<p>Network error: ' + esc(e.message) + '</p>';
-    })
-    .finally(function() {
-        btn.disabled = false;
-        btn.innerHTML = "&#8635; Refresh Emails";
+    .catch(function(){
+        btn.disabled=false;
+        btn.innerHTML='Refresh Emails';
+        document.getElementById('dotInd').classList.add('live');
+        showErr('Network error — please try again.');
+    });
+}
+window.doRefresh = doRefresh;
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function renderAll(data){
+    var wt = data.window_totals || {};
+    var wl = data.window_labels  || {};
+    document.getElementById('sTotal').textContent = data.total_emails;
+    document.getElementById('sDate').textContent  = '('+fmtDateStr(data.date)+')';
+    document.getElementById('s1').textContent = wt['1']||0;
+    document.getElementById('s2').textContent = wt['2']||0;
+    document.getElementById('s3').textContent = wt['3']||0;
+    var fail = data.parse_failures||0;
+    var fEl = document.getElementById('sFail');
+    fEl.textContent = fail;
+    fEl.className = 'stat-val'+(fail>0?' red':'');
+
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('dataWrap').style.display   = '';
+
+    // Window summary pills
+    var ws = document.getElementById('winSummary');
+    ws.innerHTML = '';
+    var cw = curWin();
+    [1,2,3].forEach(function(n){
+        var d2 = document.createElement('div');
+        var isC = isToday() && n===cw;
+        d2.className = 'win-pill'+(isC?' is-current':'');
+        d2.innerHTML =
+            '<div>'+
+              '<div class="win-pill-label">'+esc(wl[String(n)]||WIN_LBL[n])+'</div>'+
+              (isC ? '<span class="badge-cur-sm">CURRENT</span>' : '<span style="color:var(--muted);font-size:10px">PAST</span>')+
+            '</div>'+
+            '<div class="win-pill-count">'+(wt[String(n)]||0)+'</div>';
+        ws.appendChild(d2);
+    });
+
+    // Projects
+    var projects = data.projects || [];
+    var grid = document.getElementById('cardsGrid');
+    grid.innerHTML = '';
+
+    document.getElementById('projHeading').textContent =
+        projects.length ? 'Drive Change Alerts' : 'No alerts for this date';
+    document.getElementById('projSubtitle').textContent =
+        projects.length ? projects.length+' project'+(projects.length!==1?'s':'')+' · '+data.total_emails+' emails' : '';
+
+    projects.forEach(function(proj){
+        grid.appendChild(buildCard(proj));
     });
 }
 
-document.getElementById("refreshBtn").addEventListener("click", doRefresh);
+function buildCard(proj){
+    var card = document.createElement('div');
+    var sc = proj.status_counts || {};
+    var hasC = sc['CONFLICT'] > 0 || (proj.primary_status||'').toUpperCase()==='CONFLICT';
+    card.className = 'proj-card'+(hasC?' conflict':'');
+
+    var wsIds   = proj.workspace_ids || [];
+    var emails  = proj.count || 0;
+    var wc      = proj.window_counts || {};
+
+    // Status badges
+    var bHtml = '';
+    if(sc['CONFLICT']) bHtml += '<span class="b-c">CONFLICT '+sc['CONFLICT']+'</span>';
+    for(var st in sc){ if(st!=='CONFLICT') bHtml += '<span class="b-o">'+esc(st)+' '+sc[st]+'</span>'; }
+    bHtml += '<span class="b-e">'+emails+' EMAIL'+(emails!==1?'S':'')+'</span>';
+
+    // Window breakdown pills
+    var wbHtml = '';
+    [1,2,3].forEach(function(n){
+        var cnt = wc[n]||wc[String(n)]||0;
+        wbHtml += '<span class="wb-pill'+(cnt>0?' has-data':'')+'">'
+            + WIN_SHORT[n]+': '+cnt+'</span>';
+    });
+
+    var wsHtml = wsIds.map(function(id){ return esc(id); }).join('<br>');
+    var clientHtml = proj.client_name
+        ? '<div class="card-client">Client: '+esc(proj.client_name)+'</div>' : '';
+
+    card.innerHTML =
+        '<div class="card-top">'+
+          '<div>'+
+            '<div class="proj-name">'+esc(proj.project_name||'')+'</div>'+
+            '<div class="proj-server">'+esc(proj.server_name||'')+'</div>'+
+          '</div>'+
+          '<div>'+
+            '<div class="ws-big">'+wsIds.length+'</div>'+
+            '<div class="ws-lbl">WORKSPACE IDs</div>'+
+          '</div>'+
+        '</div>'+
+        '<div class="badges">'+bHtml+'</div>'+
+        '<div class="win-breakdown">'+wbHtml+'</div>'+
+        '<div class="ws-list">'+wsHtml+'</div>'+
+        clientHtml+
+        '<button class="btn-copy">Copy Workspace IDs</button>';
+
+    card.querySelector('.btn-copy').onclick = function(){ copyIds(this, wsIds); };
+    return card;
+}
+
+function copyIds(btn, ids){
+    var text = ids.join('\n'), orig = btn.textContent;
+    function ok(){ btn.textContent='✓ Copied!'; btn.classList.add('ok'); setTimeout(function(){ btn.textContent=orig; btn.classList.remove('ok'); },2000); }
+    if(navigator.clipboard){ navigator.clipboard.writeText(text).then(ok).catch(fb); } else { fb(); }
+    function fb(){
+        var ta=document.createElement('textarea');ta.value=text;ta.style.cssText='position:fixed;opacity:0';
+        document.body.appendChild(ta);ta.select();try{document.execCommand('copy');ok();}catch(e){}document.body.removeChild(ta);
+    }
+}
+
+function showErr(msg){ var t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},7000); }
+
+})();
 </script>
 </body>
 </html>

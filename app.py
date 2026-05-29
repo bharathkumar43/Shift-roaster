@@ -2568,5 +2568,54 @@ def favicon():
     return "", 204
 
 
+# ── Drive Change Dashboard ───────────────────────────────────────────────────
+
+@app.route("/drive-change", methods=["GET"])
+@login_required
+def drive_change_dashboard():
+    return render_template("drive_change.html", app_name=APP_NAME)
+
+
+@app.route("/drive-change/refresh", methods=["POST"])
+@login_required
+def drive_change_refresh():
+    from drive_change_reader import fetch_drive_change_emails
+    from drive_change_parser import parse_all, WINDOWS
+    from drive_change_grouper import group_alerts
+    from datetime import datetime, timedelta, timezone as tz
+
+    IST = tz(timedelta(hours=5, minutes=30))
+    body = request.get_json() or {}
+    date_str = (body.get("date") or "").strip()
+    if not date_str:
+        date_str = datetime.now(IST).strftime("%Y-%m-%d")
+
+    try:
+        emails = fetch_drive_change_emails(date_str)
+    except EnvironmentError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch emails: {e}"}), 500
+
+    parsed = parse_all(emails)
+    grouped = group_alerts(parsed)
+
+    window_totals = {
+        str(w): grouped.get(w, {}).get("total", 0) for w in [1, 2, 3]
+    }
+    window_labels = {
+        str(w): grouped.get(w, {}).get("label", "") for w in [1, 2, 3]
+    }
+
+    return jsonify({
+        "date": date_str,
+        "total_emails": len(emails),
+        "parse_failures": grouped.get("parse_failures", 0),
+        "window_totals": window_totals,
+        "window_labels": window_labels,
+        "projects": grouped.get("projects", []),
+    })
+
+
 if __name__ == "__main__":
     app.run(debug=True, port=5050)
