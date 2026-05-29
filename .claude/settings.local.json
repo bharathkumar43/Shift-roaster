@@ -19,7 +19,10 @@
       "Bash(Select-Object FullName)",
       "Bash(python -c \"import project_engine; import database; print\\('OK'\\)\")",
       "Bash(ls \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\Roaster_Automation\\\\\")",
-      "Read(//c/Users/BharathTummaganti/OneDrive - CloudFuze, Inc/Documents/**)"
+      "Read(//c/Users/BharathTummaganti/OneDrive - CloudFuze, Inc/Documents/**)",
+      "Bash(python -m py_compile app.py)",
+      "Bash(python -m py_compile database.py)",
+      "Bash(python -c ' *)"
     ]
   }
 }

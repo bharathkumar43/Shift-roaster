@@ -1515,19 +1515,9 @@
             var m = searchMonth.value;
             var y = searchYear.value;
             fetch('/search?q=' + encodeURIComponent(q) + '&month=' + m + '&year=' + y)
-                .then(function(r) {
-                    if (r.status === 401 || r.redirected) {
-                        searchResults.classList.remove('d-none');
-                        searchContent.innerHTML = '<p class="text-warning text-center mb-0"><i class="bi bi-exclamation-triangle me-1"></i>Session expired — <a href="/login">log in again</a>.</p>';
-                        return null;
-                    }
-                    return r.json();
-                })
-                .then(function(data) { if (data) renderResults(data, q); })
-                .catch(function() {
-                    searchResults.classList.remove('d-none');
-                    searchContent.innerHTML = '<p class="text-danger text-center mb-0"><i class="bi bi-exclamation-circle me-1"></i>Search failed. Please refresh and try again.</p>';
-                });
+                .then(function(r) { return r.json(); })
+                .then(function(data) { renderResults(data, q); })
+                .catch(function() {});
         }
 
         searchInput.addEventListener('input', function () {

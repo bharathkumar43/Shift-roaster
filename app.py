@@ -824,13 +824,20 @@ def projects():
     month = int(request.form.get("month", cm))
 
     night_counts = db.get_night_shift_counts()
-    _, _, shift_assignments = _generate_roster_with_saved_month(
-        employees, year, month, night_counts
-    )
+    try:
+        _, _, shift_assignments = _generate_roster_with_saved_month(
+            employees, year, month, night_counts
+        )
+    except Exception:
+        shift_assignments = {}
 
-    coverage, proj_warnings = generate_project_coverage(
-        all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
-    )
+    coverage, proj_warnings = [], []
+    try:
+        coverage, proj_warnings = generate_project_coverage(
+            all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
+        )
+    except Exception:
+        pass
 
     month_name = calendar.month_name[month]
     session["last_roster"] = {"year": year, "month": month}
@@ -1069,6 +1076,7 @@ def upload():
 @app.route("/search", methods=["GET"])
 @login_required
 def search():
+    import traceback as _tb
     q = request.args.get("q", "").strip()
     cy, cm = get_app_context_ym()
     year = request.args.get("year", cy, type=int)
@@ -1077,172 +1085,134 @@ def search():
     if not q or len(q) < 1:
         return jsonify({"employees": [], "projects": []})
 
-    employees = db.get_employees_by_role("engineer")
-    night_counts = db.get_night_shift_counts()
+    try:
+        employees = db.get_employees_by_role("engineer")
+        shift_assignments = {}
+        prepared_lookup = {}
+        if employees:
+            try:
+                night_counts = db.get_night_shift_counts()
+                _, _, shift_assignments = _generate_roster_with_saved_month(
+                    employees, year, month, night_counts
+                )
+                prepared, _ = prepare_employees_for_roster_month(employees, year, month)
+                prepared_lookup = {e["name"]: e for e in prepared}
+            except Exception:
+                shift_assignments = {}
+                prepared_lookup = {}
 
-    shift_assignments = {}
-    prepared_lookup = {}
-    if employees:
-        _, _, shift_assignments = _generate_roster_with_saved_month(
-            employees, year, month, night_counts
-        )
-        prepared, _ = prepare_employees_for_roster_month(employees, year, month)
-        prepared_lookup = {e["name"]: e for e in prepared}
+        matched_emps = db.search_employees(q)
+        all_projects = db.get_all_projects()
 
-    emp_results = []
-    matched_emps = db.search_employees(q)
-    all_projects = db.get_all_projects()
+        emp_results = []
+        for emp in matched_emps:
+            try:
+                emp_projects = [p for p in all_projects if p["employee_id"] == emp["id"]]
+                shift = shift_assignments.get(emp["name"])
+                shift_info = None
+                if shift:
+                    shift_info = {
+                        "number": shift,
+                        "name": SHIFTS[shift]["name"],
+                        "time_ist": SHIFTS[shift]["time_ist"],
+                        "time_est": SHIFTS[shift]["time_est"],
+                        "strength": SHIFTS[shift]["strength"],
+                    }
 
-    for emp in matched_emps:
-        emp_projects = [p for p in all_projects if p["employee_id"] == emp["id"]]
-        shift = shift_assignments.get(emp["name"])
-        shift_info = None
-        if shift:
-            shift_info = {
-                "number": shift,
-                "name": SHIFTS[shift]["name"],
-                "time_ist": SHIFTS[shift]["time_ist"],
-                "time_est": SHIFTS[shift]["time_est"],
-                "strength": SHIFTS[shift]["strength"],
-            }
+                num_days = calendar.monthrange(year, month)[1]
+                working_count = 0
+                off_count = 0
+                sched = prepared_lookup.get(emp["name"])
+                for day in range(1, num_days + 1):
+                    d = date(year, month, day)
+                    day_name = DAY_NAMES[d.weekday()]
+                    if sched:
+                        on = is_emp_scheduled_work_day(sched, d)
+                    else:
+                        on = day_name in (emp.get("working_days") or DAY_NAMES[:5])
+                    if on:
+                        working_count += 1
+                    else:
+                        off_count += 1
 
-        num_days = calendar.monthrange(year, month)[1]
-        working_count = 0
-        off_count = 0
-        sched = prepared_lookup.get(emp["name"])
-        for day in range(1, num_days + 1):
-            d = date(year, month, day)
-            day_name = DAY_NAMES[d.weekday()]
-            if sched:
-                on = is_emp_scheduled_work_day(sched, d)
-            else:
-                on = day_name in (emp.get("working_days") or DAY_NAMES[:5])
-            if on:
-                working_count += 1
-            else:
-                off_count += 1
+                emp_results.append({
+                    "name": emp["name"],
+                    "content_types": emp["content_types"] or [],
+                    "working_days": emp["working_days"] or [],
+                    "projects": [{"name": p["name"], "product_type": p["product_type"]}
+                                 for p in emp_projects],
+                    "shift": shift_info,
+                    "working_days_count": working_count,
+                    "off_days_count": off_count,
+                    "daily_projects": {},
+                })
+            except Exception:
+                emp_results.append({
+                    "name": emp.get("name", ""),
+                    "content_types": [],
+                    "working_days": [],
+                    "projects": [],
+                    "shift": None,
+                    "working_days_count": 0,
+                    "off_days_count": 0,
+                    "daily_projects": {},
+                })
 
-        emp_results.append({
-            "name": emp["name"],
-            "content_types": emp["content_types"],
-            "working_days": emp["working_days"],
-            "projects": [{"name": p["name"], "product_type": p["product_type"]}
-                         for p in emp_projects],
-            "shift": shift_info,
-            "working_days_count": working_count,
-            "off_days_count": off_count,
-        })
+        proj_coverage = []
+        if employees and shift_assignments:
+            try:
+                proj_coverage_data, _ = generate_project_coverage(
+                    all_projects, employees, shift_assignments, year, month,
+                    _get_leave_dates(year, month)
+                )
+                proj_coverage = proj_coverage_data
+            except Exception:
+                pass
 
-    all_projects = db.get_all_projects()
-    proj_coverage = []
-    if employees and shift_assignments:
-        proj_coverage_data, _ = generate_project_coverage(
-            all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
-        )
-        proj_coverage = proj_coverage_data
+        all_managers = db.get_employees_by_role("manager")
+        matched_projs = db.search_projects(q)
+        emp_lookup = {e["name"]: True for e in employees}
 
-    all_managers = db.get_employees_by_role("manager")
-    all_leads = db.get_employees_by_role("shift_lead")
-    all_people = db.get_all_employees()
+        proj_results = []
+        seen_projects = set()
+        for proj in matched_projs:
+            try:
+                is_engineer_proj = proj["employee_name"] in emp_lookup
+                name_type_key = (proj["name"], proj["product_type"])
+                if name_type_key in seen_projects:
+                    continue
+                if not is_engineer_proj:
+                    if any(p["name"] == proj["name"] and p["product_type"] == proj["product_type"]
+                           and p["employee_name"] in emp_lookup for p in matched_projs):
+                        continue
+                seen_projects.add(name_type_key)
 
-    proj_results = []
-    seen_projects = set()
-    matched_projs = db.search_projects(q)
+                same_name_projs = [p for p in all_projects if p["name"] == proj["name"]]
+                manager_name = None
+                for sp in same_name_projs:
+                    mgr = next((m for m in all_managers if m["id"] == sp["employee_id"]), None)
+                    if mgr:
+                        manager_name = mgr["name"]
+                        break
 
-    emp_lookup = {e["name"]: True for e in employees}
+                proj_results.append({
+                    "name": proj["name"],
+                    "product_type": proj["product_type"],
+                    "manager": manager_name,
+                    "engineer": None,
+                    "shift": None,
+                    "shift_name": None,
+                    "daily": [],
+                })
+            except Exception:
+                pass
 
-    for proj in matched_projs:
-        is_engineer_proj = proj["employee_name"] in emp_lookup
-        proj_key = (proj["name"], proj["product_type"], proj["employee_name"] if is_engineer_proj else "_mgr_")
+        return jsonify({"employees": emp_results, "projects": proj_results})
 
-        name_type_key = (proj["name"], proj["product_type"])
-        if name_type_key in seen_projects:
-            continue
-        if not is_engineer_proj:
-            if any(p["name"] == proj["name"] and p["product_type"] == proj["product_type"] and p["employee_name"] in emp_lookup for p in matched_projs):
-                continue
-        seen_projects.add(name_type_key)
-
-        same_name_projs = [p for p in all_projects if p["name"] == proj["name"]]
-        manager_name = None
-        for sp in same_name_projs:
-            mgr = next((m for m in all_managers if m["id"] == sp["employee_id"]), None)
-            if mgr:
-                manager_name = mgr["name"]
-                break
-
-        engineer_name = None
-        shift = None
-        shift_name = None
-        for day_data in proj_coverage:
-            for p in day_data.get("projects", []):
-                if p["project_name"].lower() == proj["name"].lower() and p.get("product_type", "").lower() == proj["product_type"].lower():
-                    engineer_name = p.get("owner")
-                    owner_shift = p.get("owner_shift")
-                    if owner_shift:
-                        shift = owner_shift
-                        shift_name = SHIFTS[owner_shift]["name"]
-                    break
-            if engineer_name:
-                break
-
-        daily = []
-        for day_data in proj_coverage:
-            for p in day_data.get("projects", []):
-                if p["project_name"].lower() == proj["name"].lower() and p.get("product_type", "").lower() == proj["product_type"].lower():
-                    shift_info = {}
-                    for sn in [1, 2, 3]:
-                        sh = p["shifts"].get(sn, {})
-                        shift_info[sn] = {
-                            "handler": sh.get("handler"),
-                            "is_secondary": sh.get("is_secondary", False),
-                        }
-                    daily.append({
-                        "day_num": day_data["day_num"],
-                        "date": day_data["date"],
-                        "day_abbr": day_data["day_abbr"],
-                        "shifts": shift_info,
-                    })
-                    break
-
-        proj_results.append({
-            "name": proj["name"],
-            "product_type": proj["product_type"],
-            "manager": manager_name,
-            "engineer": engineer_name,
-            "shift": shift,
-            "shift_name": shift_name,
-            "daily": daily,
-        })
-
-    emp_project_data = {}
-    for emp in matched_emps:
-        emp_daily = {}
-        for day_data in proj_coverage:
-            for p in day_data.get("projects", []):
-                for sn in [1, 2, 3]:
-                    sh = p["shifts"].get(sn, {})
-                    if sh.get("handler") == emp["name"]:
-                        day_num = day_data["day_num"]
-                        if day_num not in emp_daily:
-                            emp_daily[day_num] = {
-                                "date": day_data["date"],
-                                "day_abbr": day_data["day_abbr"],
-                                "projects": [],
-                            }
-                        emp_daily[day_num]["projects"].append({
-                            "name": p["project_name"],
-                            "product_type": p["product_type"],
-                            "is_secondary": sh.get("is_secondary", False),
-                            "owner": p["owner"],
-                            "shift": sn,
-                        })
-        emp_project_data[emp["name"]] = emp_daily
-
-    for er in emp_results:
-        er["daily_projects"] = emp_project_data.get(er["name"], {})
-
-    return jsonify({"employees": emp_results, "projects": proj_results})
+    except Exception as exc:
+        import logging
+        logging.error("Search error for q=%r year=%s month=%s:\n%s", q, year, month, _tb.format_exc())
+        return jsonify({"employees": [], "projects": [], "error": str(exc)}), 500
 
 
 # ── Summary ──────────────────────────────────────────────
@@ -1264,14 +1234,20 @@ def summary():
 
     if employees:
         night_counts = db.get_night_shift_counts()
-        _, _, shift_assignments = _generate_roster_with_saved_month(
-            employees, year, month, night_counts
-        )
-
-        if all_projects:
-            proj_coverage, proj_warnings = generate_project_coverage(
-                all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
+        try:
+            _, _, shift_assignments = _generate_roster_with_saved_month(
+                employees, year, month, night_counts
             )
+        except Exception:
+            shift_assignments = {}
+
+        if all_projects and shift_assignments:
+            try:
+                proj_coverage, proj_warnings = generate_project_coverage(
+                    all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
+                )
+            except Exception:
+                pass
 
     month_name = calendar.month_name[month]
     month_names = [calendar.month_name[m] for m in range(1, 13)]
@@ -1313,11 +1289,14 @@ def get_shifts():
     saved = dict(db.get_shift_assignments_for_month(year, month) or {})
     merged = {}
     if len(engineers) >= 2:
-        night_counts = db.get_night_shift_counts()
-        _, _, gen_assign = _generate_roster_with_saved_month(
-            engineers, year, month, night_counts
-        )
-        merged = dict(gen_assign)
+        try:
+            night_counts = db.get_night_shift_counts()
+            _, _, gen_assign = _generate_roster_with_saved_month(
+                engineers, year, month, night_counts
+            )
+            merged = dict(gen_assign)
+        except Exception:
+            merged = {}
     merged.update(saved)
     for e in engineers:
         if is_pinned_shift_1(e["name"]):
@@ -1694,9 +1673,12 @@ def leaves():
     shift_assignments = {}
     if engineers:
         night_counts = db.get_night_shift_counts()
-        _, _, shift_assignments = _generate_roster_with_saved_month(
-            engineers, year, month, night_counts
-        )
+        try:
+            _, _, shift_assignments = _generate_roster_with_saved_month(
+                engineers, year, month, night_counts
+            )
+        except Exception:
+            shift_assignments = {}
 
     strength = db.get_shift_strength(year, month, shift_assignments) if is_admin else {}
 
@@ -2628,6 +2610,18 @@ def drive_change_refresh():
         return jsonify({"success": True, "grouped": serialized, "total_emails": len(emails)})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+import traceback
+import logging
+logging.basicConfig(level=logging.ERROR)
+
+@app.errorhandler(500)
+def internal_error(e):
+    logging.error("500 error on %s:\n%s", request.path, traceback.format_exc())
+    if request.is_json or request.path.startswith("/api/") or request.path in ("/search", "/get_shifts", "/bot", "/leave_impact"):
+        return jsonify({"error": "Internal server error", "detail": str(e)}), 500
+    return f"<h1>Internal Server Error</h1><pre>{traceback.format_exc()}</pre>", 500
 
 
 if __name__ == "__main__":
