@@ -72,20 +72,20 @@ def _extract_fields(text: str) -> dict:
     ], text)
 
     server_name = _find([
-        r"server[\s_-]*name[\s:=]+([^\n,;<]+)",
-        r"source[\s_-]*server[\s:=]+([^\n,;<]+)",
-        r"server[\s:=]+([^\n,;<]+)",
+        r"server[\s_-]*name[\s:=]+(\S+)",
+        r"source[\s_-]*server[\s:=]+(\S+)",
+        r"server[\s:=]+(\S+)",
     ], text)
 
     client_name = _find([
-        r"client[\s_-]*name[\s:=]+([^\n,;<]+)",
-        r"customer[\s_-]*name[\s:=]+([^\n,;<]+)",
-        r"project[\s_-]*name[\s:=]+([^\n,;<]+)",
-        r"client[\s:=]+([^\n,;<]+)",
-        r"project[\s:=]+([^\n,;<]+)",
-        r"customer[\s:=]+([^\n,;<]+)",
-        r"account[\s:=]+([^\n,;<]+)",
-        r"tenant[\s:=]+([^\n,;<]+)",
+        r"client[\s_-]*name[\s:=]+(\S+)",
+        r"customer[\s_-]*name[\s:=]+(\S+)",
+        r"project[\s_-]*name[\s:=]+(\S+)",
+        r"client[\s:=]+(\S+)",
+        r"project[\s:=]+(\S+)",
+        r"customer[\s:=]+(\S+)",
+        r"account[\s:=]+(\S+)",
+        r"tenant[\s:=]+(\S+)",
     ], text)
 
     status = _find([
