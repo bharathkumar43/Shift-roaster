@@ -25,7 +25,10 @@
       "Bash(python -c ' *)",
       "Bash(git checkout *)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(findstr /i \"AZURE OUTLOOK EMAIL SUBJECT TENANT CLIENT\")",
+      "Bash(Test-Path \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\Roaster_Automation\\\\templates\\\\drive_change.html\")",
+      "Bash(git push *)"
     ]
   }
 }
