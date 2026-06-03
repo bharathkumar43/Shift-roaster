@@ -2189,8 +2189,9 @@ def delta():
     week_start = today - timedelta(days=today.weekday())   # Monday
     week_end   = week_start + timedelta(days=6)             # Sunday
 
-    # Bucket by assignment dates, not event start_date, so multi-week events
-    # only show each week's assignments in the correct week section.
+    # Bucket by assignment dates. A week-chunk is "running" only when it contains
+    # at least one assignment dated today or later; anything fully in the past goes
+    # to history even if it falls within the current calendar week.
     current_week_events = []
     history_by_week = {}  # {week_monday_date: [event_copies_with_filtered_assignments]}
     for ev in delta_events:
@@ -2202,7 +2203,11 @@ def delta():
 
         for wk_mon, wk_assigns in sorted(week_assignments.items()):
             ev_for_week = {**ev, "assignments": wk_assigns}
-            if wk_mon == week_start:
+            is_running = any(
+                date.fromisoformat(str(a["assignment_date"])) >= today
+                for a in wk_assigns
+            )
+            if is_running:
                 current_week_events.append(ev_for_week)
             else:
                 history_by_week.setdefault(wk_mon, []).append(ev_for_week)
