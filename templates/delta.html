@@ -761,7 +761,12 @@
             });
         });
 
-        document.getElementById('saveDeltaForm').addEventListener('submit', function() {
+        document.getElementById('saveDeltaForm').addEventListener('submit', function(e) {
+            var btn = this.querySelector('button[type="submit"]');
+            if (btn.disabled) { e.preventDefault(); return; }   // block double-submit
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving…';
+
             var selects = previewBody.querySelectorAll('select');
             saveAssignments.innerHTML = '';
             selects.forEach(function(sel) {

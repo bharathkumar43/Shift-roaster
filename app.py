@@ -2189,31 +2189,29 @@ def delta():
     week_start = today - timedelta(days=today.weekday())   # Monday
     week_end   = week_start + timedelta(days=6)             # Sunday
 
-    # A delta is "running" only when its end_date is today or later.
-    # Once end_date is in the past the whole event moves to history,
-    # even if some assignment dates fall within the current calendar week.
+    # Active deltas (end_date >= today) appear exactly once in Running with
+    # all their assignments.  Completed deltas (end_date < today) are bucketed
+    # into history by the week their assignments fall in.  This prevents a
+    # multi-week active delta from appearing in both Running and History.
     current_week_events = []
     history_by_week = {}  # {week_monday_date: [event_copies_with_filtered_assignments]}
     for ev in delta_events:
         ev_end_date = date.fromisoformat(str(ev.get("end_date", today_str)))
 
-        week_assignments = {}  # {week_monday_date: [assignments]}
-        for a in ev.get("assignments", []):
-            a_date = date.fromisoformat(str(a["assignment_date"]))
-            a_week_mon = a_date - timedelta(days=a_date.weekday())
-            week_assignments.setdefault(a_week_mon, []).append(a)
-
-        for wk_mon, wk_assigns in sorted(week_assignments.items()):
-            ev_for_week = {**ev, "assignments": wk_assigns}
-            # Both conditions must hold: event not yet ended AND this chunk has future/today dates
-            is_running = ev_end_date >= today and any(
-                date.fromisoformat(str(a["assignment_date"])) >= today
-                for a in wk_assigns
-            )
-            if is_running:
-                current_week_events.append(ev_for_week)
-            else:
-                history_by_week.setdefault(wk_mon, []).append(ev_for_week)
+        if ev_end_date >= today:
+            # Still active — show once in Running with all assignments
+            current_week_events.append(ev)
+        else:
+            # Completed — bucket each week's assignments into history
+            week_assignments = {}
+            for a in ev.get("assignments", []):
+                a_date = date.fromisoformat(str(a["assignment_date"]))
+                a_week_mon = a_date - timedelta(days=a_date.weekday())
+                week_assignments.setdefault(a_week_mon, []).append(a)
+            for wk_mon, wk_assigns in sorted(week_assignments.items()):
+                history_by_week.setdefault(wk_mon, []).append(
+                    {**ev, "assignments": wk_assigns}
+                )
 
     sorted_history = [
         (ws.isoformat(), (ws + timedelta(days=6)).isoformat(), evts)
