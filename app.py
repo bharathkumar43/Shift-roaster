@@ -40,6 +40,47 @@ AZURE_AUTHORITY = f"https://login.microsoftonline.com/{AZURE_TENANT_ID}" if AZUR
 AZURE_SCOPE = ["User.Read"]
 AZURE_ENABLED = bool(AZURE_CLIENT_ID and AZURE_CLIENT_SECRET and AZURE_TENANT_ID)
 
+# Maps each CloudFuze Microsoft email (lowercase) to the legacy short username
+# that person used when they first signed up via password login.
+# On their first Microsoft login the username is automatically upgraded to the email.
+_LEGACY_USERNAME_MAP = {
+    "abhishek.sakala@cloudfuze.com":        "abhishek",
+    "abhishikth.yenugula@cloudfuze.com":    "abhishikth",
+    "ajay.singh@cloudfuze.com":             "ajay",
+    "ramana.reddy@cloudfuze.com":           "ramana",
+    "amulya.anapuram@cloudfuze.com":        "amulya",
+    "arun@cloudfuze.com":                   "arun",
+    "bharath.tummaganti@cloudfuze.com":     "bharath",
+    "chaitanya.gupta@cloudfuze.com":        "chaitanya",
+    "chandra.mouli@cloudfuze.com":          "chandra mouli",
+    "dathu.kaluvala@cloudfuze.com":         "dathu",
+    "davidraj.dumpala@cloudfuze.com":       "davidraj",
+    "ganesh.kondameedi@cloudfuze.com":      "ganesh",
+    "habeebunnisa.begum@cloudfuze.com":     "habeebunnisa",
+    "harika.velidi@cloudfuze.com":          "harika",
+    "harshith.kaduluri@cloudfuze.com":      "harshith",
+    "jyoshitha.dhannapaneni@cloudfuze.com": "jyoshitha",
+    "lakshmareddy@cloudfuze.com":           "lakshma reddy",
+    "lakshmi.prasanna@cloudfuze.com":       "lakshmi",
+    "manoj.bathula@cloudfuze.com":          "manoj",
+    "meena.lakshmi@cloudfuze.com":          "meena",
+    "neelima.krotta@cloudfuze.com":         "neelima",
+    "pallavi.kosuvaripalli@cloudfuze.com":  "pallavi",
+    "paresh.rahate@cloudfuze.com":          "paresh",
+    "pranavi@cloudfuze.com":                "pranavi",
+    "raghu.yellani@cloudfuze.com":          "raghu",
+    "ranadeep.muddam@cloudfuze.com":        "ranadeep",
+    "ravi.hemanth@cloudfuze.com":           "ravi",
+    "saikumar.kustapuram@cloudfuze.com":    "sai",
+    "siva.kota@cloudfuze.com":              "siva",
+    "sravan.kesaram@cloudfuze.com":         "sravan",
+    "sriram.ramakrishnan@cloudfuze.com":    "sriram",
+    "subhakar.dhanireddy@cloudfuze.com":    "subhakar",
+    "swaroop@cloudfuze.com":                "swaroop",
+    "vijendar.burgula@cloudfuze.com":       "vijendar",
+    "vineetha.yenti@cloudfuze.com":         "vineetha",
+}
+
 
 def _build_msal_app():
     return msal.ConfidentialClientApplication(
@@ -1494,6 +1535,11 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
+        # Password login is reserved for the admin account only (emergency access).
+        # All other users must sign in with Microsoft.
+        if username.lower() != "admin":
+            flash("Please use Microsoft login to sign in.", "info")
+            return redirect(url_for("login"))
         user = db.get_user_by_username(username)
         if user and check_password_hash(user["password_hash"], password):
             session.clear()
@@ -1526,7 +1572,7 @@ def azure_callback():
 
     code = request.args.get("code")
     if not code:
-        flash("Azure AD login failed -- no authorization code.", "danger")
+        flash("Azure AD login failed — no authorization code.", "danger")
         return redirect(url_for("login"))
 
     msal_app = _build_msal_app()
@@ -1540,14 +1586,27 @@ def azure_callback():
         return redirect(url_for("login"))
 
     azure_user = result.get("id_token_claims", {})
-    email = azure_user.get("preferred_username", "").strip()
+    email = azure_user.get("preferred_username", "").strip().lower()
     display_name = azure_user.get("name", "").strip()
 
     if not email:
-        flash("Could not get email from Azure AD.", "danger")
+        flash("Could not retrieve email from Microsoft. Please try again.", "danger")
         return redirect(url_for("login"))
 
+    # Step 1: Already migrated — email is the username
     user = db.get_user_by_username(email)
+
+    # Step 2: First-ever Microsoft login — find legacy short username and migrate
+    if not user:
+        legacy_username = _LEGACY_USERNAME_MAP.get(email)
+        if legacy_username:
+            user = db.get_user_by_username_ci(legacy_username)
+            if user:
+                db.update_user_username(user["id"], email)
+                user = db.get_user_by_id(user["id"])
+                app.logger.info("Migrated username '%s' → '%s'", legacy_username, email)
+
+    # Step 3: Completely new user — create account with user role
     if not user:
         matched_emp = db.auto_link_user(display_name)
         emp_id = matched_emp["id"] if matched_emp else None
@@ -1556,20 +1615,17 @@ def azure_callback():
             password_hash=generate_password_hash(os.urandom(32).hex()),
             full_name=display_name,
             role="user",
-            employee_id=emp_id
+            employee_id=emp_id,
         )
-        if uid:
-            user = db.get_user_by_id(uid)
-        else:
-            user = db.get_user_by_username(email)
+        user = db.get_user_by_id(uid) if uid else db.get_user_by_username(email)
 
     if user:
         session.clear()
         session["user_id"] = user["id"]
-        flash(f"Welcome, {display_name}!", "success")
+        flash(f"Welcome, {display_name or email}!", "success")
         return redirect(url_for("index"))
 
-    flash("Login failed.", "danger")
+    flash("Login failed. Please contact your administrator.", "danger")
     return redirect(url_for("login"))
 
 

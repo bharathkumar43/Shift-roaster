@@ -920,6 +920,27 @@ def get_user_by_username(username):
     return row
 
 
+def get_user_by_username_ci(username):
+    """Case-insensitive username lookup — used during Microsoft login migration."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(%s)", (username,))
+    row = _fetchone(cur)
+    cur.close()
+    conn.close()
+    return row
+
+
+def update_user_username(user_id, new_username):
+    """Rename a user's username — called once per user during Microsoft login migration."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET username = %s WHERE id = %s", (new_username, user_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
 def get_user_by_id(user_id):
     conn = get_db()
     cur = conn.cursor()
