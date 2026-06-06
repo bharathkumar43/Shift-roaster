@@ -39,6 +39,10 @@ AZURE_TENANT_ID = os.getenv("AZURE_TENANT_ID", "")
 AZURE_AUTHORITY = f"https://login.microsoftonline.com/{AZURE_TENANT_ID}" if AZURE_TENANT_ID else ""
 AZURE_SCOPE = ["User.Read"]
 AZURE_ENABLED = bool(AZURE_CLIENT_ID and AZURE_CLIENT_SECRET and AZURE_TENANT_ID)
+# Explicit redirect URI so it matches exactly what is registered in Azure portal.
+# Locally set to http://localhost:5050/login/azure/callback
+# In production set to https://roster.cftools.live/login/azure/callback
+AZURE_REDIRECT_URI = os.getenv("AZURE_REDIRECT_URI", "")
 
 # Maps each CloudFuze Microsoft email (lowercase) to the legacy short username
 # that person used when they first signed up via password login.
@@ -1558,7 +1562,7 @@ def login_azure():
         flash("Azure AD login is not configured.", "danger")
         return redirect(url_for("login"))
     msal_app = _build_msal_app()
-    redirect_uri = url_for("azure_callback", _external=True)
+    redirect_uri = AZURE_REDIRECT_URI or url_for("azure_callback", _external=True)
     auth_url = msal_app.get_authorization_request_url(
         AZURE_SCOPE, redirect_uri=redirect_uri
     )
@@ -1576,7 +1580,7 @@ def azure_callback():
         return redirect(url_for("login"))
 
     msal_app = _build_msal_app()
-    redirect_uri = url_for("azure_callback", _external=True)
+    redirect_uri = AZURE_REDIRECT_URI or url_for("azure_callback", _external=True)
     result = msal_app.acquire_token_by_authorization_code(
         code, scopes=AZURE_SCOPE, redirect_uri=redirect_uri
     )
