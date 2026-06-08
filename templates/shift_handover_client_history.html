@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ client_name }} – History</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='bootstrap-icons.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+    <style>
+        body { background:#f8f9fb; }
+
+        .back-link { font-size:.85rem; color:#5b4fcf; text-decoration:none; display:inline-flex; align-items:center; gap:.35rem; font-weight:600; }
+        .back-link:hover { color:#4338ca; }
+
+        .page-title { font-size:1.6rem; font-weight:800; color:#111827; line-height:1.2; }
+        .page-sub   { font-size:.88rem; color:#6b7280; margin-top:.2rem; }
+
+        /* Filter card */
+        .filter-card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:1.25rem 1.5rem; margin-bottom:1.5rem; }
+        .filter-card .filter-title { font-size:.82rem; font-weight:700; color:#374151; display:flex; align-items:center; gap:.4rem; margin-bottom:.9rem; }
+        .filter-input { border:1px solid #d1d5db; border-radius:8px; font-size:.85rem; }
+        .filter-input:focus { border-color:#a78bfa; box-shadow:0 0 0 3px rgba(91,79,207,.1); }
+        .btn-search { background:#5b4fcf; color:#fff; border:none; border-radius:8px; padding:.45rem 1.4rem; font-weight:600; font-size:.88rem; }
+        .btn-search:hover { background:#4338ca; }
+
+        /* Date group header */
+        .date-group-header {
+            display:flex; align-items:center; justify-content:space-between;
+            padding:.6rem 0; margin-bottom:.75rem; border-bottom:1px solid #e5e7eb;
+        }
+        .date-label { font-size:.95rem; font-weight:700; color:#374151; display:flex; align-items:center; gap:.5rem; }
+        .date-label i { color:#5b4fcf; }
+        .shifts-count { font-size:.78rem; font-weight:600; color:#6b7280; background:#f3f4f6; border-radius:20px; padding:.2em .75em; }
+
+        /* Shift card */
+        .shift-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; margin-bottom:1rem; }
+        .shift-card-header {
+            display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.5rem;
+            padding:.7rem 1rem; border-bottom:1px solid #f3f4f6; background:#fafafa;
+        }
+        .shift-meta { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; font-size:.82rem; }
+        .shift-name { font-weight:700; color:#111827; font-size:.88rem; }
+        .meta-sep { color:#d1d5db; }
+        .meta-item { color:#6b7280; }
+        .meta-item strong { color:#374151; }
+
+        .badge-submitted { background:#d1fae5; color:#065f46; border-radius:20px; padding:.25em .8em; font-size:.75rem; font-weight:700; }
+        .badge-draft     { background:#fef3c7; color:#92400e; border-radius:20px; padding:.25em .8em; font-size:.75rem; font-weight:700; }
+
+        /* Entry table */
+        .entry-tbl { font-size:.78rem; border-collapse:collapse; width:100%; }
+        .entry-tbl thead th {
+            font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+            color:#6b7280; padding:.6rem .75rem; white-space:nowrap;
+            background:#fafafa; border-bottom:2px solid #e5e7eb;
+        }
+        .entry-tbl tbody td { padding:.6rem .75rem; vertical-align:top; border-bottom:1px solid #f3f4f6; }
+        .entry-tbl tbody tr:last-child td { border-bottom:none; }
+
+        /* Row tints */
+        .tint-GREEN  td { background:#f0fdf4 !important; }
+        .tint-RED    td { background:#fff1f2 !important; }
+        .tint-AMBER  td { background:#fffbeb !important; }
+        .tint-SILVER td { background:#f8fafc !important; }
+
+        /* Status badge */
+        .status-pill { font-size:.72rem; font-weight:600; border-radius:8px; padding:.2em .6em; white-space:nowrap; }
+        .sp-na        { background:#f3f4f6; color:#6b7280; }
+        .sp-active    { background:#dbeafe; color:#1e40af; }
+        .sp-pending   { background:#fef3c7; color:#92400e; }
+        .sp-completed { background:#d1fae5; color:#065f46; }
+        .sp-onhold    { background:#fce7f3; color:#9d174d; }
+        .sp-good      { background:#d1fae5; color:#065f46; }
+        .sp-bad       { background:#fee2e2; color:#991b1b; }
+
+        /* Migration report */
+        .mig-sent     { color:#22c55e; font-weight:600; font-size:.75rem; }
+        .mig-notsent  { color:#9ca3af; font-size:.75rem; }
+
+        /* Ticket links */
+        .ticket-link { color:#5b4fcf; font-size:.75rem; text-decoration:none; display:block; word-break:break-all; line-height:1.5; }
+        .ticket-link:hover { text-decoration:underline; }
+
+        /* Empty state */
+        .empty-state { text-align:center; padding:3rem 1rem; color:#9ca3af; }
+        .empty-state i { font-size:2.5rem; display:block; margin-bottom:.75rem; opacity:.3; }
+    </style>
+</head>
+<body>
+{% set active_page = 'history' %}
+{% include '_sh_nav.html' %}
+
+<div class="container-fluid px-4 py-4">
+
+    <!-- Back link -->
+    <a href="javascript:history.back()" class="back-link mb-3 d-inline-flex">
+        <i class="bi bi-arrow-left"></i> Back
+    </a>
+
+    <!-- Page title -->
+    <div class="mb-4">
+        <div class="page-title">{{ client_name }} &mdash; History</div>
+        <div class="page-sub">{{ project_name }}</div>
+    </div>
+
+    <!-- Filter -->
+    <div class="filter-card">
+        <div class="filter-title"><i class="bi bi-funnel-fill"></i>Filter by Date</div>
+        <form method="GET" action="{{ url_for('sh_client_history') }}">
+            <input type="hidden" name="project" value="{{ project_name }}">
+            <input type="hidden" name="client" value="{{ client_name }}">
+            <div class="row g-2 align-items-end">
+                <div class="col-auto">
+                    <label class="form-label small fw-semibold mb-1">From</label>
+                    <input type="date" class="form-control form-control-sm filter-input"
+                           name="from_date" value="{{ from_date }}">
+                </div>
+                <div class="col-auto">
+                    <label class="form-label small fw-semibold mb-1">To</label>
+                    <input type="date" class="form-control form-control-sm filter-input"
+                           name="to_date" value="{{ to_date }}">
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn-search">Search</button>
+                </div>
+                {% if from_date or to_date %}
+                <div class="col-auto">
+                    <a href="{{ url_for('sh_client_history', project=project_name, client=client_name) }}"
+                       class="btn btn-sm btn-outline-secondary" style="border-radius:8px;">Clear</a>
+                </div>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    {% if not by_date %}
+    <div class="empty-state">
+        <i class="bi bi-clock-history"></i>
+        <p class="mb-0 fw-semibold">No history found for <strong>{{ client_name }}</strong>.</p>
+        {% if from_date or to_date %}
+        <p class="small mt-1">Try expanding the date range or clearing filters.</p>
+        {% endif %}
+    </div>
+    {% else %}
+
+    {% for d, shifts in by_date.items() %}
+    <!-- Date group -->
+    <div class="date-group-header">
+        <div class="date-label">
+            <i class="bi bi-calendar3"></i>
+            {{ dates_display[d] }}
+        </div>
+        <span class="shifts-count">{{ shifts|length }} shift{{ 's' if shifts|length != 1 }}</span>
+    </div>
+
+    {% for row in shifts %}
+    <div class="shift-card mb-3">
+        <!-- Shift header -->
+        <div class="shift-card-header">
+            <div class="shift-meta">
+                <span class="shift-name">Shift {{ row.shift_num }} ({{ row.shift_name }})</span>
+                <span class="meta-sep">|</span>
+                <span class="meta-item">{{ row.project_name }}</span>
+                {% if row.submitted_by_name %}
+                <span class="meta-sep">|</span>
+                <span class="meta-item">Submitted by <strong>{{ row.submitted_by_name }}</strong></span>
+                {% endif %}
+            </div>
+            {% if row.status == 'submitted' %}
+            <span class="badge-submitted">Submitted</span>
+            {% else %}
+            <span class="badge-draft">Draft</span>
+            {% endif %}
+        </div>
+
+        <!-- Entry table -->
+        <div class="table-responsive">
+            <table class="entry-tbl">
+                <thead>
+                    <tr>
+                        <th style="width:90px">Status</th>
+                        <th style="min-width:160px">Tickets</th>
+                        <th style="min-width:110px">Engineer Worked</th>
+                        <th style="min-width:110px">Issues</th>
+                        <th style="min-width:150px">Engineer Notes</th>
+                        {% if is_admin %}<th style="min-width:130px">Manager Notes</th>{% endif %}
+                        <th style="min-width:100px">Migration Report</th>
+                        <th style="min-width:120px">Next Shift Eng.</th>
+                        <th style="min-width:100px">Filled By</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="{% if row.row_tint %}tint-{{ row.row_tint }}{% endif %}">
+                        <!-- Status -->
+                        <td>
+                            {% set st = row.entry_status or '' %}
+                            {% if is_content %}
+                                {% if row.drive_changes_alerts %}
+                                    {% if st == 'Bad' %}
+                                    <span class="status-pill sp-bad">Bad</span>
+                                    {% else %}
+                                    <span class="status-pill sp-good">Good</span>
+                                    {% endif %}
+                                {% else %}
+                                <span class="status-pill sp-na">—</span>
+                                {% endif %}
+                            {% elif st == 'Active' %}
+                            <span class="status-pill sp-active">Active</span>
+                            {% elif st == 'Pending' %}
+                            <span class="status-pill sp-pending">Pending</span>
+                            {% elif st == 'Completed' %}
+                            <span class="status-pill sp-completed">Completed</span>
+                            {% elif st == 'On Hold' %}
+                            <span class="status-pill sp-onhold">On Hold</span>
+                            {% else %}
+                            <span class="status-pill sp-na">N/A</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Tickets -->
+                        <td>
+                            {% if row.tickets %}
+                            {% for t in row.tickets.replace(',', '\n').split('\n') %}
+                            {% set link = t.strip() %}
+                            {% if link %}
+                            <a href="{{ link }}" target="_blank" rel="noopener" class="ticket-link">{{ link }}</a>
+                            {% endif %}
+                            {% endfor %}
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Engineer Worked -->
+                        <td>{{ row.engineer_worked or '—' }}</td>
+
+                        <!-- Issues -->
+                        <td style="white-space:pre-wrap;">{{ row.issues or '—' }}</td>
+
+                        <!-- Engineer Notes -->
+                        <td style="white-space:pre-wrap;">{{ row.engineer_notes or '—' }}</td>
+
+                        <!-- Manager Notes (admin only) -->
+                        {% if is_admin %}
+                        <td style="white-space:pre-wrap;">{{ row.manager_notes or '—' }}</td>
+                        {% endif %}
+
+                        <!-- Migration Report -->
+                        <td>
+                            {% if row.migration_report_sent %}
+                            <span class="mig-sent"><i class="bi bi-check-circle-fill me-1"></i>Sent</span>
+                            {% else %}
+                            <span class="mig-notsent">Not Sent</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Next Shift Engineer -->
+                        <td>{{ row.next_shift_engineer or '—' }}</td>
+
+                        <!-- Filled By -->
+                        <td>{{ row.filled_by_name or '—' }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+
+    {% endfor %}
+    {% endif %}
+
+</div>
+
+<script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
+</body>
+</html>

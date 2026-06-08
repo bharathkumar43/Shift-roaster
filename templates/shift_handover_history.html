@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>History – Shift Handover</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='bootstrap-icons.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+    <style>
+        body { background:#f8f9fb; }
+        .status-badge { font-size:.75rem; padding:.3em .7em; border-radius:20px; white-space:nowrap; font-weight:600; }
+        .status-draft     { background:#fff3cd; color:#664d03; }
+        .status-submitted { background:#d1e7dd; color:#0a3622; }
+    </style>
+</head>
+<body>
+{% set active_page = 'history' %}
+{% include '_sh_nav.html' %}
+
+<div class="container-fluid px-4 py-4">
+
+    <div class="d-flex align-items-center gap-2 mb-4">
+        <h5 class="mb-0 fw-bold"><i class="bi bi-clock-history me-2 text-primary"></i>Handover History</h5>
+        <span class="badge bg-secondary ms-1">{{ total }} record{{ 's' if total != 1 }}</span>
+    </div>
+
+    <!-- Filters -->
+    <div class="card shadow-sm border-0 mb-4" style="border-radius:10px">
+        <div class="card-body py-3">
+            <form method="GET" action="{{ url_for('sh_history') }}" class="row g-2 align-items-end">
+                <div class="col-md-2 col-sm-6">
+                    <label class="form-label small fw-semibold mb-1">Start Date</label>
+                    <input type="date" class="form-control form-control-sm" name="date_from" value="{{ filter_date_from }}">
+                </div>
+                <div class="col-md-2 col-sm-6">
+                    <label class="form-label small fw-semibold mb-1">End Date</label>
+                    <input type="date" class="form-control form-control-sm" name="date_to" value="{{ filter_date_to }}">
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <label class="form-label small fw-semibold mb-1">All Projects</label>
+                    <select class="form-select form-select-sm" name="project">
+                        <option value="">All Projects</option>
+                        {% for p in projects %}
+                        <option value="{{ p }}" {% if p == filter_project %}selected{% endif %}>{{ p }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2 col-sm-6">
+                    <label class="form-label small fw-semibold mb-1">All Shifts</label>
+                    <select class="form-select form-select-sm" name="shift">
+                        <option value="">All Shifts</option>
+                        <option value="1" {% if filter_shift == '1' %}selected{% endif %}>Morning (Shift 1)</option>
+                        <option value="2" {% if filter_shift == '2' %}selected{% endif %}>Afternoon (Shift 2)</option>
+                        <option value="3" {% if filter_shift == '3' %}selected{% endif %}>Night (Shift 3)</option>
+                    </select>
+                </div>
+                <div class="col-auto d-flex gap-2">
+                    <button type="submit" class="btn btn-sm btn-primary px-3">
+                        <i class="bi bi-search me-1"></i>Search
+                    </button>
+                    <a href="{{ url_for('sh_history_excel', project=filter_project, shift=filter_shift, status=filter_status, date_from=filter_date_from, date_to=filter_date_to) }}"
+                       class="btn btn-sm btn-success px-3">
+                        <i class="bi bi-file-earmark-excel me-1"></i>Download Excel
+                    </a>
+                </div>
+            </form>
+            {% if filter_project or filter_shift or filter_status or filter_date_from or filter_date_to %}
+            <div class="mt-2">
+                <a href="{{ url_for('sh_history') }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-x-circle me-1"></i>Clear Filters
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="card shadow-sm border-0" style="border-radius:10px; overflow:hidden">
+        <div class="card-body p-0">
+            {% if handovers %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:60px">#</th>
+                            <th>Date</th>
+                            <th>Shift</th>
+                            <th>Project</th>
+                            <th>Submitted By</th>
+                            <th>Status</th>
+                            <th>Submitted At</th>
+                            <th style="width:70px">View</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for h in handovers %}
+                        <tr>
+                            <td class="text-muted small">{{ h.id }}</td>
+                            <td class="fw-medium">{{ h.handover_date }}</td>
+                            <td><span class="badge bg-primary">S{{ h.shift_num }}</span></td>
+                            <td>{{ h.project_name }}</td>
+                            <td class="text-muted small">{{ h.submitted_by_name or '—' }}</td>
+                            <td>
+                                <span class="status-badge status-{{ h.status }}">
+                                    {% if h.status == 'submitted' %}<i class="bi bi-check-circle-fill me-1"></i>Submitted
+                                    {% else %}<i class="bi bi-pencil me-1"></i>Draft{% endif %}
+                                </span>
+                            </td>
+                            <td class="text-muted small">
+                                {{ h.created_at.strftime('%d %b %Y, %H:%M') if h.created_at else '—' }}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('sh_form', project=h.project_name, date=h.handover_date|string, shift=h.shift_num) }}"
+                                   class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-arrow-right"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if total_pages > 1 %}
+            <div class="d-flex justify-content-center align-items-center gap-2 py-3 border-top">
+                {% if page > 1 %}
+                <a href="{{ url_for('sh_history', page=page-1, project=filter_project, shift=filter_shift, status=filter_status, date_from=filter_date_from, date_to=filter_date_to) }}"
+                   class="btn btn-sm btn-outline-secondary"><i class="bi bi-chevron-left"></i></a>
+                {% endif %}
+                <span class="text-muted small">Page {{ page }} of {{ total_pages }}</span>
+                {% if page < total_pages %}
+                <a href="{{ url_for('sh_history', page=page+1, project=filter_project, shift=filter_shift, status=filter_status, date_from=filter_date_from, date_to=filter_date_to) }}"
+                   class="btn btn-sm btn-outline-secondary"><i class="bi bi-chevron-right"></i></a>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% else %}
+            <div class="text-center py-5 text-muted">
+                <i class="bi bi-inbox display-4 d-block mb-2 opacity-25"></i>
+                <p>No handovers found{% if filter_project or filter_shift or filter_status %} for the selected filters{% endif %}.</p>
+                <a href="{{ url_for('sh_selector') }}" class="btn btn-sm btn-primary">
+                    <i class="bi bi-plus-lg me-1"></i>Submit First Handover
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
+</body>
+</html>

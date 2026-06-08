@@ -1,11 +1,11 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Summary — {{ app_name }}</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <title>Summary â€” {{ app_name }}</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='bootstrap-icons.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
 </head>
 <body>
@@ -15,7 +15,7 @@
             <i class="bi bi-arrow-left"></i>
         </a>
         <span class="navbar-brand fw-bold mb-0">
-            <i class="bi bi-table"></i> Summary — {{ month_name }} {{ year }}
+            <i class="bi bi-table"></i> Summary â€” {{ month_name }} {{ year }}
         </span>
         <div class="ms-auto">
             {% if current_user %}
@@ -107,7 +107,7 @@
                 </div>
                 <div class="col-auto">
                     <label class="form-label fw-semibold small mb-1" for="summaryPersonFilter">Person</label>
-                    <select class="form-select form-select-sm" id="summaryPersonFilter" style="min-width:200px" title="Filter to one engineer’s coverage">
+                    <select class="form-select form-select-sm" id="summaryPersonFilter" style="min-width:200px" title="Filter to one engineerâ€™s coverage">
                         <option value="all">All people</option>
                     </select>
                 </div>
@@ -122,11 +122,11 @@
                 </div>
                 <div class="col-12 small text-muted" id="shiftFilterHint" style="display:none;"></div>
                 <div class="col-12 col-lg-auto ms-lg-auto d-flex flex-wrap gap-2">
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="btnDlProjects" title="Export current filters — By Projects">
-                        <i class="bi bi-download"></i> CSV — Projects
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="btnDlProjects" title="Export current filters â€” By Projects">
+                        <i class="bi bi-download"></i> CSV â€” Projects
                     </button>
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="btnDlEmployees" title="Export current filters — By Employees">
-                        <i class="bi bi-download"></i> CSV — Employees
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="btnDlEmployees" title="Export current filters â€” By Employees">
+                        <i class="bi bi-download"></i> CSV â€” Employees
                     </button>
                 </div>
             </div>
@@ -152,7 +152,7 @@
     </ul>
 
     <div class="tab-content">
-        <!-- ── By Projects ── -->
+        <!-- â”€â”€ By Projects â”€â”€ -->
         <div class="tab-pane fade show active" id="tabProjects" role="tabpanel">
             {% if not all_projects %}
             <div class="text-center text-muted py-5">
@@ -162,17 +162,17 @@
             {% else %}
             <div class="mb-3">
                 <input type="text" class="form-control form-control-sm" id="projFilter"
-                       placeholder="Search project name…" style="max-width:320px" autocomplete="off">
+                       placeholder="Search project nameâ€¦" style="max-width:320px" autocomplete="off">
             </div>
             <div id="projectsView"></div>
             {% endif %}
         </div>
 
-        <!-- ── By Employees ── -->
+        <!-- â”€â”€ By Employees â”€â”€ -->
         <div class="tab-pane fade" id="tabEmployees" role="tabpanel">
             <div class="mb-3">
                 <input type="text" class="form-control form-control-sm" id="empFilter"
-                       placeholder="Search employee name…" style="max-width:320px" autocomplete="off">
+                       placeholder="Search employee nameâ€¦" style="max-width:320px" autocomplete="off">
             </div>
             <div id="employeesView"></div>
         </div>
@@ -185,7 +185,7 @@
     <div class="container">{{ app_name }} &middot; Designed for efficient team scheduling</div>
 </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
 <script>
 (function () {
     var coverage        = {{ proj_coverage | tojson }};
@@ -195,7 +195,7 @@
     var YEAR            = {{ year }};
     var MONTH           = {{ month }};
 
-    // ── Week helpers ────────────────────────────────────────
+    // â”€â”€ Week helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     function weekOfMonth(dayNum) {
         var firstDay = new Date(YEAR, MONTH - 1, 1);
         var offset   = (firstDay.getDay() + 6) % 7; // Mon=0
@@ -220,7 +220,7 @@
             var last  = coverage.find(function (d) { return d.day_num === days[days.length - 1]; });
             var label = 'W' + w;
             if (first && last) {
-                label += ' (' + first.date.split(' ')[1] + '–' + last.date.split(' ')[1] + ')';
+                label += ' (' + first.date.split(' ')[1] + 'â€“' + last.date.split(' ')[1] + ')';
             }
             var btn = document.createElement('button');
             btn.className = 'btn btn-outline-secondary';
@@ -290,7 +290,7 @@
         return (perSel && perSel.value !== 'all') ? perSel.value : 'all';
     }
 
-    /** 'all' | 1 | 2 | 3 — roster / coverage column focus */
+    /** 'all' | 1 | 2 | 3 â€” roster / coverage column focus */
     function selectedShiftFilter() {
         var s = document.getElementById('summaryShiftFilter');
         if (!s || s.value === 'all') return 'all';
@@ -315,7 +315,7 @@
         }
         var n = employees.filter(function (e) { return rosterShiftMatches(e.name, sf); }).length;
         el.style.display = 'block';
-        el.innerHTML = '<i class="bi bi-info-circle"></i> Showing <strong>Shift ' + sf + '</strong> roster: <strong>' + n + '</strong> engineer(s). Project tables show the <strong>S' + sf + '</strong> column; employee lists show only people on this shift, with assignments on this shift’s lane.';
+        el.innerHTML = '<i class="bi bi-info-circle"></i> Showing <strong>Shift ' + sf + '</strong> roster: <strong>' + n + '</strong> engineer(s). Project tables show the <strong>S' + sf + '</strong> column; employee lists show only people on this shift, with assignments on this shiftâ€™s lane.';
     }
 
     function filteredDayNums() {
@@ -353,7 +353,7 @@
         return sh2.handler === personName;
     }
 
-    // ── Badge helpers ───────────────────────────────────────
+    // â”€â”€ Badge helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     function typeBadge(ct) {
         if (ct === 'Content') return '<span class="badge bg-info text-dark">CON</span>';
         if (ct === 'Email')   return '<span class="badge bg-primary">EML</span>';
@@ -365,7 +365,7 @@
         return '<span class="badge bg-shift' + s + ' ms-1">Shift ' + s + '</span>';
     }
 
-    // ── Build indexed data ──────────────────────────────────
+    // â”€â”€ Build indexed data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // projData: project_name -> {product_type, owner, days:[...]}
     function buildProjData() {
         var pd = {};
@@ -387,7 +387,7 @@
     }
 
     // empData: emp_name -> {content_types, shift, days:{day_num: {date,day_abbr,projects:[...]}}}
-    // scopeShift: null = aggregate all shift columns; 1–3 = only that coverage column
+    // scopeShift: null = aggregate all shift columns; 1â€“3 = only that coverage column
     function buildEmpDataShiftScoped(scopeShift) {
         var ed = {};
         employees.forEach(function (e) {
@@ -427,7 +427,7 @@
         return buildEmpDataShiftScoped(null);
     }
 
-    // ── Render: By Projects ─────────────────────────────────
+    // â”€â”€ Render: By Projects â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     function renderProjects() {
         var el = document.getElementById('projectsView');
         if (!el) return;
@@ -481,7 +481,7 @@
                         if (sh.handler) {
                             html += '<td class="text-center small">' + sh.handler + '</td>';
                         } else {
-                            html += '<td class="text-center text-muted small">—</td>';
+                            html += '<td class="text-center text-muted small">â€”</td>';
                         }
                     });
                     html += '</tr>';
@@ -496,7 +496,7 @@
         updateShiftHint();
     }
 
-    // ── Render: By Employees ────────────────────────────────
+    // â”€â”€ Render: By Employees â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     function renderEmployees() {
         var el = document.getElementById('employeesView');
         if (!el) return;
@@ -568,7 +568,7 @@
         updateShiftHint();
     }
 
-    // ── CSV export (matches current week, day, person, and search filters) ──
+    // â”€â”€ CSV export (matches current week, day, person, and search filters) â”€â”€
     function escapeCsv(cell) {
         var s = String(cell == null ? '' : cell);
         if (/[",\r\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
@@ -751,3 +751,4 @@
     </script>
 </body>
 </html>
+

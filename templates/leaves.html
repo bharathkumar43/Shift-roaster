@@ -1,11 +1,11 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ app_name }} &mdash; Leave Tracker</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='bootstrap-icons.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
 </head>
 <body>
@@ -257,7 +257,7 @@
                                         <td class="fw-medium small">{{ r.employee_name }}</td>
                                         <td class="small">{{ r.leave_date }}</td>
                                         <td><span class="badge bg-{{ 'primary' if r.leave_type == 'planned' else ('danger' if r.leave_type == 'sick' else 'warning text-dark') }}">{{ r.leave_type | capitalize }}</span></td>
-                                        <td class="small text-muted">{{ r.reason or '—' }}</td>
+                                        <td class="small text-muted">{{ r.reason or 'â€”' }}</td>
                                         <td>
                                             <div class="d-flex gap-1">
                                                 <form method="POST" action="{{ url_for('approve_leave_route', request_id=r.id) }}" class="d-inline">
@@ -310,7 +310,7 @@
                                         <td class="fw-medium small">{{ l.employee_name }}</td>
                                         <td class="small">{{ l.leave_date }}</td>
                                         <td><span class="badge bg-{{ 'primary' if l.leave_type == 'planned' else ('danger' if l.leave_type == 'sick' else 'warning text-dark') }}">{{ l.leave_type | capitalize }}</span></td>
-                                        <td class="small text-muted">{{ l.reason or '—' }}</td>
+                                        <td class="small text-muted">{{ l.reason or 'â€”' }}</td>
                                         {% if current_user and current_user.role == 'admin' %}
                                         <td>
                                             <form method="POST" action="{{ url_for('cancel_leave_route', leave_id=l.id) }}" class="d-inline">
@@ -381,7 +381,7 @@
         </div>
     </footer>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
     <script>
     (function() {
         var empSelect = document.getElementById('leaveEmpSelect');
@@ -454,3 +454,4 @@
     </script>
 </body>
 </html>
+

@@ -1,0 +1,67 @@
+{#- Shared Shift Handover navbar — include this in every SH page
+    Params: current_user, active_page (string: dashboard|selector|history|clients|users|reports|tracking|form)
+-#}
+<style>
+  .sh-nav { background:#fff; border-bottom:1px solid #e5e7eb; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+  .sh-brand { color:#5b4fcf !important; font-weight:800; font-size:1.05rem; text-decoration:none; display:flex; align-items:center; gap:.45rem; letter-spacing:-.01em; }
+  .sh-brand:hover { color:#4338ca !important; }
+  .sn-btn { color:#374151; font-size:.82rem; padding:.28rem .6rem; border-radius:6px; text-decoration:none; display:inline-flex; align-items:center; gap:.3rem; white-space:nowrap; border:none; background:none; }
+  .sn-btn:hover { background:#f5f3ff; color:#5b4fcf; }
+  .sn-btn.active { background:#ede9fe; color:#5b4fcf; font-weight:600; }
+  .sn-sep { color:#d1d5db; padding:0 2px; font-size:.85rem; user-select:none; }
+  .sn-user { font-size:.8rem; color:#374151; font-weight:500; }
+  .sn-role { background:#e0e7ff; color:#4338ca; font-size:.62rem; padding:.1em .45em; border-radius:3px; font-weight:700; vertical-align:middle; margin-left:.2rem; letter-spacing:.02em; }
+  .sn-back { color:#374151; font-size:.82rem; text-decoration:none; display:inline-flex; align-items:center; gap:.3rem; padding:.28rem .7rem; border-radius:6px; border:1px solid #e5e7eb; font-weight:500; }
+  .sn-back:hover { background:#f5f3ff; color:#5b4fcf; border-color:#c4b5fd; }
+</style>
+
+<nav class="navbar sh-nav sticky-top py-1">
+  <div class="container-fluid px-3 gap-2 flex-wrap">
+    <a href="{{ url_for('shift_handover') }}" class="sh-brand me-3">
+      <i class="bi bi-arrow-left-right" style="font-size:1rem"></i>
+      <span>Shift<br>Handover</span>
+    </a>
+    <div class="d-flex align-items-center gap-1 flex-grow-1 flex-wrap">
+      <a href="{{ url_for('shift_handover') }}"
+         class="sn-btn {% if active_page == 'dashboard' %}active{% endif %}">
+        <i class="bi bi-grid-1x2"></i>Dashboard
+      </a>
+      <a href="{{ url_for('sh_selector') }}"
+         class="sn-btn {% if active_page in ['selector','form'] %}active{% endif %}">
+        <i class="bi bi-file-earmark-text"></i>Shift Handover
+      </a>
+      <a href="{{ url_for('sh_history') }}"
+         class="sn-btn {% if active_page == 'history' %}active{% endif %}">
+        <i class="bi bi-clock-history"></i>History
+      </a>
+      {% if current_user and current_user.role == 'admin' %}
+      <span class="sn-sep">|</span>
+      <a href="{{ url_for('sh_clients') }}"
+         class="sn-btn {% if active_page == 'clients' %}active{% endif %}">
+        <i class="bi bi-gear"></i>Manage Clients
+      </a>
+      <a href="{{ url_for('sh_users') }}"
+         class="sn-btn {% if active_page == 'users' %}active{% endif %}">
+        <i class="bi bi-person"></i>Manage Users
+      </a>
+      <a href="{{ url_for('sh_reports') }}"
+         class="sn-btn {% if active_page == 'reports' %}active{% endif %}">
+        <i class="bi bi-bar-chart-line"></i>Reports
+      </a>
+      <a href="{{ url_for('sh_tracking') }}"
+         class="sn-btn {% if active_page == 'tracking' %}active{% endif %}">
+        <i class="bi bi-person-check"></i>Tracking
+      </a>
+      {% endif %}
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <span class="sn-user">
+        {{ current_user.full_name or current_user.username }}
+        <span class="sn-role">{{ (current_user.role or 'user')|upper }}</span>
+      </span>
+      <a href="{{ url_for('index') }}" class="sn-back">
+        <i class="bi bi-house"></i>Back to Roster
+      </a>
+    </div>
+  </div>
+</nav>

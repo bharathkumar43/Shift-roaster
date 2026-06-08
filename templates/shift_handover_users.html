@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Users – Shift Handover</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='bootstrap-icons.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+    <style>
+        body { background:#f8f9fb; }
+        .badge-active   { background:#d1fae5; color:#065f46; font-size:.72rem; padding:.25em .6em; border-radius:12px; font-weight:600; }
+        .badge-inactive { background:#fee2e2; color:#991b1b; font-size:.72rem; padding:.25em .6em; border-radius:12px; font-weight:600; }
+    </style>
+</head>
+<body>
+{% set active_page = 'users' %}
+{% include '_sh_nav.html' %}
+
+<div class="container-fluid px-4 py-4">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for cat, msg in messages %}
+    <div class="alert alert-{{ cat }} alert-dismissible fade show py-2">
+        {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}{% endif %}
+    {% endwith %}
+
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <h5 class="mb-0 fw-bold"><i class="bi bi-person-gear me-2 text-primary"></i>Manage Users</h5>
+        <span class="badge bg-secondary ms-1">{{ users|length }}</span>
+        <a href="{{ url_for('signup') }}" class="btn btn-sm btn-primary ms-auto">
+            <i class="bi bi-person-plus me-1"></i>Add User
+        </a>
+    </div>
+
+    <div class="card shadow-sm border-0" style="border-radius:10px; overflow:hidden">
+        <div class="card-body p-0">
+            {% if users %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Name</th>
+                            <th>Email / Username</th>
+                            <th style="width:120px">Role</th>
+                            <th style="width:160px">Shifts</th>
+                            <th style="width:100px">Status</th>
+                            <th style="width:110px">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for u in users %}
+                        <tr>
+                            <td class="fw-medium">{{ u.full_name or u.username }}</td>
+                            <td class="text-muted small">{{ u.email or u.username }}</td>
+                            <td>
+                                <form method="POST"
+                                      action="{{ url_for('sh_users_update_role', user_id=u.id) }}"
+                                      onchange="this.submit()">
+                                    <select class="form-select form-select-sm" name="role">
+                                        <option value="user"  {% if u.role == 'user'  %}selected{% endif %}>User</option>
+                                        <option value="admin" {% if u.role == 'admin' %}selected{% endif %}>Admin</option>
+                                    </select>
+                                </form>
+                            </td>
+                            <td>
+                                <form method="POST"
+                                      action="{{ url_for('sh_users_update_shifts', user_id=u.id) }}"
+                                      class="d-flex gap-2 align-items-center">
+                                    <div class="form-check mb-0" title="Shift 1">
+                                        <input class="form-check-input" type="checkbox" name="shift_1"
+                                               id="s1_{{ u.id }}" {% if u.shift_1 %}checked{% endif %}
+                                               onchange="this.form.submit()">
+                                        <label class="form-check-label small" for="s1_{{ u.id }}">S1</label>
+                                    </div>
+                                    <div class="form-check mb-0" title="Shift 2">
+                                        <input class="form-check-input" type="checkbox" name="shift_2"
+                                               id="s2_{{ u.id }}" {% if u.shift_2 %}checked{% endif %}
+                                               onchange="this.form.submit()">
+                                        <label class="form-check-label small" for="s2_{{ u.id }}">S2</label>
+                                    </div>
+                                    <div class="form-check mb-0" title="Shift 3">
+                                        <input class="form-check-input" type="checkbox" name="shift_3"
+                                               id="s3_{{ u.id }}" {% if u.shift_3 %}checked{% endif %}
+                                               onchange="this.form.submit()">
+                                        <label class="form-check-label small" for="s3_{{ u.id }}">S3</label>
+                                    </div>
+                                </form>
+                            </td>
+                            <td>
+                                {% if u.is_active %}
+                                <span class="badge-active"><i class="bi bi-check-circle me-1"></i>Active</span>
+                                {% else %}
+                                <span class="badge-inactive"><i class="bi bi-dash-circle me-1"></i>Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if u.id != current_user.id %}
+                                <form method="POST"
+                                      action="{{ url_for('sh_users_toggle', user_id=u.id) }}"
+                                      onsubmit="return confirm('Toggle user status?')">
+                                    <button type="submit"
+                                            class="btn btn-sm {{ 'btn-outline-danger' if u.is_active else 'btn-outline-success' }}">
+                                        {{ 'Deactivate' if u.is_active else 'Activate' }}
+                                    </button>
+                                </form>
+                                {% else %}
+                                <span class="text-muted small">—</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5 text-muted">
+                <i class="bi bi-people display-4 d-block mb-2 opacity-25"></i>
+                <p>No users found.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
+</body>
+</html>

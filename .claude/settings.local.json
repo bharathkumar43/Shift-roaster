@@ -28,7 +28,10 @@
       "Bash(git commit -m ' *)",
       "Bash(findstr /i \"AZURE OUTLOOK EMAIL SUBJECT TENANT CLIENT\")",
       "Bash(Test-Path \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\Roaster_Automation\\\\templates\\\\drive_change.html\")",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(grep -E \"\\\\.py$|migrations|seeds|fixtures\")",
+      "Bash(python migrate_sh_data.py)",
+      "Bash(python -c \"from jinja2 import Environment; env = Environment\\(\\); t = env.from_string\\('{% set a=[\\\\\"x\\\\\",\\\\\"y\\\\\",\\\\\"z\\\\\"] %}{% set b=[\\\\\"x\\\\\"] %}{{ a | reject\\(\\\\\"in\\\\\", b\\) | list }}'\\); print\\(t.render\\(\\)\\)\")"
     ]
   }
 }

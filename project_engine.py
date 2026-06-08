@@ -77,14 +77,15 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
     num_days = calendar.monthrange(year, month)[1]
     coverage = []
     warnings = []
-    # Balance backup picks across the month (per shift × product type)
-    backup_load = defaultdict(int)
 
     for day in range(1, num_days + 1):
         d = date(year, month, day)
         weekday = d.weekday()
         day_name = DAY_NAMES[weekday]
         date_str = d.strftime("%Y-%m-%d")
+
+        # Reset backup load each day so returning engineers are not overloaded
+        daily_backup_load = defaultdict(int)
 
         day_info = {
             "date": d.strftime("%b %d"),
@@ -125,7 +126,7 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
                             product_type, fixed_person, shift_num,
                             employees, shift_assignments, day_name,
                             date_str, leave_dates,
-                            backup_load=backup_load,
+                            backup_load=daily_backup_load,
                         )
                         if backup:
                             shift_handlers[shift_num] = {
@@ -191,13 +192,11 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, saved_handler
     fixed = {}
     new_handlers = {}
     assignment_count = defaultdict(int)
-    learning_used = defaultdict(int)
 
     def _is_valid_saved(handler_name, shift_num, product_type):
         emp = emp_lookup.get(handler_name)
         return (emp and shift_assignments.get(handler_name) == shift_num
-                and (product_type in emp.get("content_types", [])
-                     or product_type in emp.get("learning_content_types", {})))
+                and product_type in emp.get("content_types", []))
 
     # ── Pass 1: lock determined assignments and seed the load counter ──────────
     for proj in projects:
@@ -212,7 +211,6 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, saved_handler
 
         for shift_num in [1, 2, 3]:
             if shift_num == owner_shift:
-                # Owner always handles their own project in their shift
                 fixed[proj_key][shift_num] = owner_name
                 assignment_count[(owner_name, shift_num)] += 1
             else:
@@ -220,27 +218,14 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, saved_handler
                 if saved_pair and _is_valid_saved(saved_pair[0], shift_num, product_type):
                     fixed[proj_key][shift_num] = saved_pair[0]
                     assignment_count[(saved_pair[0], shift_num)] += 1
-                    emp = emp_lookup.get(saved_pair[0])
-                    if emp and product_type in emp.get("learning_content_types", {}):
-                        learning_used[(saved_pair[0], shift_num, product_type)] += 1
 
     # ── Pass 2: greedy for anything still unassigned ────────────────────────────
-    def _candidates(shift_num, product_type, learning_check=False):
-        result = []
-        for emp in employees:
-            if shift_assignments.get(emp["name"]) != shift_num:
-                continue
-            if learning_check:
-                if product_type not in emp.get("learning_content_types", {}):
-                    continue
-                if (learning_used[(emp["name"], shift_num, product_type)]
-                        >= emp["learning_content_types"].get(product_type, 0)):
-                    continue
-            else:
-                if product_type not in emp.get("content_types", []):
-                    continue
-            result.append(emp["name"])
-        return result
+    def _candidates(shift_num, product_type):
+        return [
+            emp["name"] for emp in employees
+            if shift_assignments.get(emp["name"]) == shift_num
+            and product_type in emp.get("content_types", [])
+        ]
 
     for proj in projects:
         owner_name = proj["employee_name"]
@@ -251,18 +236,14 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, saved_handler
 
         for shift_num in [1, 2, 3]:
             if shift_num in fixed.get(proj_key, {}):
-                continue  # already locked in pass 1
+                continue
 
-            pool = (_candidates(shift_num, product_type)
-                    or _candidates(shift_num, product_type, learning_check=True))
-
+            pool   = _candidates(shift_num, product_type)
             chosen = _greedy_pick(pool, assignment_count, shift_num, emp_lookup)
             fixed[proj_key][shift_num] = chosen
 
             if chosen:
                 assignment_count[(chosen, shift_num)] += 1
-                if product_type in emp_lookup[chosen].get("learning_content_types", {}):
-                    learning_used[(chosen, shift_num, product_type)] += 1
                 new_handlers[(proj["name"], product_type, shift_num)] = (chosen, None)
 
     return fixed, new_handlers
@@ -292,8 +273,7 @@ def _find_backup(product_type, exclude_name, shift_num,
             continue
         if shift_assignments.get(emp["name"]) != shift_num:
             continue
-        if (product_type not in emp.get("content_types", [])
-                and product_type not in emp.get("learning_content_types", {})):
+        if product_type not in emp.get("content_types", []):
             continue
         if not is_emp_scheduled_work_day(emp, date.fromisoformat(date_str)):
             continue

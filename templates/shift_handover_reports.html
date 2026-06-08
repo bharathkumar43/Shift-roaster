@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reports – Shift Handover</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='bootstrap-icons.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+    <style>
+        body { background:#f8f9fb; }
+        .mode-tab { border:none; background:none; padding:.45rem .9rem; font-size:.88rem; font-weight:600; color:#6b7280; border-bottom:3px solid transparent; cursor:pointer; }
+        .mode-tab.active { color:#5b4fcf; border-bottom-color:#5b4fcf; }
+        .status-pill { font-size:.72rem; padding:.25em .6em; border-radius:12px; font-weight:600; }
+        .pill-draft     { background:#fff3cd; color:#664d03; }
+        .pill-submitted { background:#d1e7dd; color:#0a3622; }
+    </style>
+</head>
+<body>
+{% set active_page = 'reports' %}
+{% include '_sh_nav.html' %}
+
+<div class="container-fluid px-4 py-4">
+
+    <h5 class="fw-bold mb-4"><i class="bi bi-bar-chart-steps me-2 text-primary"></i>Reports</h5>
+
+    <!-- Mode tabs -->
+    <div class="card shadow-sm border-0 mb-4" style="border-radius:10px; overflow:hidden">
+        <div class="card-header bg-white border-bottom">
+            <div class="d-flex gap-0">
+                <button class="mode-tab {{ 'active' if mode == 'date' }}" onclick="switchMode('date')">
+                    <i class="bi bi-calendar3 me-1"></i>By Date
+                </button>
+                <button class="mode-tab {{ 'active' if mode == 'employee' }}" onclick="switchMode('employee')">
+                    <i class="bi bi-person me-1"></i>By Employee
+                </button>
+                <button class="mode-tab {{ 'active' if mode == 'client' }}" onclick="switchMode('client')">
+                    <i class="bi bi-briefcase me-1"></i>By Client
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+
+            <!-- By Date form -->
+            <form method="GET" action="{{ url_for('sh_reports') }}" id="form-date"
+                  class="{{ '' if mode == 'date' else 'd-none' }}">
+                <input type="hidden" name="mode" value="date">
+                <div class="d-flex gap-2 align-items-end flex-wrap">
+                    <div>
+                        <label class="form-label small fw-semibold mb-1">Date</label>
+                        <input type="date" class="form-control form-control-sm" name="date" value="{{ date_val }}" style="width:160px">
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-primary px-4">
+                        <i class="bi bi-search me-1"></i>Search
+                    </button>
+                </div>
+            </form>
+
+            <!-- By Employee form -->
+            <form method="GET" action="{{ url_for('sh_reports') }}" id="form-employee"
+                  class="{{ '' if mode == 'employee' else 'd-none' }}">
+                <input type="hidden" name="mode" value="employee">
+                <div class="d-flex gap-2 align-items-end flex-wrap">
+                    <div>
+                        <label class="form-label small fw-semibold mb-1">Employee Name</label>
+                        <input type="text" class="form-control form-control-sm" name="q"
+                               value="{{ q }}" placeholder="Search name…" style="width:200px">
+                    </div>
+                    <div>
+                        <label class="form-label small fw-semibold mb-1">From</label>
+                        <input type="date" class="form-control form-control-sm" name="date_from" value="{{ date_from }}" style="width:150px">
+                    </div>
+                    <div>
+                        <label class="form-label small fw-semibold mb-1">To</label>
+                        <input type="date" class="form-control form-control-sm" name="date_to" value="{{ date_to }}" style="width:150px">
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-primary px-4">
+                        <i class="bi bi-search me-1"></i>Search
+                    </button>
+                </div>
+            </form>
+
+            <!-- By Client form -->
+            <form method="GET" action="{{ url_for('sh_reports') }}" id="form-client"
+                  class="{{ '' if mode == 'client' else 'd-none' }}">
+                <input type="hidden" name="mode" value="client">
+                <div class="d-flex gap-2 align-items-end flex-wrap">
+                    <div>
+                        <label class="form-label small fw-semibold mb-1">Client Name</label>
+                        <input type="text" class="form-control form-control-sm" name="q"
+                               value="{{ q }}" placeholder="Search client…" style="width:200px">
+                    </div>
+                    <div>
+                        <label class="form-label small fw-semibold mb-1">From</label>
+                        <input type="date" class="form-control form-control-sm" name="date_from" value="{{ date_from }}" style="width:150px">
+                    </div>
+                    <div>
+                        <label class="form-label small fw-semibold mb-1">To</label>
+                        <input type="date" class="form-control form-control-sm" name="date_to" value="{{ date_to }}" style="width:150px">
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-primary px-4">
+                        <i class="bi bi-search me-1"></i>Search
+                    </button>
+                </div>
+            </form>
+
+        </div>
+    </div>
+
+    <!-- Results -->
+    {% if rows %}
+    <div class="card shadow-sm border-0" style="border-radius:10px; overflow:hidden">
+        <div class="card-header bg-white border-bottom d-flex align-items-center gap-2 py-3">
+            <i class="bi bi-table text-primary"></i>
+            <span class="fw-semibold">Results</span>
+            <span class="badge bg-secondary ms-1">{{ rows|length }}</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0 small">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Date</th>
+                            <th>Shift</th>
+                            <th>Project</th>
+                            {% if mode == 'date' or mode == 'employee' %}
+                            <th>Submitted By</th>
+                            {% endif %}
+                            <th>Status</th>
+                            <th>Client</th>
+                            <th>Entry Status</th>
+                            {% if mode != 'client' %}
+                            <th>Engineer Worked</th>
+                            {% endif %}
+                            <th>Issues</th>
+                            <th>Notes</th>
+                            <th>Tickets</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in rows %}
+                        <tr>
+                            <td>{{ r.handover_date }}</td>
+                            <td><span class="badge bg-primary">S{{ r.shift_num }}</span></td>
+                            <td class="fw-medium">{{ r.project_name }}</td>
+                            {% if mode == 'date' or mode == 'employee' %}
+                            <td>{{ r.submitted_by_name or '—' }}</td>
+                            {% endif %}
+                            <td>
+                                <span class="status-pill pill-{{ r.status }}">{{ r.status|title }}</span>
+                            </td>
+                            <td>{{ r.client_name or '—' }}</td>
+                            <td>{{ r.entry_status or '—' }}</td>
+                            {% if mode != 'client' %}
+                            <td>{{ r.engineer_worked or '—' }}</td>
+                            {% endif %}
+                            <td>{{ r.issues or '—' }}</td>
+                            <td class="text-muted">{{ r.engineer_notes or '—' }}</td>
+                            <td>{{ r.tickets or '—' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% elif request.args %}
+    <div class="card shadow-sm border-0">
+        <div class="card-body text-center py-5 text-muted">
+            <i class="bi bi-inbox display-4 d-block mb-2 opacity-25"></i>
+            <p>No records found for the selected filters.</p>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+
+<script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
+<script>
+function switchMode(m) {
+    ['date','employee','client'].forEach(function(k) {
+        document.getElementById('form-' + k).classList.toggle('d-none', k !== m);
+    });
+    document.querySelectorAll('.mode-tab').forEach(function(t) { t.classList.remove('active'); });
+    event.target.classList.add('active');
+}
+</script>
+</body>
+</html>

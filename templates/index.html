@@ -1,11 +1,11 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ app_name }}</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='bootstrap-icons.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
 </head>
 <body>
@@ -57,6 +57,50 @@
         {% endwith %}
 
         {% include 'partials/app_context_bar.html' %}
+
+        <!-- Quick Navigation Links -->
+        <div class="row g-2 mb-3 animate-in">
+            <div class="col">
+                <a href="{{ url_for('summary', year=app_context_year, month=app_context_month) }}"
+                   class="d-flex align-items-center gap-2 px-3 py-2 text-decoration-none rounded-3 h-100"
+                   style="background:#ede9fe; color:#4c1d95; border:1px solid #c4b5fd; font-weight:600; font-size:.82rem;">
+                    <i class="bi bi-table fs-5"></i>
+                    <span>Summary View</span>
+                </a>
+            </div>
+            <div class="col">
+                <a href="{{ url_for('leaves', year=app_context_year, month=app_context_month) }}"
+                   class="d-flex align-items-center gap-2 px-3 py-2 text-decoration-none rounded-3 h-100"
+                   style="background:#fee2e2; color:#7f1d1d; border:1px solid #fca5a5; font-weight:600; font-size:.82rem;">
+                    <i class="bi bi-calendar-x fs-5"></i>
+                    <span>Leave Tracker</span>
+                </a>
+            </div>
+            <div class="col">
+                <a href="{{ url_for('delta') }}"
+                   class="d-flex align-items-center gap-2 px-3 py-2 text-decoration-none rounded-3 h-100"
+                   style="background:#dcfce7; color:#14532d; border:1px solid #86efac; font-weight:600; font-size:.82rem;">
+                    <i class="bi bi-calendar-event fs-5"></i>
+                    <span>Delta Calendar</span>
+                </a>
+            </div>
+            <div class="col">
+                <a href="{{ url_for('drive_change_dashboard') }}"
+                   class="d-flex align-items-center gap-2 px-3 py-2 text-decoration-none rounded-3 h-100"
+                   style="background:#fff7ed; color:#7c2d12; border:1px solid #fdba74; font-weight:600; font-size:.82rem;">
+                    <i class="bi bi-envelope-exclamation fs-5"></i>
+                    <span>Drive Change Dashboard</span>
+                </a>
+            </div>
+            <div class="col">
+                <a href="{{ url_for('shift_handover') }}"
+                   class="d-flex align-items-center gap-2 px-3 py-2 text-decoration-none rounded-3 h-100"
+                   style="background:#e0f2fe; color:#0c4a6e; border:1px solid #7dd3fc; font-weight:600; font-size:.82rem;">
+                    <i class="bi bi-journal-text fs-5"></i>
+                    <span>Shift Handover</span>
+                </a>
+            </div>
+        </div>
 
         <!-- Search Bar -->
         <div class="card shadow-sm border-0 mb-4 animate-in">
@@ -124,7 +168,7 @@
                             <div class="small text-muted">
                                 <i class="bi bi-info-circle"></i>
                                 Supports <strong>.xlsx</strong>, <strong>.pdf</strong>, <strong>.png</strong>, <strong>.jpg</strong>.
-                                Employees are read automatically — you can review and edit before confirming.
+                                Employees are read automatically â€” you can review and edit before confirming.
                                 This will <strong>replace</strong> all existing employees.
                             </div>
                             <button type="submit" class="btn btn-primary btn-sm" id="uploadBtn" disabled>
@@ -171,25 +215,7 @@
                                     </div>
                                     {% endfor %}
                                 </div>
-                                <div class="form-text">Full project load — assigned equally among primary engineers.</div>
-                            </div>
-
-                            <div class="mb-3">
-                                <label class="form-label fw-semibold">
-                                    Learning Quotas
-                                    <span class="badge bg-warning text-dark fw-normal ms-1" style="font-size:.7rem">Optional</span>
-                                </label>
-                                <div class="d-flex flex-wrap gap-2">
-                                    {% for ct in content_types %}
-                                    <div class="input-group input-group-sm" style="width:120px">
-                                        <span class="input-group-text">{{ ct[:3] }}</span>
-                                        <input type="number" class="form-control"
-                                               name="learning_quota_{{ ct }}"
-                                               min="0" max="20" value="" placeholder="max">
-                                    </div>
-                                    {% endfor %}
-                                </div>
-                                <div class="form-text">Max projects per shift for types being learned. Leave blank to skip. Ignored for types already marked primary above.</div>
+                                <div class="form-text">Full project load â€” assigned equally among primary engineers.</div>
                             </div>
 
                             <div class="mb-3">
@@ -363,52 +389,6 @@
                 </div>
                 {% endif %}
 
-                <!-- Summary Link -->
-                <div class="card shadow-sm border-0 mt-3 animate-in">
-                    <a href="{{ url_for('summary', year=app_context_year, month=app_context_month) }}" class="card-body d-flex align-items-center gap-2 text-decoration-none text-dark py-3">
-                        <i class="bi bi-table fs-5 text-primary"></i>
-                        <div>
-                            <span class="fw-semibold">Summary View</span>
-                            <br><small class="text-muted">View shift distribution overview</small>
-                        </div>
-                        <i class="bi bi-chevron-right ms-auto text-muted"></i>
-                    </a>
-                </div>
-
-                <!-- Leave Tracker Link -->
-                <div class="card shadow-sm border-0 mt-3 animate-in">
-                    <a href="{{ url_for('leaves', year=app_context_year, month=app_context_month) }}" class="card-body d-flex align-items-center gap-2 text-decoration-none text-dark py-3">
-                        <i class="bi bi-calendar-x fs-5 text-danger"></i>
-                        <div>
-                            <span class="fw-semibold">Leave Tracker</span>
-                            <br><small class="text-muted">Manage leaves, requests &amp; balances</small>
-                        </div>
-                        <i class="bi bi-chevron-right ms-auto text-muted"></i>
-                    </a>
-                </div>
-
-                <!-- Delta Calendar Link -->
-                <div class="card shadow-sm border-0 mt-3 animate-in">
-                    <a href="{{ url_for('delta') }}" class="card-body d-flex align-items-center gap-2 text-decoration-none text-dark py-3">
-                        <i class="bi bi-calendar-event fs-5 text-success"></i>
-                        <div>
-                            <span class="fw-semibold">Delta Calendar</span>
-                            <br><small class="text-muted">Schedule delta work events by project &amp; date</small>
-                        </div>
-                        <i class="bi bi-chevron-right ms-auto text-muted"></i>
-                    </a>
-                </div>
-                <!-- Drive Change Dashboard Link -->
-                <div class="card shadow-sm border-0 mt-3 animate-in">
-                    <a href="{{ url_for('drive_change_dashboard') }}" class="card-body d-flex align-items-center gap-2 text-decoration-none text-dark py-3">
-                        <i class="bi bi-envelope-exclamation fs-5 text-danger"></i>
-                        <div>
-                            <span class="fw-semibold">Drive Change Dashboard</span>
-                            <br><small class="text-muted">View drive-change alert emails grouped by IST time window</small>
-                        </div>
-                        <i class="bi bi-chevron-right ms-auto text-muted"></i>
-                    </a>
-                </div>
             </div>
 
             <!-- Employee List -->
@@ -509,15 +489,6 @@
                                             <span class="badge bg-warning text-dark">MSG</span>
                                             {% endif %}
                                             {% endfor %}
-                                            {% for ct, quota in emp.learning_content_types.items() %}
-                                            {% if ct == 'Content' %}
-                                            <span class="badge bg-info text-dark opacity-50" title="Learning (max {{ quota }})">CON★{{ quota }}</span>
-                                            {% elif ct == 'Email' %}
-                                            <span class="badge bg-primary opacity-50" title="Learning (max {{ quota }})">EML★{{ quota }}</span>
-                                            {% else %}
-                                            <span class="badge bg-warning text-dark opacity-50" title="Learning (max {{ quota }})">MSG★{{ quota }}</span>
-                                            {% endif %}
-                                            {% endfor %}
                                         </td>
                                         {% endif %}
                                         <td>
@@ -528,7 +499,7 @@
                                             {% elif emp.shift == 3 %}
                                             <span class="badge bg-warning text-dark">S3</span>
                                             {% else %}
-                                            <span class="text-muted small">—</span>
+                                            <span class="text-muted small">â€”</span>
                                             {% endif %}
                                         </td>
                                         <td>
@@ -564,7 +535,6 @@
                                                         data-emp-role="{{ emp.emp_role }}"
                                                         data-content-types='{{ emp.content_types | tojson }}'
                                                         data-working-days='{{ emp.working_days | tojson }}'
-                                                        data-learning-content-types='{{ emp.learning_content_types | tojson }}'
                                                         data-projects='{{ (all_projects | selectattr("employee_id", "equalto", emp.id) | list) | tojson }}'>
                                                     <i class="bi bi-pencil"></i>
                                                 </button>
@@ -632,7 +602,6 @@
                                                         data-emp-role="{{ emp.emp_role }}"
                                                         data-content-types='{{ emp.content_types | tojson }}'
                                                         data-working-days='{{ emp.working_days | tojson }}'
-                                                        data-learning-content-types='{{ emp.learning_content_types | tojson }}'
                                                         data-projects='{{ (all_projects | selectattr("employee_id", "equalto", emp.id) | list) | tojson }}'>
                                                     <i class="bi bi-pencil"></i>
                                                 </button>
@@ -700,7 +669,6 @@
                                                         data-emp-role="{{ emp.emp_role }}"
                                                         data-content-types='{{ emp.content_types | tojson }}'
                                                         data-working-days='{{ emp.working_days | tojson }}'
-                                                        data-learning-content-types='{{ emp.learning_content_types | tojson }}'
                                                         data-projects='{{ (all_projects | selectattr("employee_id", "equalto", emp.id) | list) | tojson }}'>
                                                     <i class="bi bi-pencil"></i>
                                                 </button>
@@ -794,15 +762,7 @@
                     <div class="mb-3" id="editTypeSection">
                         <label class="form-label fw-semibold">Primary Product Types</label>
                         <div id="editTypeToggles" class="d-flex gap-2 flex-wrap"></div>
-                        <div class="form-text">Full load — distributed equally.</div>
-                    </div>
-                    <div class="mb-4" id="editLearningSection">
-                        <label class="form-label fw-semibold">
-                            Learning Quotas
-                            <span class="badge bg-warning text-dark fw-normal ms-1" style="font-size:.7rem">Optional</span>
-                        </label>
-                        <div id="editLearningInputs" class="d-flex gap-2 flex-wrap"></div>
-                        <div class="form-text">Max projects per shift for types being learned. Set 0 to disable. Ignored for primary types above.</div>
+                        <div class="form-text">Full load â€” distributed equally.</div>
                     </div>
                     <div class="mb-4" id="editDaySection">
                         <label class="form-label fw-semibold">Working Days</label>
@@ -903,7 +863,7 @@
                 <div class="modal-body p-0">
                     <div id="shiftModalLoading" class="text-center py-5">
                         <div class="spinner-border text-primary" role="status"></div>
-                        <p class="mt-3 text-muted">Loading…</p>
+                        <p class="mt-3 text-muted">Loadingâ€¦</p>
                     </div>
                     <div id="shiftModalContent" class="d-none">
                         <div class="px-3 py-2 border-bottom bg-light small text-muted">
@@ -1002,7 +962,7 @@
         </div>
     </footer>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
     <script>
     // Rotate chevron icons for add-form collapses
     ['addEngineerCollapse','addShiftLeadCollapse','addManagerCollapse'].forEach(function(id) {
@@ -1031,7 +991,7 @@
             return (b - a === 1) || (a === 0 && b === 6);
         }
 
-        // ── Day-count counter (admin-only: inside Add Employee form) ──
+        // â”€â”€ Day-count counter (admin-only: inside Add Employee form) â”€â”€
         var counter = document.getElementById('dayCount');
         if (counter) {
             var checks = document.querySelectorAll('.day-check');
@@ -1060,7 +1020,7 @@
             });
         }
 
-        // ── Add Project button (admin-only) ──────────────
+        // â”€â”€ Add Project button (admin-only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         var projectList = document.getElementById('projectList');
         var addBtn = document.getElementById('addProjectBtn');
         if (addBtn) {
@@ -1104,7 +1064,7 @@
             btn.addEventListener('click', function() { makeProjectRow('mgrProjectList'); });
         });
 
-        // ── Month/year sync (requires ≥2 employees for generate card) ──
+        // â”€â”€ Month/year sync (requires â‰¥2 employees for generate card) â”€â”€
         if (document.getElementById('gen_month')) {
             function syncFields() {
                 var m = document.getElementById('gen_month').value;
@@ -1125,7 +1085,7 @@
             syncFields();
         }
 
-        // ── Employee Preview / Edit Modal (admin-only upload section) ──
+        // â”€â”€ Employee Preview / Edit Modal (admin-only upload section) â”€â”€
         var dropzone  = document.getElementById('dropzone');
         var fileInput = document.getElementById('fileInput');
         var fileNameEl = document.getElementById('fileName');
@@ -1294,7 +1254,7 @@
                 });
         }
 
-        // Upload section is admin-only — guard against null
+        // Upload section is admin-only â€” guard against null
         if (fileInput) {
             fileInput.addEventListener('change', function() {
                 if (fileInput.files.length > 0) openPreview(fileInput.files[0]);
@@ -1314,7 +1274,7 @@
             });
         }
 
-        // ── Edit Employee Modal ────────────────────────────
+        // â”€â”€ Edit Employee Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         var editEmpModal     = new bootstrap.Modal(document.getElementById('editEmpModal'));
         var currentEditEmpId = null;
 
@@ -1353,7 +1313,6 @@
 
                 var cts      = JSON.parse(btn.dataset.contentTypes);
                 var days     = JSON.parse(btn.dataset.workingDays);
-                var lcts     = JSON.parse(btn.dataset.learningContentTypes || '{}');
                 var projects = JSON.parse(btn.dataset.projects || '[]');
 
                 // Product type toggles
@@ -1368,20 +1327,6 @@
                     b.dataset.val = ct; b.dataset.color = TYPE_COLORS[ci]; b.dataset.on = String(on);
                     b.textContent = TYPE_ABBR[ci];
                     typeDiv.appendChild(b);
-                });
-
-                // Learning quota inputs
-                var learningDiv = document.getElementById('editLearningInputs');
-                learningDiv.innerHTML = '';
-                ALL_TYPES.forEach(function(ct, ci) {
-                    var quota = (lcts[ct] && parseInt(lcts[ct], 10) > 0) ? parseInt(lcts[ct], 10) : 0;
-                    var grp = document.createElement('div');
-                    grp.className = 'input-group input-group-sm';
-                    grp.style.width = '110px';
-                    grp.innerHTML = '<span class="input-group-text">' + TYPE_ABBR[ci] + '</span>' +
-                        '<input type="number" class="form-control edit-learning-quota" data-ct="' + ct +
-                        '" min="0" max="20" value="' + quota + '">';
-                    learningDiv.appendChild(grp);
                 });
 
                 // Working day toggles
@@ -1453,13 +1398,7 @@
 
             var editedName = document.getElementById('editEmpNameInput').value.trim();
 
-            var lcts = {};
-            document.querySelectorAll('#editLearningInputs .edit-learning-quota').forEach(function(inp) {
-                var q = parseInt(inp.value || '0', 10);
-                if (q > 0) lcts[inp.dataset.ct] = q;
-            });
-
-            var payload = {name: editedName, content_types: cts, working_days: days, projects: projs, learning_content_types: lcts};
+            var payload = {name: editedName, content_types: cts, working_days: days, projects: projs};
 
             fetch('/edit_employee/' + currentEditEmpId, {
                 method: 'POST',
@@ -1482,7 +1421,7 @@
             });
         });
 
-        // ── Search ──────────────────────────────────────
+        // â”€â”€ Search â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         var searchInput = document.getElementById('searchInput');
         var searchResults = document.getElementById('searchResults');
         var searchContent = document.getElementById('searchResultsContent');
@@ -1620,7 +1559,7 @@
                                     html += sh.handler;
                                     html += '</td>';
                                 } else {
-                                    html += '<td class="text-center text-muted small">—</td>';
+                                    html += '<td class="text-center text-muted small">â€”</td>';
                                 }
                             });
                             html += '</tr>';
@@ -1636,7 +1575,7 @@
         }
     })();
 
-    // ── Edit/View Shifts Modal ───────────────────────────────
+    // â”€â”€ Edit/View Shifts Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     (function () {
         var engineers   = {{ engineers | tojson }};
         var shiftLeads  = {{ shift_leads | tojson }};
@@ -1772,7 +1711,7 @@
             });
             var btn = saveShiftsBtn;
             btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Savingâ€¦';
             fetch('/save_shifts', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -1900,3 +1839,4 @@
     </script>
 </body>
 </html>
+

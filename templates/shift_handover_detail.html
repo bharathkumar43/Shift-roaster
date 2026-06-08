@@ -1,0 +1,247 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Handover #{{ handover.id }} â€” {{ app_name }}</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='bootstrap-icons.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+    <style>
+        body { background: #f0f2f5; }
+        .status-badge { font-size: 0.8rem; padding: 0.35em 0.8em; border-radius: 20px; font-weight: 600; }
+        .status-pending      { background:#fff3cd; color:#856404; }
+        .status-acknowledged { background:#cfe2ff; color:#084298; }
+        .status-approved     { background:#d1e7dd; color:#0a3622; }
+        .status-rejected     { background:#f8d7da; color:#842029; }
+        .entry-status-badge  { font-size: 0.72rem; padding: 0.2em 0.6em; border-radius: 12px; background:#e9ecef; color:#495057; }
+        .section-title { font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #6c757d; margin-bottom: 0.75rem; }
+        .ack-chip { background:#edf2ff; color:#364fc7; border-radius: 20px; padding: 0.25em 0.75em; font-size:0.8rem; display:inline-flex; align-items:center; gap:0.3rem; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark bg-primary-gradient">
+    <div class="container-fluid px-4">
+        <span class="navbar-brand fw-bold"><i class="bi bi-bar-chart-line"></i> {{ app_name }}</span>
+        <a href="{{ url_for('shift_handover', date=handover.handover_date|string) }}" class="btn btn-sm btn-outline-light">
+            <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
+        </a>
+    </div>
+</nav>
+
+<div class="container-fluid px-4 py-4">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for cat, msg in messages %}
+    <div class="alert alert-{{ cat }} alert-dismissible fade show py-2">
+        {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}{% endif %}
+    {% endwith %}
+
+    <div class="row g-4">
+
+        <!-- Main Info -->
+        <div class="col-lg-8">
+
+            <!-- Header card -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-body">
+                    <div class="d-flex align-items-start gap-3 flex-wrap">
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
+                                <span class="fw-bold fs-5">{{ handover.project_name }}</span>
+                                <span class="badge bg-primary">Shift {{ handover.shift_num }}</span>
+                                <span class="status-badge status-{{ handover.status }}">
+                                    {% if handover.status == 'pending' %}<i class="bi bi-hourglass-split me-1"></i>Pending
+                                    {% elif handover.status == 'acknowledged' %}<i class="bi bi-check me-1"></i>Acknowledged
+                                    {% elif handover.status == 'approved' %}<i class="bi bi-check-circle-fill me-1"></i>Approved
+                                    {% elif handover.status == 'rejected' %}<i class="bi bi-x-circle me-1"></i>Rejected
+                                    {% else %}{{ handover.status }}{% endif %}
+                                </span>
+                            </div>
+                            <div class="text-muted small">
+                                <i class="bi bi-calendar3 me-1"></i>{{ handover.handover_date }}
+                                &nbsp;Â·&nbsp;
+                                <i class="bi bi-person me-1"></i>Submitted by <strong>{{ handover.submitted_by_name }}</strong>
+                                &nbsp;Â·&nbsp;
+                                <i class="bi bi-clock me-1"></i>{{ handover.created_at.strftime('%d %b %Y, %H:%M') if handover.created_at else '' }}
+                            </div>
+                        </div>
+                        <span class="badge bg-light text-dark border fs-6">#{{ handover.id }}</span>
+                    </div>
+
+                    {% if handover.notes %}
+                    <hr class="my-3">
+                    <div class="section-title">Notes</div>
+                    <p class="mb-0">{{ handover.notes }}</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Client Entries -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-white border-bottom">
+                    <span class="fw-semibold"><i class="bi bi-list-check me-2 text-primary"></i>Client / Workspace Entries</span>
+                    <span class="badge bg-secondary ms-2">{{ handover.client_entries|length }}</span>
+                </div>
+                <div class="card-body p-0">
+                    {% if handover.client_entries %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:40%">Client / Workspace</th>
+                                    <th style="width:25%">Status</th>
+                                    <th>Remarks</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for entry in handover.client_entries %}
+                                <tr>
+                                    <td class="fw-medium">{{ entry.client_name }}</td>
+                                    <td>
+                                        {% if entry.entry_status %}
+                                        <span class="entry-status-badge
+                                            {% if entry.entry_status == 'Completed' %}bg-success-subtle text-success
+                                            {% elif entry.entry_status == 'Blocked' or entry.entry_status == 'Rejected' %}bg-danger-subtle text-danger
+                                            {% elif entry.entry_status == 'In Progress' %}bg-primary-subtle text-primary
+                                            {% elif entry.entry_status == 'Escalated' %}bg-warning-subtle text-warning
+                                            {% endif %}">
+                                            {{ entry.entry_status }}
+                                        </span>
+                                        {% else %}â€”{% endif %}
+                                    </td>
+                                    <td class="text-muted small">{{ entry.remarks or 'â€”' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4 text-muted">
+                        <i class="bi bi-list-ul opacity-25 fs-3 d-block mb-1"></i>
+                        No client entries recorded.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Acknowledgements -->
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white border-bottom d-flex align-items-center">
+                    <span class="fw-semibold"><i class="bi bi-check2-all me-2 text-info"></i>Acknowledgements</span>
+                    <span class="badge bg-secondary ms-2">{{ handover.acknowledgements|length }}</span>
+                </div>
+                <div class="card-body">
+                    {% if handover.acknowledgements %}
+                    <div class="d-flex gap-2 flex-wrap">
+                        {% for ack in handover.acknowledgements %}
+                        <span class="ack-chip">
+                            <i class="bi bi-person-check"></i>
+                            {{ ack.user_name }}
+                            <span class="text-muted" style="font-size:0.7rem">{{ ack.acked_at.strftime('%d %b %H:%M') if ack.acked_at else '' }}</span>
+                        </span>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted small mb-0">No acknowledgements yet.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Sidebar: Actions + MOM -->
+        <div class="col-lg-4">
+
+            <!-- Actions -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-white border-bottom">
+                    <span class="fw-semibold"><i class="bi bi-lightning me-2 text-warning"></i>Actions</span>
+                </div>
+                <div class="card-body d-grid gap-2">
+
+                    {% if not already_acked and current_user.id != handover.submitted_by_user_id %}
+                    <form method="POST" action="{{ url_for('sh_acknowledge', handover_id=handover.id) }}">
+                        <button type="submit" class="btn btn-info w-100">
+                            <i class="bi bi-check2-circle me-1"></i>Acknowledge Handover
+                        </button>
+                    </form>
+                    {% elif already_acked %}
+                    <button class="btn btn-outline-secondary w-100" disabled>
+                        <i class="bi bi-check2-circle me-1"></i>Already Acknowledged
+                    </button>
+                    {% endif %}
+
+                    {% if current_user.role == 'admin' %}
+                    {% if handover.status not in ['approved', 'rejected'] %}
+                    <form method="POST" action="{{ url_for('sh_approve', handover_id=handover.id) }}"
+                          onsubmit="return confirm('Approve this handover?')">
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="bi bi-check-circle me-1"></i>Approve
+                        </button>
+                    </form>
+                    <form method="POST" action="{{ url_for('sh_reject', handover_id=handover.id) }}"
+                          onsubmit="return confirm('Reject this handover?')">
+                        <button type="submit" class="btn btn-outline-danger w-100">
+                            <i class="bi bi-x-circle me-1"></i>Reject
+                        </button>
+                    </form>
+                    {% endif %}
+                    {% endif %}
+
+                </div>
+            </div>
+
+            <!-- MOM -->
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white border-bottom">
+                    <span class="fw-semibold"><i class="bi bi-file-earmark-text me-2 text-success"></i>Minutes of Meeting (MOM)</span>
+                </div>
+                <div class="card-body">
+                    {% if handover.mom %}
+                    <div class="d-flex align-items-center gap-2 mb-3 p-2 border rounded bg-light">
+                        <i class="bi bi-file-earmark fs-4 text-success"></i>
+                        <div class="flex-grow-1 overflow-hidden">
+                            <div class="fw-medium text-truncate small">{{ handover.mom.file_name }}</div>
+                            <div class="text-muted" style="font-size:0.7rem">
+                                by {{ handover.mom.uploaded_by_name }}
+                                Â· {{ handover.mom.uploaded_at.strftime('%d %b %Y, %H:%M') if handover.mom.uploaded_at else '' }}
+                            </div>
+                        </div>
+                        <a href="{{ url_for('sh_download_mom', handover_id=handover.id) }}"
+                           class="btn btn-sm btn-outline-success" title="Download">
+                            <i class="bi bi-download"></i>
+                        </a>
+                    </div>
+                    {% else %}
+                    <p class="text-muted small mb-3">No MOM uploaded yet.</p>
+                    {% endif %}
+
+                    {% if current_user.role == 'admin' %}
+                    <form method="POST" action="{{ url_for('sh_upload_mom', handover_id=handover.id) }}"
+                          enctype="multipart/form-data">
+                        <label class="form-label fw-semibold small">
+                            {{ 'Replace' if handover.mom else 'Upload' }} MOM File
+                        </label>
+                        <input type="file" class="form-control form-control-sm mb-2" name="mom_file" required
+                               accept=".pdf,.doc,.docx,.txt,.xlsx,.ppt,.pptx">
+                        <button type="submit" class="btn btn-sm btn-success w-100">
+                            <i class="bi bi-upload me-1"></i>Upload MOM
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
+</body>
+</html>
+

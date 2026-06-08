@@ -484,15 +484,7 @@ def add_employee():
         flash("Please enter a name.", "danger")
         return redirect(url_for("index"))
 
-    # Collect learning quotas — server-side: must not overlap with primary types
-    learning_content_types = {}
-    for ct in CONTENT_TYPES:
-        quota_str = request.form.get(f"learning_quota_{ct}", "").strip()
-        if quota_str.isdigit() and int(quota_str) > 0 and ct not in content_types:
-            learning_content_types[ct] = int(quota_str)
-
-    emp_id = db.add_employee(name, content_types, working_days, emp_role=emp_role,
-                             learning_content_types=learning_content_types)
+    emp_id = db.add_employee(name, content_types, working_days, emp_role=emp_role)
     if emp_id is None:
         flash(f"'{name}' already exists.", "warning")
         return redirect(url_for("index"))
@@ -516,23 +508,11 @@ def edit_employee(emp_id):
     new_name = (data.get("name") or "").strip() or None
     content_types = data.get("content_types") or ["Content"]
     working_days = data.get("working_days") or ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
-    # Learning types: dict of {type: quota}, must not overlap with primary
-    raw_lct = data.get("learning_content_types") or {}
-    learning_content_types = {}
-    if isinstance(raw_lct, dict):
-        for k, v in raw_lct.items():
-            try:
-                q = int(v)
-            except (TypeError, ValueError):
-                continue
-            if q > 0 and k not in content_types:
-                learning_content_types[k] = q
     try:
         working_days = normalize_five_day_pattern(working_days)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    db.update_employee(emp_id, content_types, working_days, name=new_name,
-                       learning_content_types=learning_content_types)
+    db.update_employee(emp_id, content_types, working_days, name=new_name)
     # Keep app-month week-offs aligned with edits so roster updates immediately.
     emp_row = db.get_employee_by_id(emp_id)
     if emp_row and emp_row.get("emp_role") == "engineer":
@@ -2687,6 +2667,669 @@ def drive_change_refresh():
         "windows":        windows_data,
         "projects":       grouped.get("projects", []),
     })
+
+
+# ─── Shift Handover ────────────────────────────────────────────────────────────
+
+def _sh_user_name(user):
+    return (user.get("full_name") or user.get("username", "")).strip()
+
+
+@app.route("/shift-handover")
+@login_required
+def shift_handover():
+    sel_date_str = request.args.get("date", date.today().isoformat())
+    try:
+        date.fromisoformat(sel_date_str)
+    except ValueError:
+        sel_date_str = date.today().isoformat()
+    dashboard   = db.sh_daily_dashboard(sel_date_str)
+    projects    = db.sh_get_project_names()
+    daily_notes = db.sh_get_daily_notes(sel_date_str)
+    stats       = db.sh_dashboard_stats(sel_date_str)
+    from datetime import timedelta
+    try:
+        _d = date.fromisoformat(sel_date_str)
+    except ValueError:
+        _d = date.today()
+    prev_date = (_d - timedelta(days=1)).isoformat()
+    next_date = (_d + timedelta(days=1)).isoformat()
+    sel_date_display = _d.strftime('%d-%m-%Y')
+    return render_template("shift_handover.html",
+                           app_name=APP_NAME,
+                           sel_date=sel_date_str,
+                           sel_date_display=sel_date_display,
+                           prev_date=prev_date,
+                           next_date=next_date,
+                           dashboard=dashboard,
+                           projects=projects,
+                           daily_notes=daily_notes,
+                           stats=stats,
+                           current_user=g.user)
+
+
+@app.route("/shift-handover/daily-notes", methods=["POST"])
+@login_required
+def sh_save_daily_notes():
+    if not g.user or g.user.get("role") != "admin":
+        return jsonify({"error": "Admin only"}), 403
+    note_date = request.form.get("note_date", date.today().isoformat())
+    db.sh_upsert_daily_notes(
+        note_date=note_date,
+        duty_manager=request.form.get("duty_manager", ""),
+        week_label=request.form.get("week_label", ""),
+        key_issues=request.form.get("key_issues", ""),
+        actions_for_tomorrow=request.form.get("actions_for_tomorrow", ""),
+    )
+    flash("Daily notes saved.", "success")
+    return redirect(url_for("shift_handover", date=note_date))
+
+
+@app.route("/shift-handover/form")
+@login_required
+def sh_form():
+    project_name = request.args.get("project", "").strip()
+    date_str     = request.args.get("date", date.today().isoformat())
+    shift_num    = int(request.args.get("shift", 1))
+    if not project_name:
+        flash("Project is required.", "danger")
+        return redirect(url_for("shift_handover"))
+    try:
+        date.fromisoformat(date_str)
+    except ValueError:
+        date_str = date.today().isoformat()
+
+    user      = g.user
+    user_name = _sh_user_name(user)
+    handover  = db.sh_get_or_create_handover(date_str, shift_num, project_name,
+                                              user["id"], user_name)
+    handover_data = db.sh_get_handover(handover["id"])
+    raw_entries   = handover_data["client_entries"]
+    moms          = handover_data["moms"]
+
+    known_clients = db.sh_get_active_clients(project_name)
+
+    # Merge: one row per active client; fill with saved data where it exists
+    _blank_entry = {
+        "client_name": "", "tickets": "",
+        "entry_status": "" if project_name == "Content" else "N/A",
+        "engineer_worked": "", "issues": "", "engineer_notes": "",
+        "manager_notes": "", "next_shift_engineer": "",
+        "migration_report_sent": False, "drive_changes_alerts": False, "row_tint": None,
+    }
+    entries_map = {(e.get("client_name") or "").strip().lower(): e for e in raw_entries}
+    entries = []
+    seen_keys = set()
+    for c in known_clients:
+        key = c.strip().lower()
+        seen_keys.add(key)
+        row = dict(_blank_entry)
+        row["client_name"] = c
+        if key in entries_map:
+            row.update(entries_map[key])
+        entries.append(row)
+    # Also show any saved entries for clients no longer in the active list
+    for e in raw_entries:
+        if (e.get("client_name") or "").strip().lower() not in seen_keys:
+            entries.append(e)
+
+    # Previous shift for reference
+    prev_shift = shift_num - 1
+    prev_date  = date_str
+    if prev_shift < 1:
+        prev_shift = 3
+        from datetime import timedelta
+        prev_date = (date.fromisoformat(date_str) - timedelta(days=1)).isoformat()
+    prev_handover = db.sh_get_handover_by_slot(prev_date, prev_shift, project_name)
+    prev_entries  = []
+    if prev_handover:
+        prev_entries = db.sh_get_handover(prev_handover["id"])["client_entries"]
+    engineers = db.sh_get_engineers()
+    curr_handler_map, next_handler_map, next_shift_label = db.sh_get_client_shift_handlers(date_str, shift_num, project_name)
+    curr_shift_engineers = list(dict.fromkeys(curr_handler_map.values()))
+    next_shift_engineers = list(dict.fromkeys(next_handler_map.values()))
+    # Build per-client mom map for quick lookup
+    mom_by_client = {}
+    for m in moms:
+        key = (m.get("client_name") or "").strip().lower()
+        mom_by_client.setdefault(key, []).append(m)
+
+    shift_labels = {1: "Morning (5:00 AM – 2:00 PM)", 2: "Afternoon (1:00 PM – 10:00 PM)", 3: "Night (9:00 PM – 6:00 AM)"}
+    shift_times  = {1: "5:00 AM – 2:00 PM", 2: "1:00 PM – 10:00 PM", 3: "9:00 PM – 6:00 AM"}
+
+    _d = date.fromisoformat(date_str)
+    date_display = _d.strftime('%A, %B ') + str(_d.day) + _d.strftime(', %Y')
+
+    return render_template("shift_handover_form.html",
+                           app_name=APP_NAME,
+                           handover=handover,
+                           entries=entries,
+                           known_clients=known_clients,
+                           engineers=engineers,
+                           curr_handler_map=curr_handler_map,
+                           next_handler_map=next_handler_map,
+                           curr_shift_engineers=curr_shift_engineers,
+                           next_shift_engineers=next_shift_engineers,
+                           next_shift_label=next_shift_label,
+                           prev_handover=prev_handover,
+                           prev_entries=prev_entries,
+                           moms=moms,
+                           mom_by_client=mom_by_client,
+                           project_name=project_name,
+                           date_str=date_str,
+                           date_display=date_display,
+                           shift_num=shift_num,
+                           shift_label=shift_labels.get(shift_num, f"Shift {shift_num}"),
+                           shift_time=shift_times.get(shift_num, ""),
+                           current_user=user,
+                           is_admin=user.get("role") == "admin")
+
+
+@app.route("/shift-handover/form/save", methods=["POST"])
+@login_required
+def sh_form_save():
+    handover_id  = int(request.form.get("handover_id", 0))
+    project_name = request.form.get("project_name", "")
+    date_str     = request.form.get("date_str", date.today().isoformat())
+    shift_num    = int(request.form.get("shift_num", 1))
+    lead_notes   = request.form.get("lead_notes", "")
+    user         = g.user
+    is_admin     = user.get("role") == "admin"
+    user_name    = _sh_user_name(user)
+
+    # Collect client entry rows from form
+    client_names         = request.form.getlist("client_name[]")
+    tickets_list         = request.form.getlist("tickets[]")
+    statuses_list        = request.form.getlist("entry_status[]")
+    eng_worked_list      = request.form.getlist("engineer_worked[]")
+    issues_list          = request.form.getlist("issues[]")
+    eng_notes_list       = request.form.getlist("engineer_notes[]")
+    mgr_notes_list       = request.form.getlist("manager_notes[]")
+    next_eng_list        = request.form.getlist("next_shift_engineer[]")
+    mig_report_list      = request.form.getlist("migration_report_sent[]")
+    drive_alerts_list    = request.form.getlist("drive_changes_alerts[]")
+    row_tint_list        = request.form.getlist("row_tint[]")
+
+    checked_mig  = set(request.form.getlist("migration_report_sent_check"))
+    checked_drv  = set(request.form.getlist("drive_changes_alerts_check"))
+
+    entries = []
+    for i, cn in enumerate(client_names):
+        cn = cn.strip()
+        if not cn:
+            continue
+        entries.append({
+            "client_name":           cn,
+            "tickets":               tickets_list[i]       if i < len(tickets_list)       else "",
+            "entry_status":          statuses_list[i]      if i < len(statuses_list)      else "NA",
+            "engineer_worked":       eng_worked_list[i]    if i < len(eng_worked_list)    else "",
+            "issues":                issues_list[i]        if i < len(issues_list)        else "",
+            "engineer_notes":        eng_notes_list[i]     if i < len(eng_notes_list)     else "",
+            "manager_notes":         mgr_notes_list[i]     if i < len(mgr_notes_list)     else "",
+            "next_shift_engineer":   next_eng_list[i]      if i < len(next_eng_list)      else "",
+            "migration_report_sent": str(i) in checked_mig,
+            "drive_changes_alerts":  str(i) in checked_drv,
+            "row_tint":              row_tint_list[i]      if i < len(row_tint_list)      else None,
+        })
+
+    db.sh_save_entries(handover_id, entries, user_name, lead_notes=lead_notes, is_admin=is_admin)
+    flash("Draft saved.", "success")
+    return redirect(url_for("sh_form", project=project_name, date=date_str, shift=shift_num))
+
+
+@app.route("/shift-handover/form/submit", methods=["POST"])
+@login_required
+def sh_form_submit():
+    if not g.user or g.user.get("role") != "admin":
+        flash("Only admins can submit a handover.", "danger")
+        return redirect(url_for("shift_handover"))
+    handover_id  = int(request.form.get("handover_id", 0))
+    project_name = request.form.get("project_name", "")
+    date_str     = request.form.get("date_str", date.today().isoformat())
+    shift_num    = int(request.form.get("shift_num", 1))
+    user         = g.user
+    user_name    = _sh_user_name(user)
+    db.sh_submit_handover(handover_id, user["id"], user_name)
+    flash("Handover submitted successfully.", "success")
+    return redirect(url_for("sh_form", project=project_name, date=date_str, shift=shift_num))
+
+
+@app.route("/shift-handover/<int:handover_id>/engineer-ack", methods=["POST"])
+@login_required
+def sh_engineer_ack(handover_id):
+    if not g.user or g.user.get("role") != "admin":
+        flash("Admin only.", "danger")
+        return redirect(url_for("shift_handover"))
+    db.sh_engineer_ack(handover_id, _sh_user_name(g.user))
+    flash("Engineer acknowledgement recorded.", "success")
+    back = request.referrer or url_for("shift_handover")
+    return redirect(back)
+
+
+@app.route("/shift-handover/<int:handover_id>/manager-ack", methods=["POST"])
+@login_required
+def sh_manager_ack(handover_id):
+    if not g.user or g.user.get("role") != "admin":
+        flash("Admin only.", "danger")
+        return redirect(url_for("shift_handover"))
+    db.sh_manager_ack(handover_id, _sh_user_name(g.user))
+    flash("Manager acknowledgement recorded.", "success")
+    back = request.referrer or url_for("shift_handover")
+    return redirect(back)
+
+
+@app.route("/shift-handover/<int:handover_id>/mom", methods=["POST"])
+@login_required
+def sh_upload_mom(handover_id):
+    if not g.user or g.user.get("role") != "admin":
+        flash("Admin access required.", "danger")
+        return redirect(request.referrer or url_for("shift_handover"))
+    f = request.files.get("mom_file")
+    if not f or not f.filename:
+        flash("No file selected.", "danger")
+        return redirect(request.referrer or url_for("shift_handover"))
+    client_name = request.form.get("mom_client", "")
+    notes       = request.form.get("mom_notes", "")
+    user        = g.user
+    db.sh_upload_mom(handover_id, client_name, f.filename, f.read(),
+                     notes, user["id"], _sh_user_name(user))
+    flash("MOM uploaded.", "success")
+    return redirect(request.referrer or url_for("shift_handover"))
+
+
+@app.route("/shift-handover/mom/<int:mom_id>/download")
+@login_required
+def sh_download_mom(mom_id):
+    file_name, file_data = db.sh_get_mom_file(mom_id)
+    if not file_data:
+        flash("File not found.", "danger")
+        return redirect(url_for("shift_handover"))
+    return send_file(BytesIO(file_data), as_attachment=True, download_name=file_name)
+
+
+@app.route("/shift-handover/mom/<int:mom_id>/delete", methods=["POST"])
+@login_required
+def sh_delete_mom(mom_id):
+    user = g.user
+    db.sh_delete_mom(mom_id, user["id"], user.get("role") == "admin")
+    flash("MOM file deleted.", "success")
+    return redirect(request.referrer or url_for("shift_handover"))
+
+
+@app.route("/shift-handover/history")
+@login_required
+def sh_history():
+    page = max(1, int(request.args.get("page", 1)))
+    per_page = 20
+    filter_project   = request.args.get("project", "")
+    filter_shift     = request.args.get("shift", "")
+    filter_status    = request.args.get("status", "")
+    filter_date_from = request.args.get("date_from", "")
+    filter_date_to   = request.args.get("date_to", "")
+    handovers, total = db.sh_get_handovers(
+        project_name=filter_project or None,
+        shift_num=filter_shift or None,
+        status=filter_status or None,
+        date_from=filter_date_from or None,
+        date_to=filter_date_to or None,
+        limit=per_page,
+        offset=(page - 1) * per_page,
+    )
+    projects    = db.sh_get_project_names()
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    return render_template("shift_handover_history.html",
+                           app_name=APP_NAME,
+                           handovers=handovers,
+                           projects=projects,
+                           total=total,
+                           page=page,
+                           total_pages=total_pages,
+                           filter_project=filter_project,
+                           filter_shift=filter_shift,
+                           filter_status=filter_status,
+                           filter_date_from=filter_date_from,
+                           filter_date_to=filter_date_to,
+                           current_user=g.user)
+
+
+@app.route("/shift-handover/client-history")
+@login_required
+def sh_client_history():
+    from collections import OrderedDict
+    project_name = request.args.get("project", "")
+    client_name  = request.args.get("client", "")
+    from_date    = request.args.get("from_date", "")
+    to_date      = request.args.get("to_date", "")
+
+    if not project_name or not client_name:
+        flash("Project and client name are required.", "warning")
+        return redirect(url_for("shift_handover"))
+
+    rows = db.sh_get_client_history(
+        project_name, client_name,
+        date_from=from_date or None,
+        date_to=to_date or None,
+    )
+
+    shift_names = {1: "Morning", 2: "Afternoon", 3: "Night"}
+
+    # Group by date → list of {shift_num, submitted_by_name, status, entry}
+    by_date = OrderedDict()
+    for r in rows:
+        d = r["handover_date"]
+        if d not in by_date:
+            by_date[d] = []
+        r["shift_name"] = shift_names.get(r["shift_num"], "")
+        by_date[d].append(r)
+
+    # Format date labels
+    dates_display = {}
+    for d in by_date:
+        if hasattr(d, "strftime"):
+            dates_display[d] = d.strftime("%A, %B %-d, %Y") if os.name != "nt" else d.strftime("%A, %B %d, %Y").replace(" 0", " ")
+        else:
+            dates_display[d] = str(d)
+
+    is_content = (project_name == "Content")
+    is_admin   = bool(g.user and g.user.get("role") == "admin")
+
+    return render_template(
+        "shift_handover_client_history.html",
+        app_name=APP_NAME,
+        project_name=project_name,
+        client_name=client_name,
+        from_date=from_date,
+        to_date=to_date,
+        by_date=by_date,
+        dates_display=dates_display,
+        is_content=is_content,
+        is_admin=is_admin,
+        current_user=g.user,
+    )
+
+
+@app.route("/shift-handover/compliance")
+@login_required
+def sh_compliance():
+    if not g.user or g.user.get("role") != "admin":
+        flash("Admin access required.", "danger")
+        return redirect(url_for("shift_handover"))
+    target_date = request.args.get("date", date.today().isoformat())
+    rows = db.sh_compliance_data(target_date)
+    return render_template("shift_handover_compliance.html",
+                           app_name=APP_NAME,
+                           rows=rows,
+                           target_date=target_date,
+                           current_user=g.user)
+
+
+@app.route("/shift-handover/selector")
+@login_required
+def sh_selector():
+    projects = db.sh_get_project_names()
+    return render_template("shift_handover_selector.html",
+                           app_name=APP_NAME,
+                           projects=projects,
+                           today=date.today().isoformat(),
+                           current_user=g.user)
+
+
+# ── Clients management ────────────────────────────────────────────────────────
+
+@app.route("/shift-handover/clients")
+@login_required
+def sh_clients():
+    if not g.user or g.user.get("role") != "admin":
+        flash("Admin access required.", "danger")
+        return redirect(url_for("shift_handover"))
+    projects = db.sh_get_project_names()
+    active_project = request.args.get("project", projects[0] if projects else "")
+    clients = db.sh_get_clients(active_project) if active_project else []
+    return render_template("shift_handover_clients.html",
+                           app_name=APP_NAME,
+                           projects=projects,
+                           active_project=active_project,
+                           clients=clients,
+                           current_user=g.user)
+
+
+@app.route("/shift-handover/projects/add", methods=["POST"])
+@login_required
+def sh_projects_add():
+    if not g.user or g.user.get("role") != "admin":
+        flash("Admin access required.", "danger")
+        return redirect(url_for("sh_clients"))
+    pname = request.form.get("project_name", "").strip()
+    if pname:
+        db.sh_add_project(pname)
+        flash(f"Project '{pname}' added.", "success")
+        return redirect(url_for("sh_clients", project=pname))
+    flash("Project name is required.", "danger")
+    return redirect(url_for("sh_clients"))
+
+
+@app.route("/shift-handover/projects/delete", methods=["POST"])
+@login_required
+def sh_projects_delete():
+    if not g.user or g.user.get("role") != "admin":
+        flash("Admin access required.", "danger")
+        return redirect(url_for("sh_clients"))
+    pname = request.form.get("project_name", "").strip()
+    if pname:
+        db.sh_delete_project(pname)
+        flash(f"Project '{pname}' deleted.", "success")
+    return redirect(url_for("sh_clients"))
+
+
+@app.route("/shift-handover/clients/add", methods=["POST"])
+@login_required
+def sh_clients_add():
+    if not g.user or g.user.get("role") != "admin":
+        flash("Admin access required.", "danger")
+        return redirect(url_for("sh_clients"))
+    project_name = request.form.get("project_name", "").strip()
+    client_name  = request.form.get("client_name", "").strip()
+    if project_name and client_name:
+        db.sh_add_client(project_name, client_name)
+        flash(f"Client '{client_name}' added to {project_name}.", "success")
+    else:
+        flash("Project and client name are required.", "danger")
+    return redirect(url_for("sh_clients", project=project_name))
+
+
+@app.route("/shift-handover/clients/<int:client_id>/toggle", methods=["POST"])
+@login_required
+def sh_clients_toggle(client_id):
+    if not g.user or g.user.get("role") != "admin":
+        flash("Admin access required.", "danger")
+        return redirect(url_for("sh_clients"))
+    db.sh_toggle_client(client_id)
+    back_project = request.form.get("project_name", "")
+    return redirect(url_for("sh_clients", project=back_project))
+
+
+@app.route("/shift-handover/clients/<int:client_id>/delete", methods=["POST"])
+@login_required
+def sh_clients_delete(client_id):
+    if not g.user or g.user.get("role") != "admin":
+        flash("Admin access required.", "danger")
+        return redirect(url_for("sh_clients"))
+    db.sh_delete_client(client_id)
+    flash("Client deleted.", "success")
+    back_project = request.form.get("project_name", "")
+    return redirect(url_for("sh_clients", project=back_project))
+
+
+# ── Users management ─────────────────────────────────────────────────────────
+
+@app.route("/shift-handover/users")
+@login_required
+def sh_users():
+    if not g.user or g.user.get("role") != "admin":
+        flash("Admin access required.", "danger")
+        return redirect(url_for("shift_handover"))
+    users = db.sh_get_all_users_with_shifts()
+    return render_template("shift_handover_users.html",
+                           app_name=APP_NAME,
+                           users=users,
+                           current_user=g.user)
+
+
+@app.route("/shift-handover/users/<int:user_id>/role", methods=["POST"])
+@login_required
+def sh_users_update_role(user_id):
+    if not g.user or g.user.get("role") != "admin":
+        return jsonify({"error": "Admin only"}), 403
+    new_role = request.form.get("role", "user")
+    if new_role not in ("admin", "user"):
+        return jsonify({"error": "Invalid role"}), 400
+    db.sh_update_user_role(user_id, new_role)
+    flash("Role updated.", "success")
+    return redirect(url_for("sh_users"))
+
+
+@app.route("/shift-handover/users/<int:user_id>/shifts", methods=["POST"])
+@login_required
+def sh_users_update_shifts(user_id):
+    if not g.user or g.user.get("role") != "admin":
+        return jsonify({"error": "Admin only"}), 403
+    s1 = "shift_1" in request.form
+    s2 = "shift_2" in request.form
+    s3 = "shift_3" in request.form
+    db.sh_update_user_shifts(user_id, s1, s2, s3)
+    flash("Shift assignments updated.", "success")
+    return redirect(url_for("sh_users"))
+
+
+@app.route("/shift-handover/users/<int:user_id>/toggle", methods=["POST"])
+@login_required
+def sh_users_toggle(user_id):
+    if not g.user or g.user.get("role") != "admin":
+        return jsonify({"error": "Admin only"}), 403
+    db.sh_toggle_user_status(user_id)
+    flash("User status updated.", "success")
+    return redirect(url_for("sh_users"))
+
+
+# ── Reports ────────────────────────────────────────────────────────────────────
+
+@app.route("/shift-handover/reports")
+@login_required
+def sh_reports():
+    if not g.user or g.user.get("role") != "admin":
+        flash("Admin access required.", "danger")
+        return redirect(url_for("shift_handover"))
+    mode      = request.args.get("mode", "date")
+    date_val  = request.args.get("date", date.today().isoformat())
+    date_from = request.args.get("date_from", "")
+    date_to   = request.args.get("date_to", "")
+    q         = request.args.get("q", "").strip()
+    rows = []
+    if mode == "date" and date_val:
+        rows = db.sh_report_by_date(date_val)
+    elif mode == "employee" and (q or date_from or date_to):
+        rows = db.sh_report_by_employee(q, date_from or None, date_to or None)
+    elif mode == "client" and (q or date_from or date_to):
+        rows = db.sh_report_by_client(q, date_from or None, date_to or None)
+    projects = db.sh_get_project_names()
+    return render_template("shift_handover_reports.html",
+                           app_name=APP_NAME,
+                           mode=mode,
+                           date_val=date_val,
+                           date_from=date_from,
+                           date_to=date_to,
+                           q=q,
+                           rows=rows,
+                           projects=projects,
+                           current_user=g.user)
+
+
+# ── History Excel export ───────────────────────────────────────────────────────
+
+@app.route("/shift-handover/history/excel")
+@login_required
+def sh_history_excel():
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    filter_project   = request.args.get("project", "")
+    filter_shift     = request.args.get("shift", "")
+    filter_status    = request.args.get("status", "")
+    filter_date_from = request.args.get("date_from", "")
+    filter_date_to   = request.args.get("date_to", "")
+    rows = db.sh_get_history_for_excel(
+        project_name=filter_project or None,
+        shift_num=filter_shift or None,
+        status=filter_status or None,
+        date_from=filter_date_from or None,
+        date_to=filter_date_to or None,
+    )
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Handover History"
+    headers = ["Date", "Shift", "Project", "Submitted By", "Status", "Lead Notes",
+               "Eng Ack", "Mgr Ack", "Client", "Tickets", "Entry Status",
+               "Engineer Worked", "Issues", "Engineer Notes", "Next Shift Engineer"]
+    hdr_fill = PatternFill("solid", fgColor="1a3a5c")
+    hdr_font = Font(bold=True, color="FFFFFF")
+    for ci, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=ci, value=h)
+        cell.fill = hdr_fill
+        cell.font = hdr_font
+        cell.alignment = Alignment(horizontal="center")
+    for row in rows:
+        ws.append([
+            str(row.get("handover_date", "")),
+            f"Shift {row.get('shift_num', '')}",
+            row.get("project_name", ""),
+            row.get("submitted_by_name", ""),
+            row.get("status", ""),
+            row.get("lead_notes", ""),
+            "Yes" if row.get("engineer_acknowledged") else "No",
+            "Yes" if row.get("manager_acknowledged") else "No",
+            row.get("client_name", ""),
+            row.get("tickets", ""),
+            row.get("entry_status", ""),
+            row.get("engineer_worked", ""),
+            row.get("issues", ""),
+            row.get("engineer_notes", ""),
+            row.get("next_shift_engineer", ""),
+        ])
+    for col in ws.columns:
+        max_len = max((len(str(cell.value or "")) for cell in col), default=8)
+        ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 40)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    fname = f"handover_history_{date.today().isoformat()}.xlsx"
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+# ── Tracking (enhanced compliance) ───────────────────────────────────────────
+
+@app.route("/shift-handover/tracking")
+@login_required
+def sh_tracking():
+    if not g.user or g.user.get("role") != "admin":
+        flash("Admin access required.", "danger")
+        return redirect(url_for("shift_handover"))
+    from datetime import timedelta
+    target_date = request.args.get("date", date.today().isoformat())
+    try:
+        d = date.fromisoformat(target_date)
+    except ValueError:
+        d = date.today()
+        target_date = d.isoformat()
+    prev_date = (d - timedelta(days=1)).isoformat()
+    next_date = (d + timedelta(days=1)).isoformat()
+    data = db.sh_engineer_activity(target_date)
+    return render_template("shift_handover_tracking.html",
+                           app_name=APP_NAME,
+                           target_date=target_date,
+                           prev_date=prev_date,
+                           next_date=next_date,
+                           data=data,
+                           current_user=g.user)
 
 
 if __name__ == "__main__":

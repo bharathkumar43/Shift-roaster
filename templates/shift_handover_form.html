@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ project_name }} · Shift {{ shift_num }} – Shift Handover</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='bootstrap-icons.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+    <style>
+        body { background:#f8f9fb; }
+
+        .form-header { background:#fff; border-bottom:1px solid #e5e7eb; padding:.9rem 1.5rem; position:sticky; top:56px; z-index:900; }
+        .form-title  { font-size:1.3rem; font-weight:800; color:#111827; line-height:1.2; }
+        .form-sub    { font-size:.8rem; color:#6b7280; margin-top:.15rem; }
+        .btn-save    { background:#fff; border:1.5px solid #d1d5db; color:#374151; font-size:.82rem; padding:.35rem .9rem; border-radius:7px; font-weight:600; display:flex; align-items:center; gap:.35rem; cursor:pointer; }
+        .btn-save:hover { border-color:#5b4fcf; color:#5b4fcf; }
+        .btn-submit  { background:#5b4fcf; border:none; color:#fff; font-size:.82rem; padding:.35rem .9rem; border-radius:7px; font-weight:600; display:flex; align-items:center; gap:.35rem; cursor:pointer; }
+        .btn-submit:hover:not(:disabled) { background:#4338ca; }
+        .btn-submit:disabled { background:#a78bfa; cursor:not-allowed; }
+
+        .fill-bar { background:#fffbeb; border:1px solid #fcd34d; border-radius:8px; padding:.5rem 1rem; font-size:.82rem; color:#92400e; display:flex; align-items:center; gap:.5rem; }
+
+        .entry-table { font-size:.8rem; border-collapse:separate; border-spacing:0; }
+        .entry-table thead th { background:#f9fafb; font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#6b7280; padding:.6rem .6rem; white-space:nowrap; border-bottom:2px solid #e5e7eb; }
+        .entry-table tbody td { padding:.5rem .5rem; vertical-align:top; border-bottom:1px solid #f3f4f6; }
+        .entry-table tbody tr:last-child td { border-bottom:none; }
+
+        /* Tint rows */
+        .tint-GREEN  td { background:#86efac !important; }
+        .tint-RED    td { background:#fca5a5 !important; }
+        .tint-AMBER  td { background:#fcd34d !important; }
+        .tint-SILVER td { background:#94a3b8 !important; }
+
+        .tint-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; display:inline-block; background:#9ca3af; border:1.5px solid rgba(0,0,0,.2); }
+        .tint-dot.dot-GREEN  { background:#16a34a; border-color:#14532d; }
+        .tint-dot.dot-RED    { background:#dc2626; border-color:#7f1d1d; }
+        .tint-dot.dot-AMBER  { background:#d97706; border-color:#78350f; }
+        .tint-dot.dot-SILVER { background:#475569; border-color:#1e293b; }
+
+        .tint-sel { font-size:.72rem !important; border-radius:6px !important; cursor:pointer; }
+        .tint-sel option[value="GREEN"]  { background:#16a34a; color:#fff; font-weight:700; }
+        .tint-sel option[value="RED"]    { background:#dc2626; color:#fff; font-weight:700; }
+        .tint-sel option[value="AMBER"]  { background:#d97706; color:#fff; font-weight:700; }
+        .tint-sel option[value="SILVER"] { background:#475569; color:#fff; font-weight:700; }
+
+        /* Col widths */
+        .col-client  { min-width:130px; max-width:160px; }
+        .col-tickets { min-width:155px; }
+        .col-drive   { min-width:130px; }
+        .col-drive2  { min-width:100px; }
+        .col-mig     { min-width:110px; }
+        .col-status  { min-width:120px; }
+        .col-eng     { min-width:120px; }
+        .col-issues  { min-width:130px; }
+        .col-enotes  { min-width:150px; }
+        .col-mnotes  { min-width:140px; }
+        .col-next    { min-width:120px; }
+        .col-hist    { width:72px; }
+        .col-mom     { width:68px; }
+
+        /* Toggle styles */
+        .tog-wrap { display:flex; flex-direction:column; align-items:flex-start; gap:.2rem; }
+        .tog-label { font-size:.7rem; color:#6b7280; white-space:nowrap; }
+
+        /* Green toggle for Drive Changes Alerts (Received) */
+        .drv-alerts-switch:checked { background-color:#22c55e !important; border-color:#22c55e !important; }
+
+        /* Red toggle for Drive Changes Bad */
+        .drv-bad-switch:checked { background-color:#ef4444 !important; border-color:#ef4444 !important; }
+
+
+        /* Textareas */
+        .entry-table textarea { resize:vertical; min-height:52px; font-size:.78rem; }
+
+        .btn-row-hist { color:#5b4fcf; background:none; border:1px solid #ddd6fe; border-radius:6px; padding:.2rem .5rem; font-size:.75rem; font-weight:600; white-space:nowrap; cursor:pointer; }
+        .btn-row-hist:hover { background:#ede9fe; }
+        .btn-row-mom  { color:#059669; background:none; border:1px solid #bbf7d0; border-radius:6px; padding:.2rem .5rem; font-size:.75rem; font-weight:600; white-space:nowrap; cursor:pointer; }
+        .btn-row-mom:hover  { background:#f0fdf4; }
+
+        .prev-panel { border-left:4px solid #a78bfa; border-radius:0 8px 8px 0; }
+    </style>
+</head>
+<body>
+{% set active_page = 'form' %}
+{% set is_content = (project_name == 'Content') %}
+{% include '_sh_nav.html' %}
+
+<!-- Sticky page header -->
+<div class="form-header">
+    <div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
+        <div>
+            <div class="form-title">
+                {{ project_name }} - Shift {{ shift_num }} ({{ shift_label.split(' (')[0] }})
+            </div>
+            <div class="form-sub">{{ date_display }} | {{ shift_time }}</div>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+            {% if is_admin and handover.status == 'submitted' %}
+            {% if not handover.engineer_acknowledged %}
+            <form method="POST" action="{{ url_for('sh_engineer_ack', handover_id=handover.id) }}" class="m-0">
+                <button class="btn btn-sm btn-outline-info"><i class="bi bi-person-check me-1"></i>Ack Eng</button>
+            </form>
+            {% else %}
+            <span class="btn btn-sm btn-outline-info disabled"><i class="bi bi-person-check-fill me-1"></i>Eng ✓</span>
+            {% endif %}
+            {% if not handover.manager_acknowledged %}
+            <form method="POST" action="{{ url_for('sh_manager_ack', handover_id=handover.id) }}" class="m-0">
+                <button class="btn btn-sm btn-outline-success"><i class="bi bi-shield-check me-1"></i>Ack Mgr</button>
+            </form>
+            {% else %}
+            <span class="btn btn-sm btn-outline-success disabled"><i class="bi bi-shield-check me-1"></i>Mgr ✓</span>
+            {% endif %}
+            {% endif %}
+            <button class="btn-save" id="saveBtn" form="handoverForm"
+                    formaction="{{ url_for('sh_form_save') }}" type="submit">
+                <i class="bi bi-floppy"></i>Save Draft
+            </button>
+            <button class="btn-submit" id="submitBtn" form="handoverForm"
+                    formaction="{{ url_for('sh_form_submit') }}" type="submit"
+                    disabled
+                    onclick="return confirm('Submit this handover?')">
+                <i class="bi bi-send"></i>Submit
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid px-4 py-3">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for cat,msg in messages %}
+    <div class="alert alert-{{ cat }} alert-dismissible fade show py-2">
+        {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}{% endif %}
+    {% endwith %}
+
+    <!-- Fill count warning -->
+    {% set filled_count = entries | selectattr('engineer_notes') | list | length %}
+    {% set total_count  = entries | length %}
+    {% if total_count > 0 %}
+    <div class="fill-bar mb-3">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        {{ filled_count }} of {{ total_count }} client entries filled. All entries must be verified before submitting.
+    </div>
+    {% endif %}
+
+    <!-- Previous shift panel -->
+    {% if prev_handover %}
+    <div class="card shadow-sm border-0 mb-3 prev-panel">
+        <div class="card-header bg-white border-bottom py-2">
+            <button class="btn btn-sm btn-link text-muted p-0 text-decoration-none"
+                    data-bs-toggle="collapse" data-bs-target="#prevPanel">
+                <i class="bi bi-chevron-down me-1"></i>
+                Previous shift – Shift {{ prev_handover.shift_num }}, {{ prev_handover.handover_date }}
+                <span class="badge bg-secondary ms-1">{{ prev_entries|length }} entries</span>
+            </button>
+        </div>
+        <div class="collapse" id="prevPanel">
+            <div class="card-body p-2">
+                {% if prev_entries %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered mb-0" style="font-size:.78rem">
+                        <thead class="table-light">
+                            <tr><th>Client</th><th>Status</th><th>Eng Notes</th><th>Issues</th><th>Next Shift Eng</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for e in prev_entries %}
+                            <tr>
+                                <td>{{ e.client_name }}</td>
+                                <td>{{ e.entry_status }}</td>
+                                <td>{{ e.engineer_notes }}</td>
+                                <td>{{ e.issues }}</td>
+                                <td>{{ e.next_shift_engineer }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted small mb-0 p-2">No entries in previous shift.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Main form -->
+    <div class="card shadow-sm border-0" style="border-radius:10px; overflow:hidden">
+        <div class="card-header bg-white border-bottom py-2">
+            <span class="fw-semibold small">
+                <i class="bi bi-list-check me-2 text-primary"></i>Client Entries
+                <span class="badge bg-secondary ms-1">{{ entries|length }}</span>
+            </span>
+        </div>
+        <div class="card-body p-0">
+            <form id="handoverForm" method="POST">
+                <input type="hidden" name="handover_id" value="{{ handover.id }}">
+                <input type="hidden" name="project_name" value="{{ project_name }}">
+                <input type="hidden" name="date_str" value="{{ date_str }}">
+                <input type="hidden" name="shift_num" value="{{ shift_num }}">
+
+                <div class="table-responsive">
+                    <table class="table table-bordered entry-table mb-0" id="entryTable">
+                        <thead>
+                            <tr>
+                                <th class="col-client">Client</th>
+                                <th class="col-tickets">Tickets</th>
+                                {% if is_content %}
+                                <th class="col-drive">Drive Changes Alerts</th>
+                                <th class="col-drive2">Drive Changes</th>
+                                {% else %}
+                                <th class="col-status">Status</th>
+                                {% endif %}
+                                <th class="col-mig">Migration Report</th>
+                                <th class="col-eng">Engineer Worked</th>
+                                <th class="col-issues">Issues</th>
+                                <th class="col-enotes">Engineer<br>Notes</th>
+                                {% if is_admin %}<th class="col-mnotes">Manager<br>Notes</th>{% endif %}
+                                <th class="col-next">Next Shift Engineer</th>
+                                <th class="col-hist">History</th>
+                                <th class="col-mom">MOM</th>
+                            </tr>
+                        </thead>
+                        <tbody id="entryBody">
+                            {% for e in entries %}
+                            {% set i = loop.index0 %}
+                            {% set tint = e.row_tint or '' %}
+                            <tr class="entry-row {% if tint %}tint-{{ tint }}{% endif %}" data-idx="{{ i }}">
+
+                                <!-- Client -->
+                                <td class="col-client">
+                                    <div class="fw-semibold mb-1" style="font-size:.83rem; line-height:1.3; color:#111827;">{{ e.client_name }}</div>
+                                    <input type="hidden" name="client_name[]" value="{{ e.client_name }}">
+                                    <div class="d-flex align-items-center gap-1 mt-1">
+                                        <span class="tint-dot dot-{{ tint }}" id="dot{{ i }}"></span>
+                                        <select class="form-select form-select-sm tint-sel"
+                                                name="row_tint[]"
+                                                style="width:90px;"
+                                                onchange="applyTint(this, {{ i }})">
+                                            <option value="">No color</option>
+                                            <option value="GREEN"  {% if tint=='GREEN'  %}selected{% endif %}>Green</option>
+                                            <option value="RED"    {% if tint=='RED'    %}selected{% endif %}>Red</option>
+                                            <option value="AMBER"  {% if tint=='AMBER'  %}selected{% endif %}>Amber</option>
+                                            <option value="SILVER" {% if tint=='SILVER' %}selected{% endif %}>Silver</option>
+                                        </select>
+                                    </div>
+                                </td>
+
+                                <!-- Tickets -->
+                                <td class="col-tickets">
+                                    <textarea class="form-control form-control-sm" name="tickets[]"
+                                              placeholder="Paste full links (https://…) — separate with commas or new lines"
+                                              style="min-height:80px;">{{ e.tickets or '' }}</textarea>
+                                </td>
+
+                                {% if is_content %}
+                                <!-- Drive Changes Alerts toggle (Content) -->
+                                <td class="col-drive">
+                                    <div class="tog-wrap">
+                                        <div class="form-check form-switch mb-0">
+                                            <input class="form-check-input drv-alerts-switch" type="checkbox" role="switch"
+                                                   name="drive_changes_alerts_check"
+                                                   value="{{ i }}" id="drv{{ i }}"
+                                                   {% if e.drive_changes_alerts %}checked{% endif %}
+                                                   onchange="onDrvAlertsChange(this, {{ i }})">
+                                        </div>
+                                        <span class="tog-label" id="drvlbl{{ i }}">
+                                            {{ 'Received' if e.drive_changes_alerts else 'Not received' }}
+                                        </span>
+                                    </div>
+                                </td>
+                                <!-- Drive Changes toggle: Good/Bad always visible (Content) -->
+                                <td class="col-drive2">
+                                    <input type="hidden" name="entry_status[]" id="drvStatus{{ i }}"
+                                           value="{{ e.entry_status or '' }}">
+                                    <div class="tog-wrap">
+                                        <div class="form-check form-switch mb-0">
+                                            <input class="form-check-input drv-bad-switch" type="checkbox" role="switch"
+                                                   id="drvBad{{ i }}"
+                                                   {% if e.entry_status == 'Bad' %}checked{% endif %}
+                                                   onchange="onDrvBadChange(this, {{ i }})">
+                                        </div>
+                                        <span class="tog-label" id="drvBadLbl{{ i }}">
+                                            {{ 'Bad' if e.entry_status == 'Bad' else 'Good' }}
+                                        </span>
+                                    </div>
+                                </td>
+                                {% else %}
+                                <!-- Status dropdown (Email / Messaging) -->
+                                <td class="col-status">
+                                    <select class="form-select form-select-sm" name="entry_status[]">
+                                        <option value="N/A" {% if e.entry_status in ['N/A','NA',''] or not e.entry_status %}selected{% endif %}>N/A</option>
+                                        <option value="Active"    {% if e.entry_status == 'Active'    %}selected{% endif %}>Active</option>
+                                        <option value="Pending"   {% if e.entry_status == 'Pending'   %}selected{% endif %}>Pending</option>
+                                        <option value="Completed" {% if e.entry_status == 'Completed' %}selected{% endif %}>Completed</option>
+                                        <option value="On Hold"   {% if e.entry_status == 'On Hold'   %}selected{% endif %}>On Hold</option>
+                                    </select>
+                                </td>
+                                {% endif %}
+
+                                <!-- Migration Report toggle -->
+                                <td class="col-mig">
+                                    <div class="tog-wrap">
+                                        <div class="form-check form-switch mb-0">
+                                            <input class="form-check-input" type="checkbox" role="switch"
+                                                   name="migration_report_sent_check"
+                                                   value="{{ i }}" id="mig{{ i }}"
+                                                   {% if e.migration_report_sent %}checked{% endif %}
+                                                   onchange="updateTogLabel(this,'miglbl{{ i }}','Sent','Not Sent')">
+                                        </div>
+                                        <span class="tog-label" id="miglbl{{ i }}">
+                                            {{ 'Sent' if e.migration_report_sent else 'Not Sent' }}
+                                        </span>
+                                    </div>
+                                </td>
+
+                                <!-- Engineer Worked -->
+                                <td class="col-eng">
+                                    {% set _suggested = curr_handler_map.get(e.client_name.lower().strip(), '') %}
+                                    {% set _sw = e.engineer_worked if e.engineer_worked else _suggested %}
+                                    <select class="form-select form-select-sm" name="engineer_worked[]">
+                                        <option value="">Select...</option>
+                                        {% if curr_shift_engineers %}
+                                        <optgroup label="This Shift">
+                                            {% for eng in curr_shift_engineers %}
+                                            <option value="{{ eng }}" {% if _sw == eng %}selected{% endif %}>{{ eng }}</option>
+                                            {% endfor %}
+                                        </optgroup>
+                                        {% set _eng_others = engineers | reject('in', curr_shift_engineers) | list %}
+                                        {% if _eng_others %}
+                                        <optgroup label="Other Engineers">
+                                            {% for eng in _eng_others %}
+                                            <option value="{{ eng }}" {% if _sw == eng %}selected{% endif %}>{{ eng }}</option>
+                                            {% endfor %}
+                                        </optgroup>
+                                        {% endif %}
+                                        {% else %}
+                                        {% for eng in engineers %}
+                                        <option value="{{ eng }}" {% if _sw == eng %}selected{% endif %}>{{ eng }}</option>
+                                        {% endfor %}
+                                        {% endif %}
+                                    </select>
+                                </td>
+
+                                <!-- Issues -->
+                                <td class="col-issues">
+                                    <textarea class="form-control form-control-sm" name="issues[]"
+                                              placeholder="Any issues...">{{ e.issues or '' }}</textarea>
+                                </td>
+
+                                <!-- Engineer Notes -->
+                                <td class="col-enotes">
+                                    <textarea class="form-control form-control-sm eng-notes-field" name="engineer_notes[]"
+                                              placeholder="Engineer notes...">{{ e.engineer_notes or '' }}</textarea>
+                                </td>
+
+                                <!-- Manager Notes (admin only) -->
+                                {% if is_admin %}
+                                <td class="col-mnotes">
+                                    <textarea class="form-control form-control-sm" name="manager_notes[]"
+                                              placeholder="Manager notes...">{{ e.manager_notes or '' }}</textarea>
+                                </td>
+                                {% endif %}
+
+                                <!-- Next Shift Engineer -->
+                                <td class="col-next">
+                                    {% set _nsugg = next_handler_map.get(e.client_name.lower().strip(), '') %}
+                                    {% set _ns = e.next_shift_engineer if e.next_shift_engineer else _nsugg %}
+                                    <select class="form-select form-select-sm" name="next_shift_engineer[]">
+                                        <option value="">Select...</option>
+                                        {% if next_shift_engineers %}
+                                        <optgroup label="Next · {{ next_shift_label }}">
+                                            {% for eng in next_shift_engineers %}
+                                            <option value="{{ eng }}" {% if _ns == eng %}selected{% endif %}>{{ eng }}</option>
+                                            {% endfor %}
+                                        </optgroup>
+                                        {% set _ns_others = engineers | reject('in', next_shift_engineers) | list %}
+                                        {% if _ns_others %}
+                                        <optgroup label="Other Engineers">
+                                            {% for eng in _ns_others %}
+                                            <option value="{{ eng }}" {% if _ns == eng %}selected{% endif %}>{{ eng }}</option>
+                                            {% endfor %}
+                                        </optgroup>
+                                        {% endif %}
+                                        {% else %}
+                                        {% for eng in engineers %}
+                                        <option value="{{ eng }}" {% if _ns == eng %}selected{% endif %}>{{ eng }}</option>
+                                        {% endfor %}
+                                        {% endif %}
+                                    </select>
+                                    {% if next_shift_engineers %}
+                                    <div style="font-size:.68rem; color:#6b7280; margin-top:.2rem;">
+                                        <i class="bi bi-calendar3" style="font-size:.65rem;"></i> {{ next_shift_label }}
+                                    </div>
+                                    {% endif %}
+                                </td>
+
+                                <!-- History -->
+                                <td class="col-hist text-center">
+                                    <a href="{{ url_for('sh_client_history', project=project_name, client=e.client_name) }}"
+                                       target="_blank" class="btn-row-hist" style="text-decoration:none;">
+                                        <i class="bi bi-clock-history"></i> View
+                                    </a>
+                                </td>
+
+                                <!-- MOM -->
+                                <td class="col-mom text-center">
+                                    <button type="button" class="btn-row-mom"
+                                            data-bs-toggle="modal" data-bs-target="#momModal"
+                                            onclick="openMomModal('{{ e.client_name | replace("'", "\\'") }}', {{ i }})">
+                                        <i class="bi bi-file-earmark"></i> MOM
+                                    </button>
+                                </td>
+
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Shift Lead Notes -->
+                <div class="p-3 border-top">
+                    <label class="form-label fw-semibold small">Shift Lead Notes</label>
+                    <textarea class="form-control form-control-sm" name="lead_notes" rows="2"
+                              placeholder="Overall notes, escalations, blockers for this shift…">{{ handover.lead_notes or '' }}</textarea>
+                </div>
+
+            </form>
+        </div>
+    </div>
+
+    <!-- MOM file list -->
+    {% if moms %}
+    <div class="card shadow-sm border-0 mt-3" style="border-radius:10px">
+        <div class="card-header bg-white border-bottom py-2">
+            <span class="fw-semibold small">
+                <i class="bi bi-file-earmark-text me-2 text-success"></i>MOM Files
+                <span class="badge bg-secondary ms-1">{{ moms|length }}</span>
+            </span>
+        </div>
+        <div class="card-body py-2">
+            <div class="d-flex flex-column gap-2">
+                {% for m in moms %}
+                <div class="d-flex align-items-center gap-2 p-2 border rounded bg-light">
+                    <i class="bi bi-file-earmark fs-5 text-success"></i>
+                    <div class="flex-grow-1 overflow-hidden">
+                        <div class="fw-medium small text-truncate">{{ m.file_name }}</div>
+                        <div class="text-muted" style="font-size:.7rem">
+                            {% if m.client_name %}{{ m.client_name }} · {% endif %}
+                            by {{ m.uploaded_by_name }}
+                            · {{ m.uploaded_at.strftime('%d %b %Y, %H:%M') if m.uploaded_at else '' }}
+                        </div>
+                    </div>
+                    <a href="{{ url_for('sh_download_mom', mom_id=m.id) }}"
+                       class="btn btn-sm btn-outline-secondary" title="Download">
+                        <i class="bi bi-download"></i>
+                    </a>
+                    {% if is_admin %}
+                    <form method="POST" action="{{ url_for('sh_delete_mom', mom_id=m.id) }}"
+                          onsubmit="return confirm('Delete MOM?')" class="m-0">
+                        <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- MOM Modal -->
+<div class="modal fade" id="momModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:480px;">
+        <div class="modal-content" style="border-radius:14px; overflow:hidden;">
+            <div class="modal-header border-bottom" style="padding:1.1rem 1.4rem .9rem;">
+                <div>
+                    <h6 class="modal-title mb-0 fw-bold" style="font-size:1rem;">Minutes of Meeting</h6>
+                    <div class="text-muted" style="font-size:.82rem; margin-top:.15rem;" id="momClientSubtitle"></div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" style="padding:1.25rem 1.4rem;">
+
+                <!-- Uploaded MOMs -->
+                <div class="text-uppercase fw-bold mb-2" style="font-size:.72rem; letter-spacing:.07em; color:#9ca3af;">Uploaded MOMs</div>
+                <div id="momExisting" class="mb-4">
+                    <p class="text-muted small mb-0">No MOM files uploaded for this client yet.</p>
+                </div>
+
+                {% if is_admin %}
+                <!-- Upload New MOM -->
+                <div class="text-uppercase fw-bold mb-2" style="font-size:.72rem; letter-spacing:.07em; color:#9ca3af;">Upload New MOM</div>
+                <form method="POST" action="{{ url_for('sh_upload_mom', handover_id=handover.id) }}"
+                      enctype="multipart/form-data">
+                    <input type="hidden" name="mom_client" id="momClientInput">
+                    <div class="mb-3">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <label for="momFileInput"
+                                   style="background:#fff; border:1.5px solid #0d9488; color:#0d9488;
+                                          border-radius:7px; font-weight:600; font-size:.82rem;
+                                          padding:.35rem .9rem; cursor:pointer; white-space:nowrap; margin:0;">
+                                Choose File
+                            </label>
+                            <span id="momFileName" class="text-muted" style="font-size:.82rem;">No file chosen</span>
+                            <input type="file" id="momFileInput" name="mom_file" required
+                                   accept=".pdf,.doc,.docx,.txt,.xlsx,.xls,.ppt,.pptx,.png,.jpg,.jpeg"
+                                   style="display:none;" onchange="momFileChanged(this)">
+                        </div>
+                        <div class="text-muted mt-1" style="font-size:.75rem;">
+                            PDF, Word, Excel, PPT, text, images — max 20 MB
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <textarea class="form-control" name="mom_notes" rows="2"
+                                  placeholder="Notes (optional)"
+                                  style="font-size:.85rem; border-radius:8px; resize:none; border-color:#e5e7eb;"></textarea>
+                    </div>
+                    <button type="submit"
+                            style="background:#0d9488; border:none; color:#fff; border-radius:8px;
+                                   padding:.5rem 1.5rem; font-weight:600; font-size:.88rem;
+                                   cursor:pointer; display:inline-flex; align-items:center; gap:.4rem;">
+                        <i class="bi bi-upload"></i>Upload
+                    </button>
+                </form>
+                {% endif %}
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<datalist id="knownClients">
+    {% for c in known_clients %}<option value="{{ c }}">{% endfor %}
+</datalist>
+
+<script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
+<script>
+var IS_ADMIN   = {{ 'true' if is_admin else 'false' }};
+var IS_CONTENT = {{ 'true' if is_content else 'false' }};
+var ENGINEERS  = {{ engineers | tojson }};
+
+
+var MOM_DATA = {};
+{% for m in moms %}
+{%- set key_str = (m.client_name or '') | lower -%}
+{%- set fs = m.file_size or 0 -%}
+{%- if fs >= 1048576 -%}{%- set fsize = "%.1f MB" | format(fs / 1048576) -%}
+{%- elif fs >= 1024 -%}{%- set fsize = "%.1f KB" | format(fs / 1024) -%}
+{%- else -%}{%- set fsize = fs | string + ' B' -%}
+{%- endif -%}
+(function(){
+    var k = {{ key_str | tojson }};
+    if (!MOM_DATA[k]) MOM_DATA[k] = [];
+    MOM_DATA[k].push({
+        mom_id: {{ m.id }},
+        file_name: {{ m.file_name | tojson }},
+        uploaded_by: {{ (m.uploaded_by_name or '') | tojson }},
+        uploaded_at: {{ (m.uploaded_at.strftime('%b %d, %Y') if m.uploaded_at else '') | tojson }},
+        file_size: {{ fsize | tojson }}
+    });
+})();
+{% endfor %}
+
+function updateTogLabel(cb, lblId, onText, offText) {
+    document.getElementById(lblId).textContent = cb.checked ? onText : offText;
+}
+
+/* Drive Changes Alerts toggle changed */
+function onDrvAlertsChange(cb, idx) {
+    document.getElementById('drvlbl' + idx).textContent = cb.checked ? 'Received' : 'Not received';
+}
+
+/* Drive Changes (Good/Bad) toggle changed */
+function onDrvBadChange(cb, idx) {
+    document.getElementById('drvBadLbl' + idx).textContent = cb.checked ? 'Bad' : 'Good';
+    document.getElementById('drvStatus' + idx).value = cb.checked ? 'Bad' : 'Good';
+}
+
+function applyTint(sel, idx) {
+    var tr = sel.closest('tr');
+    tr.className = 'entry-row';
+    if (sel.value) tr.classList.add('tint-' + sel.value);
+    var dot = document.getElementById('dot' + idx);
+    if (dot) dot.className = 'tint-dot' + (sel.value ? ' dot-' + sel.value : '');
+}
+
+
+function escHtml(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function momFileChanged(input) {
+    var span = document.getElementById('momFileName');
+    span.textContent = input.files.length ? input.files[0].name : 'No file chosen';
+}
+
+function openMomModal(clientName, rowIdx) {
+    document.getElementById('momClientSubtitle').textContent = clientName;
+    var clientInput = document.getElementById('momClientInput');
+    if (clientInput) clientInput.value = clientName;
+    var fi = document.getElementById('momFileInput');
+    if (fi) { fi.value = ''; document.getElementById('momFileName').textContent = 'No file chosen'; }
+
+    var key = clientName.toLowerCase();
+    var existing = document.getElementById('momExisting');
+    var files = MOM_DATA[key] || [];
+
+    if (files.length === 0) {
+        existing.innerHTML = '<p class="text-muted small mb-0">No MOM files uploaded for this client yet.</p>';
+    } else {
+        var html = '';
+        files.forEach(function(m) {
+            html += '<div class="d-flex align-items-start gap-2 py-2" style="border-bottom:1px solid #f3f4f6;">' +
+                '<div class="flex-grow-1 overflow-hidden">' +
+                '<div class="fw-medium" style="font-size:.85rem; word-break:break-all;">' + escHtml(m.file_name) + '</div>' +
+                '<div class="text-muted" style="font-size:.75rem; margin-top:.15rem;">' +
+                escHtml(m.uploaded_at) + ' · ' + escHtml(m.uploaded_by) + ' · ' + escHtml(m.file_size) +
+                '</div></div>' +
+                '<a href="/shift-handover/mom/' + m.mom_id + '/download" ' +
+                'style="color:#0d9488; background:none; border:none; padding:.2rem .4rem; cursor:pointer;" title="Download">' +
+                '<i class="bi bi-download fs-6"></i></a>';
+            if (IS_ADMIN) {
+                html += '<form method="POST" action="/shift-handover/mom/' + m.mom_id + '/delete" ' +
+                'onsubmit="return confirm(\'Delete MOM?\')" class="m-0 d-inline">' +
+                '<button type="submit" style="color:#ef4444; background:none; border:none; padding:.2rem .4rem; cursor:pointer;" title="Delete">' +
+                '<i class="bi bi-trash fs-6"></i></button></form>';
+            }
+            html += '</div>';
+        });
+        existing.innerHTML = html;
+    }
+}
+
+/* Disable double-submit */
+['saveBtn','submitBtn'].forEach(function(id) {
+    var btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener('click', function() {
+        if (this.disabled) return;
+        this.disabled = true;
+        var orig = this.innerHTML, self = this;
+        setTimeout(function() { self.disabled = false; self.innerHTML = orig; }, 6000);
+    });
+});
+
+/* Apply saved tints on load */
+document.querySelectorAll('.tint-sel').forEach(function(s) {
+    if (s.value) {
+        var tr = s.closest('tr');
+        tr.classList.add('tint-' + s.value);
+        var dot = document.getElementById('dot' + tr.dataset.idx);
+        if (dot) dot.className = 'tint-dot dot-' + s.value;
+    }
+});
+
+/* Live fill count + submit gate */
+function updateFillCount() {
+    var notes  = document.querySelectorAll('.eng-notes-field');
+    var filled = 0;
+    notes.forEach(function(n) { if (n.value.trim()) filled++; });
+    var total  = notes.length;
+    var allFilled = (filled === total);
+
+    var bar = document.querySelector('.fill-bar');
+    if (bar) {
+        if (allFilled) {
+            bar.style.background = '#f0fdf4';
+            bar.style.borderColor = '#86efac';
+            bar.style.color = '#15803d';
+            bar.innerHTML = '<i class="bi bi-check-circle-fill"></i> All ' + total + ' entries filled — ready to submit.';
+        } else {
+            bar.style.background = '#fffbeb';
+            bar.style.borderColor = '#fcd34d';
+            bar.style.color = '#92400e';
+            bar.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> ' +
+                filled + ' of ' + total + ' engineer notes filled. Fill all entries to enable Submit.';
+        }
+    }
+
+    var submitBtn = document.getElementById('submitBtn');
+    if (submitBtn) submitBtn.disabled = !allFilled;
+}
+document.querySelectorAll('.eng-notes-field').forEach(function(n) {
+    n.addEventListener('input', updateFillCount);
+});
+updateFillCount();
+</script>
+</body>
+</html>

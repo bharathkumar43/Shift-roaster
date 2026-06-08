@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard – Shift Handover</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='bootstrap-icons.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+    <style>
+        body { background:#f8f9fb; }
+
+        /* Stat cards */
+        .stat-card { border:1px solid #e5e7eb; border-radius:12px; background:#fff; padding:1.25rem 1.5rem; display:flex; align-items:center; gap:1rem; }
+        .stat-icon { width:48px; height:48px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:1.3rem; }
+        .stat-icon.blue   { background:#eff6ff; color:#3b82f6; }
+        .stat-icon.orange { background:#fff7ed; color:#f97316; }
+        .stat-icon.green  { background:#f0fdf4; color:#22c55e; }
+        .stat-num  { font-size:2rem; font-weight:800; line-height:1; color:#111827; }
+        .stat-lbl  { font-size:.8rem; color:#6b7280; margin-top:.2rem; font-weight:500; }
+
+        /* Date nav */
+        .date-nav-btn { background:#fff; border:1px solid #d1d5db; color:#374151; width:34px; height:34px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; text-decoration:none; flex-shrink:0; }
+        .date-nav-btn:hover { background:#f5f3ff; color:#5b4fcf; border-color:#a78bfa; }
+        .date-display-box { background:#fff; border:1px solid #d1d5db; border-radius:8px; padding:.35rem .75rem; font-size:.88rem; font-weight:600; color:#374151; display:flex; align-items:center; gap:.5rem; cursor:pointer; white-space:nowrap; }
+        .date-display-box:hover { border-color:#a78bfa; }
+
+        /* Shift Status Overview table */
+        .sos-table { font-size:.85rem; border-collapse:collapse; width:100%; }
+        .sos-table th, .sos-table td { padding:.75rem 1rem; text-align:left; }
+        .sos-table thead tr:first-child th { border-bottom:1px solid #e5e7eb; font-weight:700; color:#111827; font-size:.88rem; }
+        .sos-table thead tr:last-child th  { border-bottom:2px solid #e5e7eb; font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#9ca3af; }
+        .sos-table tbody tr { border-bottom:1px solid #f3f4f6; }
+        .sos-table tbody tr:last-child { border-bottom:none; }
+        .sos-table .proj-cell { display:flex; align-items:center; gap:.6rem; font-weight:600; color:#111827; }
+
+        /* Status badges */
+        .sb-draft     { background:#fef3c7; color:#92400e; border-radius:20px; padding:.25em .75em; font-size:.78rem; font-weight:600; white-space:nowrap; display:inline-block; }
+        .sb-submitted { background:#d1fae5; color:#065f46; border-radius:20px; padding:.25em .75em; font-size:.78rem; font-weight:600; white-space:nowrap; display:inline-block; }
+        .sb-none      { background:#f3f4f6; color:#6b7280; border-radius:20px; padding:.25em .75em; font-size:.78rem; font-weight:600; white-space:nowrap; display:inline-block; }
+        .sb-link      { text-decoration:none; }
+        .sb-link:hover .sb-draft, .sb-link:hover .sb-none { filter:brightness(.95); }
+
+        .lead-name { font-size:.82rem; color:#374151; }
+
+        /* Duty Manager Notes */
+        .notes-card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:1.5rem; }
+        .notes-card h6 { font-size:1rem; font-weight:700; color:#111827; margin-bottom:1.25rem; }
+        .notes-label { font-size:.82rem; font-weight:600; color:#374151; margin-bottom:.4rem; }
+        .notes-input { border:1px solid #e5e7eb; border-radius:8px; font-size:.85rem; }
+        .notes-input:focus { border-color:#a78bfa; box-shadow:0 0 0 3px rgba(91,79,207,.1); }
+        .btn-save-notes { background:#5b4fcf; color:#fff; border:none; border-radius:8px; padding:.55rem 1.5rem; font-weight:600; font-size:.88rem; cursor:pointer; }
+        .btn-save-notes:hover { background:#4338ca; }
+    </style>
+</head>
+<body>
+{% set active_page = 'dashboard' %}
+{% include '_sh_nav.html' %}
+
+<div class="container-fluid px-4 py-4">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for cat, msg in messages %}
+    <div class="alert alert-{{ cat }} alert-dismissible fade show py-2">
+        {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}{% endif %}
+    {% endwith %}
+
+    <!-- Page header + date nav -->
+    <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
+        <h5 class="mb-0 fw-bold d-flex align-items-center gap-2">
+            <i class="bi bi-grid-1x2-fill text-primary" style="font-size:1.2rem"></i>
+            Shift Handover Dashboard
+        </h5>
+        <div class="d-flex align-items-center gap-2">
+            <a href="{{ url_for('shift_handover', date=prev_date) }}" class="date-nav-btn">
+                <i class="bi bi-chevron-left"></i>
+            </a>
+            <div class="date-display-box" onclick="document.getElementById('datePickerHidden').showPicker ? document.getElementById('datePickerHidden').showPicker() : document.getElementById('datePickerHidden').click()">
+                {{ sel_date_display }}
+                <i class="bi bi-calendar3 text-muted" style="font-size:.85rem"></i>
+            </div>
+            <input type="date" id="datePickerHidden" value="{{ sel_date }}"
+                   style="position:absolute; opacity:0; width:0; height:0; pointer-events:none;"
+                   onchange="if(this.value) window.location.href='{{ url_for('shift_handover') }}?date='+this.value">
+            <a href="{{ url_for('shift_handover', date=next_date) }}" class="date-nav-btn">
+                <i class="bi bi-chevron-right"></i>
+            </a>
+        </div>
+    </div>
+
+    <!-- Stat cards -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="stat-card shadow-sm">
+                <div class="stat-icon blue"><i class="bi bi-ticket-detailed"></i></div>
+                <div>
+                    <div class="stat-num">{{ stats.total }}</div>
+                    <div class="stat-lbl">Total Tickets Today</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="stat-card shadow-sm">
+                <div class="stat-icon orange"><i class="bi bi-exclamation-circle"></i></div>
+                <div>
+                    <div class="stat-num">{{ stats.open }}</div>
+                    <div class="stat-lbl">Open Issues</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="stat-card shadow-sm">
+                <div class="stat-icon green"><i class="bi bi-check-circle"></i></div>
+                <div>
+                    <div class="stat-num">{{ stats.resolved }}</div>
+                    <div class="stat-lbl">Resolved</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shift Status Overview -->
+    <div class="card shadow-sm border-0 mb-4" style="border-radius:12px; overflow:hidden;">
+        <div class="card-body p-0">
+            {% if not dashboard %}
+            <div class="text-center py-5 text-muted">
+                <i class="bi bi-people display-4 d-block mb-2 opacity-25"></i>
+                <p>No projects found.</p>
+            </div>
+            {% else %}
+            <table class="sos-table">
+                <thead>
+                    <tr>
+                        <th style="width:180px; padding-top:1rem; padding-bottom:.5rem;">
+                            <span style="font-size:.95rem;">Shift Status Overview</span>
+                        </th>
+                        <th colspan="2" class="text-center" style="border-left:1px solid #f3f4f6; padding-top:1rem; padding-bottom:.5rem;">
+                            Shift 1 (Morning)
+                        </th>
+                        <th colspan="2" class="text-center" style="border-left:1px solid #f3f4f6; padding-top:1rem; padding-bottom:.5rem;">
+                            Shift 2 (Afternoon)
+                        </th>
+                        <th colspan="2" class="text-center" style="border-left:1px solid #f3f4f6; padding-top:1rem; padding-bottom:.5rem;">
+                            Shift 3 (Night)
+                        </th>
+                    </tr>
+                    <tr style="background:#fafafa;">
+                        <th>Project</th>
+                        <th style="border-left:1px solid #f3f4f6;">Status</th>
+                        <th>Lead</th>
+                        <th style="border-left:1px solid #f3f4f6;">Status</th>
+                        <th>Lead</th>
+                        <th style="border-left:1px solid #f3f4f6;">Status</th>
+                        <th>Lead</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for proj, shifts in dashboard.items() %}
+                    <tr>
+                        <td>
+                            <div class="proj-cell">
+                                <i class="bi bi-file-earmark text-muted" style="font-size:.95rem;"></i>
+                                {{ proj }}
+                            </div>
+                        </td>
+                        {% for s in [1, 2, 3] %}
+                        {% set h = shifts[s] %}
+                        <td style="border-left:1px solid #f3f4f6;">
+                            {% if h %}
+                            <a href="{{ url_for('sh_form', project=proj, date=sel_date, shift=s) }}" class="sb-link">
+                                {% if h.status == 'submitted' %}
+                                <span class="sb-submitted">Submitted</span>
+                                {% else %}
+                                <span class="sb-draft">Draft</span>
+                                {% endif %}
+                            </a>
+                            {% else %}
+                            <a href="{{ url_for('sh_form', project=proj, date=sel_date, shift=s) }}" class="sb-link">
+                                <span class="sb-none">Not Started</span>
+                            </a>
+                            {% endif %}
+                        </td>
+                        <td class="lead-name">{{ h.submitted_by_name if h and h.submitted_by_name else '–' }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Duty Manager Notes -->
+    <div class="notes-card shadow-sm">
+        <h6><i class="bi bi-sticky me-2 text-primary"></i>Duty Manager Notes</h6>
+        <form method="POST" action="{{ url_for('sh_save_daily_notes') }}">
+            <input type="hidden" name="note_date" value="{{ sel_date }}">
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="notes-label">Duty Manager</label>
+                    <input type="text" class="form-control notes-input" name="duty_manager"
+                           value="{{ daily_notes.duty_manager if daily_notes else '' }}"
+                           placeholder="Manager name"
+                           {% if not current_user or current_user.role != 'admin' %}readonly{% endif %}>
+                </div>
+                <div class="col-md-6">
+                    <label class="notes-label">Week</label>
+                    <input type="text" class="form-control notes-input" name="week_label"
+                           value="{{ daily_notes.week_label if daily_notes else '' }}"
+                           placeholder="Week number"
+                           {% if not current_user or current_user.role != 'admin' %}readonly{% endif %}>
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="notes-label">Key Issues / Escalations</label>
+                <textarea class="form-control notes-input" name="key_issues" rows="3"
+                          placeholder="Key issues and escalations..."
+                          {% if not current_user or current_user.role != 'admin' %}readonly{% endif %}>{{ daily_notes.key_issues if daily_notes else '' }}</textarea>
+            </div>
+            <div class="mb-3">
+                <label class="notes-label">Actions for Tomorrow</label>
+                <textarea class="form-control notes-input" name="actions_for_tomorrow" rows="3"
+                          placeholder="Actions for tomorrow..."
+                          {% if not current_user or current_user.role != 'admin' %}readonly{% endif %}>{{ daily_notes.actions_for_tomorrow if daily_notes else '' }}</textarea>
+            </div>
+            {% if current_user and current_user.role == 'admin' %}
+            <button type="submit" class="btn-save-notes">Save Notes</button>
+            {% endif %}
+        </form>
+    </div>
+
+</div>
+
+<script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
+</body>
+</html>

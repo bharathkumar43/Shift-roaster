@@ -1,0 +1,154 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compliance â€” {{ app_name }}</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='bootstrap-icons.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+    <style>
+        body { background:#f0f2f5; }
+        .status-draft     { background:#fff3cd; color:#664d03; }
+        .status-submitted { background:#d1e7dd; color:#0a3622; }
+        .pill { font-size:.72rem; padding:.25em .65em; border-radius:12px; font-weight:600; }
+        .prog-bar-wrap { height:8px; background:#e9ecef; border-radius:4px; }
+        .prog-bar-fill { height:100%; border-radius:4px; background:#0d6efd; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark bg-primary-gradient">
+    <div class="container-fluid px-4">
+        <span class="navbar-brand fw-bold"><i class="bi bi-bar-chart-line"></i> {{ app_name }}</span>
+        <a href="{{ url_for('shift_handover') }}" class="btn btn-sm btn-outline-light">
+            <i class="bi bi-arrow-left me-1"></i>Dashboard
+        </a>
+    </div>
+</nav>
+
+<div class="container-fluid px-4 py-4">
+
+    <div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+        <h5 class="mb-0 fw-bold"><i class="bi bi-clipboard-data me-2 text-primary"></i>Compliance Tracking</h5>
+        <form method="GET" action="{{ url_for('sh_compliance') }}" class="d-flex gap-2">
+            <input type="date" class="form-control form-control-sm" name="date" value="{{ target_date }}" style="width:160px">
+            <button type="submit" class="btn btn-sm btn-primary">Go</button>
+        </form>
+    </div>
+
+    {% if not rows %}
+    <div class="card shadow-sm border-0">
+        <div class="card-body text-center py-5 text-muted">
+            <i class="bi bi-inbox display-4 d-block mb-2 opacity-25"></i>
+            <p>No handovers found for {{ target_date }}.</p>
+        </div>
+    </div>
+    {% else %}
+
+    <!-- Summary -->
+    {% set total_h = rows|length %}
+    {% set submitted_h = rows|selectattr('status','eq','submitted')|list|length %}
+    {% set eng_acked   = rows|selectattr('engineer_acknowledged','eq',True)|list|length %}
+    {% set mgr_acked   = rows|selectattr('manager_acknowledged','eq',True)|list|length %}
+
+    <div class="row g-3 mb-4">
+        <div class="col-sm-3">
+            <div class="card shadow-sm border-0 text-center p-3">
+                <div class="fs-3 fw-bold text-primary">{{ total_h }}</div>
+                <div class="text-muted small">Total Handovers</div>
+            </div>
+        </div>
+        <div class="col-sm-3">
+            <div class="card shadow-sm border-0 text-center p-3">
+                <div class="fs-3 fw-bold text-success">{{ submitted_h }}</div>
+                <div class="text-muted small">Submitted</div>
+            </div>
+        </div>
+        <div class="col-sm-3">
+            <div class="card shadow-sm border-0 text-center p-3">
+                <div class="fs-3 fw-bold text-info">{{ eng_acked }}</div>
+                <div class="text-muted small">Engineer Acked</div>
+            </div>
+        </div>
+        <div class="col-sm-3">
+            <div class="card shadow-sm border-0 text-center p-3">
+                <div class="fs-3 fw-bold text-warning">{{ mgr_acked }}</div>
+                <div class="text-muted small">Manager Acked</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detail table -->
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white border-bottom fw-semibold">
+            <i class="bi bi-table me-2 text-primary"></i>Handover Detail â€” {{ target_date }}
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Project</th>
+                            <th>Shift</th>
+                            <th>Status</th>
+                            <th>Entries Filled</th>
+                            <th>Eng Ack</th>
+                            <th>Mgr Ack</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in rows %}
+                        <tr>
+                            <td class="fw-medium">{{ r.project_name }}</td>
+                            <td><span class="badge bg-primary">S{{ r.shift_num }}</span></td>
+                            <td>
+                                <span class="pill status-{{ r.status }}">
+                                    {% if r.status == 'submitted' %}<i class="bi bi-check-circle-fill me-1"></i>Submitted
+                                    {% else %}<i class="bi bi-pencil me-1"></i>Draft{% endif %}
+                                </span>
+                            </td>
+                            <td style="min-width:140px">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="prog-bar-wrap flex-grow-1">
+                                        <div class="prog-bar-fill" style="width:{{ ((r.filled_entries or 0) / (r.total_entries or 1) * 100)|int }}%"></div>
+                                    </div>
+                                    <span class="text-muted small">{{ r.filled_entries or 0 }}/{{ r.total_entries or 0 }}</span>
+                                </div>
+                            </td>
+                            <td>
+                                {% if r.engineer_acknowledged %}
+                                <i class="bi bi-check-circle-fill text-info" title="Acked"></i>
+                                {% else %}
+                                <i class="bi bi-dash-circle text-muted" title="Not acked"></i>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if r.manager_acknowledged %}
+                                <i class="bi bi-shield-check text-success" title="Acked"></i>
+                                {% else %}
+                                <i class="bi bi-dash-circle text-muted" title="Not acked"></i>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('sh_form', project=r.project_name, date=target_date, shift=r.shift_num) }}"
+                                   class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-arrow-right"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+
+<script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
+</body>
+</html>
+

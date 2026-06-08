@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Clients – Shift Handover</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='bootstrap-icons.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+    <style>
+        body { background:#f8f9fb; }
+        .proj-tab {
+            border: 1.5px solid #e5e7eb;
+            border-radius: 20px;
+            padding: .35rem 1rem;
+            font-size: .875rem;
+            font-weight: 600;
+            color: #374151;
+            background: #fff;
+            text-decoration: none;
+            white-space: nowrap;
+            transition: border-color .15s, color .15s, background .15s;
+        }
+        .proj-tab:hover  { border-color: #a78bfa; color: #5b4fcf; }
+        .proj-tab.active { border-color: #5b4fcf; background: #f5f3ff; color: #5b4fcf; }
+        .badge-active   { background:#d1fae5; color:#065f46; font-size:.75rem; padding:.3em .75em; border-radius:20px; font-weight:600; }
+        .badge-inactive { background:#f3f4f6; color:#6b7280; font-size:.75rem; padding:.3em .75em; border-radius:20px; font-weight:600; }
+        .btn-deactivate {
+            color: #d97706; background: none; border: none;
+            font-size: .82rem; font-weight: 600;
+            padding: .2rem .4rem;
+            display: inline-flex; align-items: center; gap: .3rem;
+            cursor: pointer;
+        }
+        .btn-deactivate:hover { color: #b45309; text-decoration: underline; }
+        .btn-activate {
+            color: #059669; background: none; border: none;
+            font-size: .82rem; font-weight: 600;
+            padding: .2rem .4rem;
+            display: inline-flex; align-items: center; gap: .3rem;
+            cursor: pointer;
+        }
+        .btn-activate:hover { color: #047857; text-decoration: underline; }
+        .btn-del-client {
+            color: #ef4444; background: none; border: none;
+            font-size: .82rem; font-weight: 600;
+            padding: .2rem .4rem;
+            display: inline-flex; align-items: center; gap: .3rem;
+            cursor: pointer;
+        }
+        .btn-del-client:hover { color: #dc2626; text-decoration: underline; }
+        .client-table td, .client-table th { padding: .85rem 1rem; }
+        .client-table thead th {
+            font-size: .72rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: .04em;
+            color: #6b7280; border-bottom: 2px solid #e5e7eb;
+        }
+        .client-table tbody tr { border-bottom: 1px solid #f3f4f6; }
+        .client-table tbody tr:last-child { border-bottom: none; }
+    </style>
+</head>
+<body>
+{% set active_page = 'clients' %}
+{% include '_sh_nav.html' %}
+
+<div class="container-fluid px-4 py-4">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for cat, msg in messages %}
+    <div class="alert alert-{{ cat }} alert-dismissible fade show py-2">
+        {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}{% endif %}
+    {% endwith %}
+
+    <!-- Title -->
+    <div class="d-flex align-items-center gap-2 mb-4">
+        <i class="bi bi-gear-fill fs-5 text-primary"></i>
+        <h5 class="mb-0 fw-bold">Manage Clients</h5>
+    </div>
+
+    <!-- Project tabs -->
+    <div class="d-flex gap-2 mb-4 flex-wrap align-items-center">
+        {% for p in projects %}
+        <a href="{{ url_for('sh_clients', project=p) }}"
+           class="proj-tab {{ 'active' if p == active_project }}">{{ p }}</a>
+        {% endfor %}
+        <!-- Add new project -->
+        <button class="proj-tab d-flex align-items-center gap-1"
+                style="border-style:dashed; color:#6b7280;"
+                onclick="document.getElementById('addProjForm').classList.toggle('d-none')">
+            <i class="bi bi-plus-lg"></i> New Project
+        </button>
+        <form id="addProjForm" method="POST" action="{{ url_for('sh_projects_add') }}"
+              class="d-none d-flex gap-2 align-items-center">
+            <input type="text" name="project_name" class="form-control form-control-sm"
+                   placeholder="Project name" required style="width:150px; border-radius:8px;">
+            <button type="submit" class="btn btn-sm"
+                    style="background:#5b4fcf; color:#fff; border:none; border-radius:8px; font-weight:600;">
+                Add
+            </button>
+        </form>
+    </div>
+
+    {% if active_project %}
+
+    <!-- Add client card -->
+    <div class="card border mb-2" style="border-radius:12px; border-color:#e5e7eb !important;">
+        <div class="card-body py-3 px-4">
+            <form method="POST" action="{{ url_for('sh_clients_add') }}"
+                  class="d-flex gap-3 align-items-center">
+                <input type="hidden" name="project_name" value="{{ active_project }}">
+                <input type="text" class="form-control" name="client_name"
+                       placeholder="New client name" required
+                       style="border:1.5px solid #e5e7eb; border-radius:8px; font-size:.9rem;">
+                <button type="submit"
+                        class="btn px-4 flex-shrink-0"
+                        style="background:#5b4fcf; color:#fff; border:none; border-radius:8px;
+                               font-weight:600; font-size:.9rem; white-space:nowrap;">
+                    <i class="bi bi-plus-lg me-1"></i>Add Client
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Info text -->
+    <p class="text-muted mb-3" style="font-size:.78rem;">
+        Deactivate hides the <span style="color:#5b4fcf">client</span> from new handovers.
+        Delete permanently removes the client and its entries from all handovers.
+    </p>
+
+    <!-- Clients table card -->
+    {% if clients %}
+    <div class="card border-0 shadow-sm" style="border-radius:12px; overflow:hidden;">
+        <div class="card-body p-0">
+            <table class="table mb-0 client-table">
+                <thead style="background:#fafafa;">
+                    <tr>
+                        <th style="width:60px">#</th>
+                        <th>Client Name</th>
+                        <th style="width:130px">Status</th>
+                        <th style="width:220px">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in clients %}
+                    <tr>
+                        <td class="text-muted">{{ loop.index }}</td>
+                        <td class="fw-medium">{{ c.client_name }}</td>
+                        <td>
+                            {% if c.is_active %}
+                            <span class="badge-active">Active</span>
+                            {% else %}
+                            <span class="badge-inactive">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <form method="POST"
+                                  action="{{ url_for('sh_clients_toggle', client_id=c.id) }}"
+                                  class="d-inline">
+                                <input type="hidden" name="project_name" value="{{ active_project }}">
+                                {% if c.is_active %}
+                                <button type="submit" class="btn-deactivate">
+                                    <i class="bi bi-eye-slash"></i>Deactivate
+                                </button>
+                                {% else %}
+                                <button type="submit" class="btn-activate">
+                                    <i class="bi bi-eye"></i>Activate
+                                </button>
+                                {% endif %}
+                            </form>
+                            <form method="POST"
+                                  action="{{ url_for('sh_clients_delete', client_id=c.id) }}"
+                                  class="d-inline"
+                                  onsubmit="return confirm('Delete {{ c.client_name }}? This cannot be undone.')">
+                                <input type="hidden" name="project_name" value="{{ active_project }}">
+                                <button type="submit" class="btn-del-client">
+                                    <i class="bi bi-trash"></i>Delete
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="card border-0 shadow-sm text-center py-5 text-muted" style="border-radius:12px;">
+        <i class="bi bi-inbox display-4 d-block mb-2 opacity-25"></i>
+        <p class="mb-0">No clients for <strong>{{ active_project }}</strong> yet. Add one above.</p>
+    </div>
+    {% endif %}
+
+    {% endif %}
+
+</div>
+
+<script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shift Handover</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='bootstrap-icons.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+    <style>
+        body { background:#f8f9fb; }
+        .hero-icon { width:64px; height:64px; background:#ede9fe; border-radius:16px; display:flex; align-items:center; justify-content:center; margin:0 auto 1rem; }
+        .hero-icon i { font-size:1.8rem; color:#5b4fcf; }
+
+        .selector-card { max-width:620px; margin:0 auto; background:#fff; border-radius:16px; box-shadow:0 2px 12px rgba(0,0,0,.08); padding:2rem; }
+
+        .sel-label { font-size:.78rem; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:.05em; margin-bottom:.6rem; }
+
+        .proj-tile, .shift-tile {
+            border:1.5px solid #e5e7eb;
+            border-radius:10px;
+            padding:.7rem 1rem;
+            cursor:pointer;
+            text-align:center;
+            background:#fff;
+            transition:border-color .15s, background .15s;
+            user-select:none;
+        }
+        .proj-tile:hover  { border-color:#a78bfa; }
+        .shift-tile:hover { border-color:#a78bfa; }
+        .proj-tile.selected  { border-color:#5b4fcf; background:#f5f3ff; color:#4338ca; font-weight:600; }
+        .shift-tile.selected { border-color:#5b4fcf; background:#f5f3ff; }
+        .shift-tile .sname { font-weight:700; font-size:.9rem; color:#111827; }
+        .shift-tile.selected .sname { color:#4338ca; }
+        .shift-tile .stime { font-size:.72rem; color:#6b7280; margin-top:.1rem; }
+        .shift-tile.selected .stime { color:#5b4fcf; }
+
+        .open-btn { background:#5b4fcf; border:none; border-radius:10px; color:#fff; font-size:.95rem; font-weight:600; padding:.75rem 1.5rem; width:100%; transition:background .15s; display:flex; align-items:center; justify-content:center; gap:.5rem; }
+        .open-btn:hover:not(:disabled) { background:#4338ca; }
+        .open-btn:disabled { background:#a78bfa; cursor:not-allowed; }
+    </style>
+</head>
+<body>
+{% set active_page = 'selector' %}
+{% include '_sh_nav.html' %}
+
+<div class="container px-3 py-5">
+    <div class="text-center mb-4">
+        <div class="hero-icon"><i class="bi bi-file-earmark-check"></i></div>
+        <h4 class="fw-bold mb-1">Shift Handover</h4>
+        <p class="text-muted small mb-0">Select your project, date, and shift to begin</p>
+    </div>
+
+    <div class="selector-card">
+        <!-- Project -->
+        <div class="mb-4">
+            <div class="sel-label">Project</div>
+            <div class="row g-2">
+                {% for p in projects %}
+                <div class="col-4">
+                    <div class="proj-tile" data-project="{{ p }}" onclick="selectProject(this)">{{ p }}</div>
+                </div>
+                {% endfor %}
+                {% if not projects %}
+                <div class="col-12 text-muted small">No projects found.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Date -->
+        <div class="mb-4">
+            <div class="sel-label">Date</div>
+            <input type="date" id="shDate" class="form-control" value="{{ today }}">
+        </div>
+
+        <!-- Shift -->
+        <div class="mb-4">
+            <div class="sel-label">Shift</div>
+            <div class="row g-2">
+                <div class="col-4">
+                    <div class="shift-tile" data-shift="1" onclick="selectShift(this)">
+                        <div class="sname">Morning</div>
+                        <div class="stime">5:00 AM - 2:00 PM</div>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <div class="shift-tile" data-shift="2" onclick="selectShift(this)">
+                        <div class="sname">Afternoon</div>
+                        <div class="stime">1:00 PM - 10:00 PM</div>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <div class="shift-tile" data-shift="3" onclick="selectShift(this)">
+                        <div class="sname">Night</div>
+                        <div class="stime">9:00 PM - 6:00 AM</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Open button -->
+        <button class="open-btn" id="openBtn" onclick="openForm()" disabled>
+            Open Handover Form <i class="bi bi-arrow-right"></i>
+        </button>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
+<script>
+var selProject = '', selShift = '';
+function selectProject(el) {
+    document.querySelectorAll('.proj-tile').forEach(t => t.classList.remove('selected'));
+    el.classList.add('selected');
+    selProject = el.dataset.project;
+    checkReady();
+}
+function selectShift(el) {
+    document.querySelectorAll('.shift-tile').forEach(t => t.classList.remove('selected'));
+    el.classList.add('selected');
+    selShift = el.dataset.shift;
+    checkReady();
+}
+function checkReady() {
+    document.getElementById('openBtn').disabled = !(selProject && selShift);
+}
+function openForm() {
+    var d = document.getElementById('shDate').value;
+    if (!selProject || !selShift || !d) return;
+    window.location.href = '{{ url_for("sh_form") }}?project=' + encodeURIComponent(selProject)
+        + '&date=' + d + '&shift=' + selShift;
+}
+</script>
+</body>
+</html>
