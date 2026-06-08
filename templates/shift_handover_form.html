@@ -116,12 +116,14 @@
                     formaction="{{ url_for('sh_form_save') }}" type="submit">
                 <i class="bi bi-floppy"></i>Save Draft
             </button>
+            {% if is_admin %}
             <button class="btn-submit" id="submitBtn" form="handoverForm"
                     formaction="{{ url_for('sh_form_submit') }}" type="submit"
                     disabled
                     onclick="return confirm('Submit this handover?')">
                 <i class="bi bi-send"></i>Submit
             </button>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -217,7 +219,7 @@
                                 <th class="col-eng">Engineer Worked</th>
                                 <th class="col-issues">Issues</th>
                                 <th class="col-enotes">Engineer<br>Notes</th>
-                                {% if is_admin %}<th class="col-mnotes">Manager<br>Notes</th>{% endif %}
+                                <th class="col-mnotes">Manager<br>Notes</th>
                                 <th class="col-next">Next Shift Engineer</th>
                                 <th class="col-hist">History</th>
                                 <th class="col-mom">MOM</th>
@@ -356,13 +358,11 @@
                                               placeholder="Engineer notes...">{{ e.engineer_notes or '' }}</textarea>
                                 </td>
 
-                                <!-- Manager Notes (admin only) -->
-                                {% if is_admin %}
+                                <!-- Manager Notes -->
                                 <td class="col-mnotes">
                                     <textarea class="form-control form-control-sm" name="manager_notes[]"
                                               placeholder="Manager notes...">{{ e.manager_notes or '' }}</textarea>
                                 </td>
-                                {% endif %}
 
                                 <!-- Next Shift Engineer -->
                                 <td class="col-next">
@@ -491,7 +491,6 @@
                     <p class="text-muted small mb-0">No MOM files uploaded for this client yet.</p>
                 </div>
 
-                {% if is_admin %}
                 <!-- Upload New MOM -->
                 <div class="text-uppercase fw-bold mb-2" style="font-size:.72rem; letter-spacing:.07em; color:#9ca3af;">Upload New MOM</div>
                 <form method="POST" action="{{ url_for('sh_upload_mom', handover_id=handover.id) }}"
@@ -526,7 +525,6 @@
                         <i class="bi bi-upload"></i>Upload
                     </button>
                 </form>
-                {% endif %}
 
             </div>
         </div>

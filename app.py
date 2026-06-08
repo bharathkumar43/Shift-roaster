@@ -2872,7 +2872,7 @@ def sh_form_save():
             "row_tint":              row_tint_list[i]      if i < len(row_tint_list)      else None,
         })
 
-    db.sh_save_entries(handover_id, entries, user_name, lead_notes=lead_notes, is_admin=is_admin)
+    db.sh_save_entries(handover_id, entries, user_name, lead_notes=lead_notes)
     flash("Draft saved.", "success")
     return redirect(url_for("sh_form", project=project_name, date=date_str, shift=shift_num))
 
@@ -2921,9 +2921,6 @@ def sh_manager_ack(handover_id):
 @app.route("/shift-handover/<int:handover_id>/mom", methods=["POST"])
 @login_required
 def sh_upload_mom(handover_id):
-    if not g.user or g.user.get("role") != "admin":
-        flash("Admin access required.", "danger")
-        return redirect(request.referrer or url_for("shift_handover"))
     f = request.files.get("mom_file")
     if not f or not f.filename:
         flash("No file selected.", "danger")
@@ -2951,7 +2948,10 @@ def sh_download_mom(mom_id):
 @login_required
 def sh_delete_mom(mom_id):
     user = g.user
-    db.sh_delete_mom(mom_id, user["id"], user.get("role") == "admin")
+    if not user or user.get("role") != "admin":
+        flash("Only admins can delete MOM files.", "danger")
+        return redirect(request.referrer or url_for("shift_handover"))
+    db.sh_delete_mom(mom_id, user["id"], True)
     flash("MOM file deleted.", "success")
     return redirect(request.referrer or url_for("shift_handover"))
 

@@ -1725,7 +1725,7 @@ def sh_get_or_create_handover(handover_date, shift_num, project_name, user_id, u
     return row
 
 
-def sh_save_entries(handover_id, entries, user_name, lead_notes=None, is_admin=False):
+def sh_save_entries(handover_id, entries, user_name, lead_notes=None):
     """Upsert client entries for a handover. Only updates fields the user sent."""
     conn = get_db()
     cur = conn.cursor()
@@ -1752,13 +1752,11 @@ def sh_save_entries(handover_id, entries, user_name, lead_notes=None, is_admin=F
                 engineer_worked       = EXCLUDED.engineer_worked,
                 issues                = EXCLUDED.issues,
                 engineer_notes        = EXCLUDED.engineer_notes,
-                manager_notes         = CASE WHEN %s THEN EXCLUDED.manager_notes
-                                             ELSE sh_client_entries.manager_notes END,
+                manager_notes         = EXCLUDED.manager_notes,
                 next_shift_engineer   = EXCLUDED.next_shift_engineer,
                 migration_report_sent = EXCLUDED.migration_report_sent,
                 drive_changes_alerts  = EXCLUDED.drive_changes_alerts,
-                row_tint              = CASE WHEN %s THEN EXCLUDED.row_tint
-                                             ELSE sh_client_entries.row_tint END,
+                row_tint              = EXCLUDED.row_tint,
                 filled_by_name        = EXCLUDED.filled_by_name,
                 updated_at            = NOW()
         """, (
@@ -1769,14 +1767,12 @@ def sh_save_entries(handover_id, entries, user_name, lead_notes=None, is_admin=F
             entry.get("engineer_worked", ""),
             entry.get("issues", ""),
             entry.get("engineer_notes", ""),
-            entry.get("manager_notes", "") if is_admin else "",
+            entry.get("manager_notes", ""),
             entry.get("next_shift_engineer", ""),
             entry.get("migration_report_sent", False),
             entry.get("drive_changes_alerts", False),
-            entry.get("row_tint") if is_admin else None,
+            entry.get("row_tint"),
             user_name,
-            is_admin,  # for manager_notes CASE
-            is_admin,  # for row_tint CASE
         ))
     conn.commit()
     cur.close()
