@@ -2235,7 +2235,7 @@ def sh_get_all_users_with_shifts():
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
-        SELECT DISTINCT ON (LOWER(COALESCE(u.email, u.username)))
+        SELECT DISTINCT ON (LOWER(COALESCE(NULLIF(u.email, ''), u.username)))
                u.id, u.username, u.full_name,
                COALESCE(u.email, '') AS email,
                u.role,
@@ -2245,7 +2245,7 @@ def sh_get_all_users_with_shifts():
                COALESCE(s.shift_3, FALSE) AS shift_3
         FROM users u
         LEFT JOIN sh_user_shifts s ON s.user_id = u.id
-        ORDER BY LOWER(COALESCE(u.email, u.username)), u.id
+        ORDER BY LOWER(COALESCE(NULLIF(u.email, ''), u.username)), u.id
     """)
     rows = _fetchall(cur)
     cur.close()
