@@ -2235,7 +2235,8 @@ def sh_get_all_users_with_shifts():
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
-        SELECT u.id, u.username, u.full_name,
+        SELECT DISTINCT ON (LOWER(COALESCE(u.email, u.username)))
+               u.id, u.username, u.full_name,
                COALESCE(u.email, '') AS email,
                u.role,
                COALESCE(u.is_active, TRUE) AS is_active,
@@ -2244,7 +2245,7 @@ def sh_get_all_users_with_shifts():
                COALESCE(s.shift_3, FALSE) AS shift_3
         FROM users u
         LEFT JOIN sh_user_shifts s ON s.user_id = u.id
-        ORDER BY u.full_name, u.username
+        ORDER BY LOWER(COALESCE(u.email, u.username)), u.id
     """)
     rows = _fetchall(cur)
     cur.close()
@@ -2289,6 +2290,16 @@ def sh_toggle_user_status(user_id):
     cur.close()
     conn.close()
     return row[0] if row else None
+
+
+def sh_delete_user(user_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM sh_user_shifts WHERE user_id = %s", (user_id,))
+    cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
 
 
 # ── Reports ───────────────────────────────────────────────────────────────────

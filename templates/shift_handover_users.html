@@ -47,7 +47,7 @@
                             <th style="width:120px">Role</th>
                             <th style="width:160px">Shifts</th>
                             <th style="width:100px">Status</th>
-                            <th style="width:110px">Action</th>
+                            <th style="width:160px">Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -98,14 +98,23 @@
                             </td>
                             <td>
                                 {% if u.id != current_user.id %}
-                                <form method="POST"
-                                      action="{{ url_for('sh_users_toggle', user_id=u.id) }}"
-                                      onsubmit="return confirm('Toggle user status?')">
-                                    <button type="submit"
-                                            class="btn btn-sm {{ 'btn-outline-danger' if u.is_active else 'btn-outline-success' }}">
-                                        {{ 'Deactivate' if u.is_active else 'Activate' }}
-                                    </button>
-                                </form>
+                                <div class="d-flex gap-1">
+                                    <form method="POST"
+                                          action="{{ url_for('sh_users_toggle', user_id=u.id) }}"
+                                          onsubmit="return confirm('Toggle user status?')">
+                                        <button type="submit"
+                                                class="btn btn-sm {{ 'btn-outline-danger' if u.is_active else 'btn-outline-success' }}">
+                                            {{ 'Deactivate' if u.is_active else 'Activate' }}
+                                        </button>
+                                    </form>
+                                    <form method="POST"
+                                          action="{{ url_for('sh_users_delete', user_id=u.id) }}"
+                                          onsubmit="return confirm('Permanently delete {{ u.full_name or u.username }}? This cannot be undone.')">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete user">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </div>
                                 {% else %}
                                 <span class="text-muted small">—</span>
                                 {% endif %}

@@ -3213,6 +3213,19 @@ def sh_users_toggle(user_id):
     return redirect(url_for("sh_users"))
 
 
+@app.route("/shift-handover/users/<int:user_id>/delete", methods=["POST"])
+@login_required
+def sh_users_delete(user_id):
+    if not g.user or g.user.get("role") != "admin":
+        return jsonify({"error": "Admin only"}), 403
+    if user_id == g.user.get("id"):
+        flash("You cannot delete your own account.", "danger")
+        return redirect(url_for("sh_users"))
+    db.sh_delete_user(user_id)
+    flash("User deleted.", "success")
+    return redirect(url_for("sh_users"))
+
+
 # ── Reports ────────────────────────────────────────────────────────────────────
 
 @app.route("/shift-handover/reports")
