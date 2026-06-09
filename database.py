@@ -1544,6 +1544,19 @@ def sh_init_tables():
         except Exception:
             conn.rollback()
 
+    # Remove duplicate (handover_id, client_name) rows before adding unique constraint
+    try:
+        cur.execute("""
+            DELETE FROM sh_client_entries a
+            USING sh_client_entries b
+            WHERE a.id < b.id
+              AND a.handover_id = b.handover_id
+              AND a.client_name = b.client_name
+        """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+
     # Add UNIQUE on (handover_id, client_name) if missing
     try:
         cur.execute("""
@@ -1748,7 +1761,7 @@ def sh_get_or_create_handover(handover_date, shift_num, project_name, user_id, u
 
 
 def sh_save_entries(handover_id, entries, user_name, lead_notes=None):
-    """Upsert client entries for a handover. Only updates fields the user sent."""
+    """Save client entries for a handover using DELETE + INSERT to avoid ON CONFLICT issues."""
     conn = get_db()
     cur = conn.cursor()
     if lead_notes is not None:
@@ -1760,6 +1773,10 @@ def sh_save_entries(handover_id, entries, user_name, lead_notes=None):
         cn = (entry.get("client_name") or "").strip()
         if not cn:
             continue
+        cur.execute(
+            "DELETE FROM sh_client_entries WHERE handover_id = %s AND client_name = %s",
+            (handover_id, cn)
+        )
         cur.execute("""
             INSERT INTO sh_client_entries
                 (handover_id, client_name, tickets, entry_status,
@@ -1767,20 +1784,6 @@ def sh_save_entries(handover_id, entries, user_name, lead_notes=None):
                  next_shift_engineer, migration_report_sent, drive_changes_alerts,
                  row_tint, filled_by_name)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            ON CONFLICT (handover_id, client_name)
-            DO UPDATE SET
-                tickets               = EXCLUDED.tickets,
-                entry_status          = EXCLUDED.entry_status,
-                engineer_worked       = EXCLUDED.engineer_worked,
-                issues                = EXCLUDED.issues,
-                engineer_notes        = EXCLUDED.engineer_notes,
-                manager_notes         = EXCLUDED.manager_notes,
-                next_shift_engineer   = EXCLUDED.next_shift_engineer,
-                migration_report_sent = EXCLUDED.migration_report_sent,
-                drive_changes_alerts  = EXCLUDED.drive_changes_alerts,
-                row_tint              = EXCLUDED.row_tint,
-                filled_by_name        = EXCLUDED.filled_by_name,
-                updated_at            = NOW()
         """, (
             handover_id,
             cn,
