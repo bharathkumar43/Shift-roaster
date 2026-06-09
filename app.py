@@ -11,6 +11,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 from flask import (Flask, render_template, request, session, g,
                    redirect, url_for, send_file, flash, jsonify)
 from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import msal
 
@@ -140,6 +141,7 @@ def _roster_weekoff_context(employees, year, month):
 
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 app.secret_key = os.getenv("SECRET_KEY", "roster-automation-secret-key-change-in-production")
 
 APP_NAME = "Employee Work Load Distribution"
