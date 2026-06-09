@@ -168,7 +168,7 @@
                             <div class="small text-muted">
                                 <i class="bi bi-info-circle"></i>
                                 Supports <strong>.xlsx</strong>, <strong>.pdf</strong>, <strong>.png</strong>, <strong>.jpg</strong>.
-                                Employees are read automatically â€” you can review and edit before confirming.
+                                Employees are read automatically — you can review and edit before confirming.
                                 This will <strong>replace</strong> all existing employees.
                             </div>
                             <button type="submit" class="btn btn-primary btn-sm" id="uploadBtn" disabled>
@@ -215,7 +215,7 @@
                                     </div>
                                     {% endfor %}
                                 </div>
-                                <div class="form-text">Full project load â€” assigned equally among primary engineers.</div>
+                                <div class="form-text">Full project load — assigned equally among primary engineers.</div>
                             </div>
 
                             <div class="mb-3">
@@ -499,7 +499,7 @@
                                             {% elif emp.shift == 3 %}
                                             <span class="badge bg-warning text-dark">S3</span>
                                             {% else %}
-                                            <span class="text-muted small">â€”</span>
+                                            <span class="text-muted small">—</span>
                                             {% endif %}
                                         </td>
                                         <td>
@@ -762,7 +762,7 @@
                     <div class="mb-3" id="editTypeSection">
                         <label class="form-label fw-semibold">Primary Product Types</label>
                         <div id="editTypeToggles" class="d-flex gap-2 flex-wrap"></div>
-                        <div class="form-text">Full load â€” distributed equally.</div>
+                        <div class="form-text">Full load — distributed equally.</div>
                     </div>
                     <div class="mb-4" id="editDaySection">
                         <label class="form-label fw-semibold">Working Days</label>
@@ -863,7 +863,7 @@
                 <div class="modal-body p-0">
                     <div id="shiftModalLoading" class="text-center py-5">
                         <div class="spinner-border text-primary" role="status"></div>
-                        <p class="mt-3 text-muted">Loadingâ€¦</p>
+                        <p class="mt-3 text-muted">Loading...</p>
                     </div>
                     <div id="shiftModalContent" class="d-none">
                         <div class="px-3 py-2 border-bottom bg-light small text-muted">
@@ -1254,7 +1254,7 @@
                 });
         }
 
-        // Upload section is admin-only â€” guard against null
+        // Upload section is admin-only — guard against null
         if (fileInput) {
             fileInput.addEventListener('change', function() {
                 if (fileInput.files.length > 0) openPreview(fileInput.files[0]);
@@ -1559,7 +1559,7 @@
                                     html += sh.handler;
                                     html += '</td>';
                                 } else {
-                                    html += '<td class="text-center text-muted small">â€”</td>';
+                                    html += '<td class="text-center text-muted small">—</td>';
                                 }
                             });
                             html += '</tr>';
@@ -1711,7 +1711,7 @@
             });
             var btn = saveShiftsBtn;
             btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Savingâ€¦';
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
             fetch('/save_shifts', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},

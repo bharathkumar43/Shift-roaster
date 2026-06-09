@@ -257,7 +257,7 @@
                                         <td class="fw-medium small">{{ r.employee_name }}</td>
                                         <td class="small">{{ r.leave_date }}</td>
                                         <td><span class="badge bg-{{ 'primary' if r.leave_type == 'planned' else ('danger' if r.leave_type == 'sick' else 'warning text-dark') }}">{{ r.leave_type | capitalize }}</span></td>
-                                        <td class="small text-muted">{{ r.reason or 'â€”' }}</td>
+                                        <td class="small text-muted">{{ r.reason or '—' }}</td>
                                         <td>
                                             <div class="d-flex gap-1">
                                                 <form method="POST" action="{{ url_for('approve_leave_route', request_id=r.id) }}" class="d-inline">
@@ -310,7 +310,7 @@
                                         <td class="fw-medium small">{{ l.employee_name }}</td>
                                         <td class="small">{{ l.leave_date }}</td>
                                         <td><span class="badge bg-{{ 'primary' if l.leave_type == 'planned' else ('danger' if l.leave_type == 'sick' else 'warning text-dark') }}">{{ l.leave_type | capitalize }}</span></td>
-                                        <td class="small text-muted">{{ l.reason or 'â€”' }}</td>
+                                        <td class="small text-muted">{{ l.reason or '—' }}</td>
                                         {% if current_user and current_user.role == 'admin' %}
                                         <td>
                                             <form method="POST" action="{{ url_for('cancel_leave_route', leave_id=l.id) }}" class="d-inline">

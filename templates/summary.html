@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Summary â€” {{ app_name }}</title>
+    <title>Summary — {{ app_name }}</title>
     <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='bootstrap-icons.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
@@ -15,7 +15,7 @@
             <i class="bi bi-arrow-left"></i>
         </a>
         <span class="navbar-brand fw-bold mb-0">
-            <i class="bi bi-table"></i> Summary â€” {{ month_name }} {{ year }}
+            <i class="bi bi-table"></i> Summary — {{ month_name }} {{ year }}
         </span>
         <div class="ms-auto">
             {% if current_user %}
@@ -107,7 +107,7 @@
                 </div>
                 <div class="col-auto">
                     <label class="form-label fw-semibold small mb-1" for="summaryPersonFilter">Person</label>
-                    <select class="form-select form-select-sm" id="summaryPersonFilter" style="min-width:200px" title="Filter to one engineerâ€™s coverage">
+                    <select class="form-select form-select-sm" id="summaryPersonFilter" style="min-width:200px" title="Filter to one engineer's coverage">
                         <option value="all">All people</option>
                     </select>
                 </div>
@@ -122,11 +122,11 @@
                 </div>
                 <div class="col-12 small text-muted" id="shiftFilterHint" style="display:none;"></div>
                 <div class="col-12 col-lg-auto ms-lg-auto d-flex flex-wrap gap-2">
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="btnDlProjects" title="Export current filters â€” By Projects">
-                        <i class="bi bi-download"></i> CSV â€” Projects
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="btnDlProjects" title="Export current filters — By Projects">
+                        <i class="bi bi-download"></i> CSV — Projects
                     </button>
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="btnDlEmployees" title="Export current filters â€” By Employees">
-                        <i class="bi bi-download"></i> CSV â€” Employees
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="btnDlEmployees" title="Export current filters — By Employees">
+                        <i class="bi bi-download"></i> CSV — Employees
                     </button>
                 </div>
             </div>
@@ -162,7 +162,7 @@
             {% else %}
             <div class="mb-3">
                 <input type="text" class="form-control form-control-sm" id="projFilter"
-                       placeholder="Search project nameâ€¦" style="max-width:320px" autocomplete="off">
+                       placeholder="Search project name..." style="max-width:320px" autocomplete="off">
             </div>
             <div id="projectsView"></div>
             {% endif %}
@@ -172,7 +172,7 @@
         <div class="tab-pane fade" id="tabEmployees" role="tabpanel">
             <div class="mb-3">
                 <input type="text" class="form-control form-control-sm" id="empFilter"
-                       placeholder="Search employee nameâ€¦" style="max-width:320px" autocomplete="off">
+                       placeholder="Search employee name..." style="max-width:320px" autocomplete="off">
             </div>
             <div id="employeesView"></div>
         </div>
@@ -220,7 +220,7 @@
             var last  = coverage.find(function (d) { return d.day_num === days[days.length - 1]; });
             var label = 'W' + w;
             if (first && last) {
-                label += ' (' + first.date.split(' ')[1] + 'â€“' + last.date.split(' ')[1] + ')';
+                label += ' (' + first.date.split(' ')[1] + '—' + last.date.split(' ')[1] + ')';
             }
             var btn = document.createElement('button');
             btn.className = 'btn btn-outline-secondary';
@@ -290,7 +290,7 @@
         return (perSel && perSel.value !== 'all') ? perSel.value : 'all';
     }
 
-    /** 'all' | 1 | 2 | 3 â€” roster / coverage column focus */
+    /** 'all' | 1 | 2 | 3 — roster / coverage column focus */
     function selectedShiftFilter() {
         var s = document.getElementById('summaryShiftFilter');
         if (!s || s.value === 'all') return 'all';
@@ -315,7 +315,7 @@
         }
         var n = employees.filter(function (e) { return rosterShiftMatches(e.name, sf); }).length;
         el.style.display = 'block';
-        el.innerHTML = '<i class="bi bi-info-circle"></i> Showing <strong>Shift ' + sf + '</strong> roster: <strong>' + n + '</strong> engineer(s). Project tables show the <strong>S' + sf + '</strong> column; employee lists show only people on this shift, with assignments on this shiftâ€™s lane.';
+        el.innerHTML = '<i class="bi bi-info-circle"></i> Showing <strong>Shift ' + sf + '</strong> roster: <strong>' + n + '</strong> engineer(s). Project tables show the <strong>S' + sf + '</strong> column; employee lists show only people on this shift, with assignments on this shift's lane.';
     }
 
     function filteredDayNums() {
@@ -387,7 +387,7 @@
     }
 
     // empData: emp_name -> {content_types, shift, days:{day_num: {date,day_abbr,projects:[...]}}}
-    // scopeShift: null = aggregate all shift columns; 1â€“3 = only that coverage column
+    // scopeShift: null = aggregate all shift columns; 1—3 = only that coverage column
     function buildEmpDataShiftScoped(scopeShift) {
         var ed = {};
         employees.forEach(function (e) {
@@ -481,7 +481,7 @@
                         if (sh.handler) {
                             html += '<td class="text-center small">' + sh.handler + '</td>';
                         } else {
-                            html += '<td class="text-center text-muted small">â€”</td>';
+                            html += '<td class="text-center text-muted small">—</td>';
                         }
                     });
                     html += '</tr>';

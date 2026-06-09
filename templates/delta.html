@@ -98,7 +98,7 @@
                                     <option value="{{ m }}">{{ m }}</option>
                                     {% endfor %}
                                 </select>
-                                <div class="form-text text-warning"><i class="bi bi-exclamation-triangle"></i> No manager found for this project â€” please select one</div>
+                                <div class="form-text text-warning"><i class="bi bi-exclamation-triangle"></i> No manager found for this project — please select one</div>
                             </div>
                         </div>
 
@@ -245,7 +245,7 @@
                                 </td>
                                 <td class="small">
                                     {% if ev.manager_name %}<span class="fw-medium">{{ ev.manager_name }}</span>
-                                    {% else %}<span class="text-muted">â€”</span>{% endif %}
+                                    {% else %}<span class="text-muted">—</span>{% endif %}
                                 </td>
                                 <td class="small">
                                     {% if ev.start_date == ev.end_date %}
@@ -256,13 +256,13 @@
                                         {{ ev.end_date }}{% if ev.end_time %} <span class="text-muted">{{ ev.end_time }}</span>{% endif %}
                                     {% endif %}
                                 </td>
-                                <td class="small text-muted">{{ ev.created_by or 'â€”' }}</td>
+                                <td class="small text-muted">{{ ev.created_by or '—' }}</td>
                                 {% set proj_key = ev.project_name ~ "||" ~ ev.product_type %}
                                 <td>
                                     {% if not is_completed %}
                                         <span class="badge bg-success">Upcoming</span>
                                     {% elif proj_key in decommissioned_keys %}
-                                        {# project_lifecycle is authoritative â€” overrides delta_events.delta_status #}
+                                        {# project_lifecycle is authoritative — overrides delta_events.delta_status #}
                                         <span class="badge bg-dark">Decommissioned</span>
                                     {% elif proj_key in final_validation_keys %}
                                         <span class="badge bg-warning text-dark">Final Validation</span>
@@ -275,7 +275,7 @@
                                             <input type="hidden" name="project_name" value="{{ ev.project_name }}">
                                             <input type="hidden" name="product_type" value="{{ ev.product_type }}">
                                             <select name="delta_status" class="form-select form-select-sm" style="min-width:140px" required>
-                                                <option value="" disabled selected>Set phaseâ€¦</option>
+                                                <option value="" disabled selected>Set phase...</option>
                                                 <option value="pre_delta">Pre-delta</option>
                                                 <option value="delta_issues">Delta Issues</option>
                                                 <option value="final_validation">Final Validation</option>
@@ -362,7 +362,7 @@
                          style="background:rgba(25,135,84,0.08)">
                         <i class="bi bi-calendar-week text-success fs-5"></i>
                         <span class="fw-semibold text-success">Running Week &nbsp;
-                            <span class="fw-normal text-dark">{{ week_start }} â€“ {{ week_end }}</span>
+                            <span class="fw-normal text-dark">{{ week_start }} — {{ week_end }}</span>
                         </span>
                         <span class="badge bg-success ms-1">{{ current_week_events|length }}</span>
                     </div>
@@ -388,7 +388,7 @@
                         </button>
                     </div>
 
-                    <!-- Inline date range panel â€” no modal, so date pickers work on all browsers -->
+                    <!-- Inline date range panel — no modal, so date pickers work on all browsers -->
                     <div id="rangePanelWrap" style="display:none">
                         <div class="p-3 border-bottom" style="background:#f0f4ff">
                             <div class="fw-semibold small mb-2 text-primary">
@@ -480,7 +480,7 @@
                                             {{ proj.product_type }}
                                         </span>
                                     </td>
-                                    <td class="small text-muted">{{ proj.final_validation_date or 'â€”' }}</td>
+                                    <td class="small text-muted">{{ proj.final_validation_date or '—' }}</td>
                                     <td>
                                         <div class="d-flex gap-1">
                                             <form method="POST" action="{{ url_for('delta_decommission') }}" class="d-inline"
@@ -540,8 +540,8 @@
                                     <td>
                                         <span class="badge bg-secondary">{{ proj.product_type }}</span>
                                     </td>
-                                    <td class="small text-muted">{{ proj.final_validation_date or 'â€”' }}</td>
-                                    <td class="small fw-medium text-danger">{{ proj.decommission_date or 'â€”' }}</td>
+                                    <td class="small text-muted">{{ proj.final_validation_date or '—' }}</td>
+                                    <td class="small fw-medium text-danger">{{ proj.decommission_date or '—' }}</td>
                                     <td>
                                         <form method="POST" action="{{ url_for('delta_reactivate') }}" class="d-inline"
                                               onsubmit="return confirm('Reactivate {{ proj.project_name }}? It will be removed from Decommissioned and available for new delta events.')">
@@ -716,7 +716,7 @@
 
                         var emptyOpt = document.createElement('option');
                         emptyOpt.value = '';
-                        emptyOpt.textContent = 'â€” unassigned â€”';
+                        emptyOpt.textContent = '— unassigned —';
                         sel.appendChild(emptyOpt);
 
                         shiftData.eligible.forEach(function(name) {
@@ -749,7 +749,7 @@
                 saveStartTime.value = startTimeInput.value;
                 saveEndTime.value = endTimeInput.value;
 
-                previewBadge.textContent = projectName + ' â€” ' + productType;
+                previewBadge.textContent = projectName + ' — ' + productType;
                 previewCard.style.removeProperty('display');
 
                 previewCard.scrollIntoView({behavior: 'smooth', block: 'nearest'});
@@ -765,7 +765,7 @@
             var btn = this.querySelector('button[type="submit"]');
             if (btn.disabled) { e.preventDefault(); return; }   // block double-submit
             btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Savingâ€¦';
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving...';
 
             var selects = previewBody.querySelectorAll('select');
             saveAssignments.innerHTML = '';
@@ -908,7 +908,7 @@
 
                     data.events.forEach(function (ev) {
                         var typeColor   = TYPE_COLORS[ev.product_type] || 'secondary';
-                        var statusBadge = STATUS_LABELS[ev.delta_status] || '<span class="badge bg-secondary">â€”</span>';
+                        var statusBadge = STATUS_LABELS[ev.delta_status] || '<span class="badge bg-secondary">—</span>';
 
                         var byDate = {};
                         ev.assignments.forEach(function (a) {
@@ -921,9 +921,9 @@
                             var s = byDate[d];
                             rows += '<tr>' +
                                 '<td class="small">' + d + '</td>' +
-                                '<td class="text-center small">' + (s[1] || '<span class="text-muted">â€”</span>') + '</td>' +
-                                '<td class="text-center small">' + (s[2] || '<span class="text-muted">â€”</span>') + '</td>' +
-                                '<td class="text-center small">' + (s[3] || '<span class="text-muted">â€”</span>') + '</td>' +
+                                '<td class="text-center small">' + (s[1] || '<span class="text-muted">—</span>') + '</td>' +
+                                '<td class="text-center small">' + (s[2] || '<span class="text-muted">—</span>') + '</td>' +
+                                '<td class="text-center small">' + (s[3] || '<span class="text-muted">—</span>') + '</td>' +
                                 '</tr>';
                         });
 

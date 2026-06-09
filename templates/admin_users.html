@@ -78,7 +78,7 @@
                             <tr>
                                 <td class="text-muted small">{{ u.id }}</td>
                                 <td class="fw-semibold small">{{ u.username }}</td>
-                                <td>{{ u.full_name or 'â€”' }}</td>
+                                <td>{{ u.full_name or '—' }}</td>
                                 <td>
                                     {% if u.role == 'admin' %}
                                     <span class="badge bg-danger">admin</span>
@@ -96,7 +96,7 @@
                                     <span class="text-muted small"><i class="bi bi-dash"></i> Not linked</span>
                                     {% endif %}
                                 </td>
-                                <td class="small text-muted">{{ u.created_at.strftime('%d %b %Y') if u.created_at else 'â€”' }}</td>
+                                <td class="small text-muted">{{ u.created_at.strftime('%d %b %Y') if u.created_at else '—' }}</td>
                                 <td>
                                     {% if u.id != current_user.id %}
                                     <div class="d-flex gap-1 flex-wrap">
@@ -129,7 +129,7 @@
                                     <div class="collapse mt-2" id="linkForm{{ u.id }}">
                                         <form method="POST" action="{{ url_for('admin_link_user_employee', user_id=u.id) }}" class="d-flex gap-1">
                                             <select name="employee_id" class="form-select form-select-sm">
-                                                <option value="">â€” None (unlink) â€”</option>
+                                                <option value="">— None (unlink) —</option>
                                                 {% for emp in all_employees %}
                                                 <option value="{{ emp.id }}" {% if emp.id == u.employee_id %}selected{% endif %}>
                                                     {{ emp.name }} ({{ emp.emp_role }})

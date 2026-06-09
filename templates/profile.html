@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profile â€” {{ app_name }}</title>
+    <title>Profile — {{ app_name }}</title>
     <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='bootstrap-icons.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
@@ -93,7 +93,7 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label fw-semibold">Member Since</label>
-                    <input type="text" class="form-control" value="{{ user.created_at.strftime('%B %d, %Y') if user.created_at else 'â€”' }}" disabled>
+                    <input type="text" class="form-control" value="{{ user.created_at.strftime('%B %d, %Y') if user.created_at else '—' }}" disabled>
                 </div>
                 <button type="submit" class="btn btn-primary">
                     <i class="bi bi-check2"></i> Save Profile

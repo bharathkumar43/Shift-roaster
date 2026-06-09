@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Handover #{{ handover.id }} â€” {{ app_name }}</title>
+    <title>Handover #{{ handover.id }} — {{ app_name }}</title>
     <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='bootstrap-icons.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
@@ -111,9 +111,9 @@
                                             {% endif %}">
                                             {{ entry.entry_status }}
                                         </span>
-                                        {% else %}â€”{% endif %}
+                                        {% else %}—{% endif %}
                                     </td>
-                                    <td class="text-muted small">{{ entry.remarks or 'â€”' }}</td>
+                                    <td class="text-muted small">{{ entry.remarks or '—' }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
