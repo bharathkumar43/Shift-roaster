@@ -60,8 +60,8 @@
                                       action="{{ url_for('sh_users_update_role', user_id=u.id) }}"
                                       onchange="this.submit()">
                                     <select class="form-select form-select-sm" name="role">
-                                        <option value="user"  {% if u.role == 'user'  %}selected{% endif %}>User</option>
-                                        <option value="admin" {% if u.role == 'admin' %}selected{% endif %}>Admin</option>
+                                        <option value="user"  {% if not u.sh_is_admin %}selected{% endif %}>User</option>
+                                        <option value="admin" {% if u.sh_is_admin %}selected{% endif %}>SH Admin</option>
                                     </select>
                                 </form>
                             </td>

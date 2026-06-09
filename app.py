@@ -2824,7 +2824,7 @@ def sh_form():
                            shift_label=shift_labels.get(shift_num, f"Shift {shift_num}"),
                            shift_time=shift_times.get(shift_num, ""),
                            current_user=user,
-                           is_admin=user.get("role") == "admin")
+                           is_admin=bool(user.get("sh_is_admin")))
 
 
 @app.route("/shift-handover/form/save", methods=["POST"])
@@ -2882,8 +2882,8 @@ def sh_form_save():
 @app.route("/shift-handover/form/submit", methods=["POST"])
 @login_required
 def sh_form_submit():
-    if not g.user or g.user.get("role") != "admin":
-        flash("Only admins can submit a handover.", "danger")
+    if not g.user or not g.user.get("sh_is_admin"):
+        flash("Only shift handover admins can submit a handover.", "danger")
         return redirect(url_for("shift_handover"))
     handover_id  = int(request.form.get("handover_id", 0))
     project_name = request.form.get("project_name", "")
@@ -3185,8 +3185,8 @@ def sh_users_update_role(user_id):
     new_role = request.form.get("role", "user")
     if new_role not in ("admin", "user"):
         return jsonify({"error": "Invalid role"}), 400
-    db.sh_update_user_role(user_id, new_role)
-    flash("Role updated.", "success")
+    db.sh_set_user_sh_admin(user_id, new_role == "admin")
+    flash("SH Admin access updated.", "success")
     return redirect(url_for("sh_users"))
 
 

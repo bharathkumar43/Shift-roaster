@@ -951,7 +951,12 @@ def update_user_username(user_id, new_username):
 def get_user_by_id(user_id):
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+    cur.execute("""
+        SELECT u.*, COALESCE(s.sh_is_admin, FALSE) AS sh_is_admin
+        FROM users u
+        LEFT JOIN sh_user_shifts s ON s.user_id = u.id
+        WHERE u.id = %s
+    """, (user_id,))
     row = _fetchone(cur)
     cur.close()
     conn.close()
@@ -1618,10 +1623,17 @@ def sh_init_tables():
             user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
             shift_1 BOOLEAN NOT NULL DEFAULT FALSE,
             shift_2 BOOLEAN NOT NULL DEFAULT FALSE,
-            shift_3 BOOLEAN NOT NULL DEFAULT FALSE
+            shift_3 BOOLEAN NOT NULL DEFAULT FALSE,
+            sh_is_admin BOOLEAN NOT NULL DEFAULT FALSE
         )
     """)
     conn.commit()
+
+    try:
+        cur.execute("ALTER TABLE sh_user_shifts ADD COLUMN sh_is_admin BOOLEAN NOT NULL DEFAULT FALSE")
+        conn.commit()
+    except Exception:
+        conn.rollback()
 
     # Add email and is_active columns to users table if missing
     for _col, _def in [
@@ -2242,7 +2254,8 @@ def sh_get_all_users_with_shifts():
                COALESCE(u.is_active, TRUE) AS is_active,
                COALESCE(s.shift_1, FALSE) AS shift_1,
                COALESCE(s.shift_2, FALSE) AS shift_2,
-               COALESCE(s.shift_3, FALSE) AS shift_3
+               COALESCE(s.shift_3, FALSE) AS shift_3,
+               COALESCE(s.sh_is_admin, FALSE) AS sh_is_admin
         FROM users u
         LEFT JOIN sh_user_shifts s ON s.user_id = u.id
         ORDER BY LOWER(COALESCE(NULLIF(u.email, ''), u.username)), u.id
@@ -2257,6 +2270,20 @@ def sh_update_user_role(user_id, new_role):
     conn = get_db()
     cur = conn.cursor()
     cur.execute("UPDATE users SET role = %s WHERE id = %s", (new_role, user_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def sh_set_user_sh_admin(user_id, is_admin):
+    """Set shift-handover-only admin flag — does NOT touch users.role."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO sh_user_shifts (user_id, sh_is_admin)
+        VALUES (%s, %s)
+        ON CONFLICT (user_id) DO UPDATE SET sh_is_admin = EXCLUDED.sh_is_admin
+    """, (user_id, bool(is_admin)))
     conn.commit()
     cur.close()
     conn.close()
