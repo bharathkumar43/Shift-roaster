@@ -952,7 +952,8 @@ def get_user_by_id(user_id):
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
-        SELECT u.*, COALESCE(s.sh_is_admin, FALSE) AS sh_is_admin
+        SELECT u.*,
+               (u.role = 'admin' OR COALESCE(s.sh_is_admin, FALSE)) AS sh_is_admin
         FROM users u
         LEFT JOIN sh_user_shifts s ON s.user_id = u.id
         WHERE u.id = %s
