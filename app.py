@@ -1606,6 +1606,11 @@ def azure_callback():
         user = db.get_user_by_id(uid) if uid else db.get_user_by_username(email)
 
     if user:
+        # Promote to admin if this email is the designated admin
+        admin_email = os.getenv("ADMIN_EMAIL", "")
+        if admin_email and email.lower() == admin_email.lower() and user.get("role") != "admin":
+            db.sh_update_user_role(user["id"], "admin")
+            user = db.get_user_by_id(user["id"])
         session.clear()
         session["user_id"] = user["id"]
         flash(f"Welcome, {display_name or email}!", "success")
@@ -3182,10 +3187,18 @@ def sh_users_update_role(user_id):
     if not g.user or not g.user.get("sh_is_admin"):
         return jsonify({"error": "SH Admin only"}), 403
     new_role = request.form.get("role", "user")
-    if new_role not in ("admin", "user"):
+    if new_role not in ("roster_admin", "sh_admin", "user"):
         return jsonify({"error": "Invalid role"}), 400
-    db.sh_set_user_sh_admin(user_id, new_role == "admin")
-    flash("SH Admin access updated.", "success")
+    if new_role == "roster_admin":
+        db.sh_update_user_role(user_id, "admin")
+        db.sh_set_user_sh_admin(user_id, True)
+    elif new_role == "sh_admin":
+        db.sh_update_user_role(user_id, "user")
+        db.sh_set_user_sh_admin(user_id, True)
+    else:
+        db.sh_update_user_role(user_id, "user")
+        db.sh_set_user_sh_admin(user_id, False)
+    flash("Role updated.", "success")
     return redirect(url_for("sh_users"))
 
 

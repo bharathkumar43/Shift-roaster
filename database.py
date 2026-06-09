@@ -249,6 +249,15 @@ def init_db():
             "INSERT INTO users (username, password_hash, full_name, role) VALUES (%s, %s, %s, %s)",
             (admin_user, generate_password_hash(admin_pass), "Administrator", "admin")
         )
+    # Always ensure the designated admin email has role='admin' on every startup.
+    # This self-heals if the admin logged in via Microsoft OAuth (which defaults to role='user').
+    admin_email = os.getenv("ADMIN_EMAIL", "")
+    if admin_email:
+        cur.execute(
+            "UPDATE users SET role = 'admin' "
+            "WHERE LOWER(COALESCE(NULLIF(email,''), username)) = LOWER(%s)",
+            (admin_email,)
+        )
     conn.commit()
     cur.close()
     conn.close()
