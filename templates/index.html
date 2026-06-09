@@ -1309,7 +1309,8 @@
                 var hideFields = (empRole === 'manager' || empRole === 'shift_lead');
                 document.getElementById('editTypeSection').style.display = hideFields ? 'none' : '';
                 document.getElementById('editDaySection').style.display = hideFields ? 'none' : '';
-                document.getElementById('editLearningSection').style.display = hideFields ? 'none' : '';
+                var lsEl = document.getElementById('editLearningSection');
+                if (lsEl) lsEl.style.display = hideFields ? 'none' : '';
 
                 var cts      = JSON.parse(btn.dataset.contentTypes);
                 var days     = JSON.parse(btn.dataset.workingDays);
