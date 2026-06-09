@@ -2713,7 +2713,7 @@ def shift_handover():
 @app.route("/shift-handover/daily-notes", methods=["POST"])
 @login_required
 def sh_save_daily_notes():
-    if not g.user or g.user.get("role") != "admin":
+    if not g.user or not g.user.get("sh_is_admin"):
         return jsonify({"error": "Admin only"}), 403
     note_date = request.form.get("note_date", date.today().isoformat())
     db.sh_upsert_daily_notes(
@@ -2836,7 +2836,6 @@ def sh_form_save():
     shift_num    = int(request.form.get("shift_num", 1))
     lead_notes   = request.form.get("lead_notes", "")
     user         = g.user
-    is_admin     = user.get("role") == "admin"
     user_name    = _sh_user_name(user)
 
     # Collect client entry rows from form
@@ -2899,8 +2898,8 @@ def sh_form_submit():
 @app.route("/shift-handover/<int:handover_id>/engineer-ack", methods=["POST"])
 @login_required
 def sh_engineer_ack(handover_id):
-    if not g.user or g.user.get("role") != "admin":
-        flash("Admin only.", "danger")
+    if not g.user or not g.user.get("sh_is_admin"):
+        flash("SH Admin only.", "danger")
         return redirect(url_for("shift_handover"))
     db.sh_engineer_ack(handover_id, _sh_user_name(g.user))
     flash("Engineer acknowledgement recorded.", "success")
@@ -2911,8 +2910,8 @@ def sh_engineer_ack(handover_id):
 @app.route("/shift-handover/<int:handover_id>/manager-ack", methods=["POST"])
 @login_required
 def sh_manager_ack(handover_id):
-    if not g.user or g.user.get("role") != "admin":
-        flash("Admin only.", "danger")
+    if not g.user or not g.user.get("sh_is_admin"):
+        flash("SH Admin only.", "danger")
         return redirect(url_for("shift_handover"))
     db.sh_manager_ack(handover_id, _sh_user_name(g.user))
     flash("Manager acknowledgement recorded.", "success")
@@ -2950,8 +2949,8 @@ def sh_download_mom(mom_id):
 @login_required
 def sh_delete_mom(mom_id):
     user = g.user
-    if not user or user.get("role") != "admin":
-        flash("Only admins can delete MOM files.", "danger")
+    if not user or not user.get("sh_is_admin"):
+        flash("Only SH admins can delete MOM files.", "danger")
         return redirect(request.referrer or url_for("shift_handover"))
     db.sh_delete_mom(mom_id, user["id"], True)
     flash("MOM file deleted.", "success")
@@ -3033,7 +3032,7 @@ def sh_client_history():
             dates_display[d] = str(d)
 
     is_content = (project_name == "Content")
-    is_admin   = bool(g.user and g.user.get("role") == "admin")
+    is_admin   = bool(g.user and g.user.get("sh_is_admin"))
 
     return render_template(
         "shift_handover_client_history.html",
@@ -3053,8 +3052,8 @@ def sh_client_history():
 @app.route("/shift-handover/compliance")
 @login_required
 def sh_compliance():
-    if not g.user or g.user.get("role") != "admin":
-        flash("Admin access required.", "danger")
+    if not g.user or not g.user.get("sh_is_admin"):
+        flash("SH Admin access required.", "danger")
         return redirect(url_for("shift_handover"))
     target_date = request.args.get("date", date.today().isoformat())
     rows = db.sh_compliance_data(target_date)
@@ -3081,8 +3080,8 @@ def sh_selector():
 @app.route("/shift-handover/clients")
 @login_required
 def sh_clients():
-    if not g.user or g.user.get("role") != "admin":
-        flash("Admin access required.", "danger")
+    if not g.user or not g.user.get("sh_is_admin"):
+        flash("SH Admin access required.", "danger")
         return redirect(url_for("shift_handover"))
     projects = db.sh_get_project_names()
     active_project = request.args.get("project", projects[0] if projects else "")
@@ -3098,8 +3097,8 @@ def sh_clients():
 @app.route("/shift-handover/projects/add", methods=["POST"])
 @login_required
 def sh_projects_add():
-    if not g.user or g.user.get("role") != "admin":
-        flash("Admin access required.", "danger")
+    if not g.user or not g.user.get("sh_is_admin"):
+        flash("SH Admin access required.", "danger")
         return redirect(url_for("sh_clients"))
     pname = request.form.get("project_name", "").strip()
     if pname:
@@ -3113,8 +3112,8 @@ def sh_projects_add():
 @app.route("/shift-handover/projects/delete", methods=["POST"])
 @login_required
 def sh_projects_delete():
-    if not g.user or g.user.get("role") != "admin":
-        flash("Admin access required.", "danger")
+    if not g.user or not g.user.get("sh_is_admin"):
+        flash("SH Admin access required.", "danger")
         return redirect(url_for("sh_clients"))
     pname = request.form.get("project_name", "").strip()
     if pname:
@@ -3126,8 +3125,8 @@ def sh_projects_delete():
 @app.route("/shift-handover/clients/add", methods=["POST"])
 @login_required
 def sh_clients_add():
-    if not g.user or g.user.get("role") != "admin":
-        flash("Admin access required.", "danger")
+    if not g.user or not g.user.get("sh_is_admin"):
+        flash("SH Admin access required.", "danger")
         return redirect(url_for("sh_clients"))
     project_name = request.form.get("project_name", "").strip()
     client_name  = request.form.get("client_name", "").strip()
@@ -3142,8 +3141,8 @@ def sh_clients_add():
 @app.route("/shift-handover/clients/<int:client_id>/toggle", methods=["POST"])
 @login_required
 def sh_clients_toggle(client_id):
-    if not g.user or g.user.get("role") != "admin":
-        flash("Admin access required.", "danger")
+    if not g.user or not g.user.get("sh_is_admin"):
+        flash("SH Admin access required.", "danger")
         return redirect(url_for("sh_clients"))
     db.sh_toggle_client(client_id)
     back_project = request.form.get("project_name", "")
@@ -3153,8 +3152,8 @@ def sh_clients_toggle(client_id):
 @app.route("/shift-handover/clients/<int:client_id>/delete", methods=["POST"])
 @login_required
 def sh_clients_delete(client_id):
-    if not g.user or g.user.get("role") != "admin":
-        flash("Admin access required.", "danger")
+    if not g.user or not g.user.get("sh_is_admin"):
+        flash("SH Admin access required.", "danger")
         return redirect(url_for("sh_clients"))
     db.sh_delete_client(client_id)
     flash("Client deleted.", "success")
@@ -3167,8 +3166,8 @@ def sh_clients_delete(client_id):
 @app.route("/shift-handover/users")
 @login_required
 def sh_users():
-    if not g.user or g.user.get("role") != "admin":
-        flash("Admin access required.", "danger")
+    if not g.user or not g.user.get("sh_is_admin"):
+        flash("SH Admin access required.", "danger")
         return redirect(url_for("shift_handover"))
     users = db.sh_get_all_users_with_shifts()
     return render_template("shift_handover_users.html",
@@ -3180,8 +3179,8 @@ def sh_users():
 @app.route("/shift-handover/users/<int:user_id>/role", methods=["POST"])
 @login_required
 def sh_users_update_role(user_id):
-    if not g.user or g.user.get("role") != "admin":
-        return jsonify({"error": "Admin only"}), 403
+    if not g.user or not g.user.get("sh_is_admin"):
+        return jsonify({"error": "SH Admin only"}), 403
     new_role = request.form.get("role", "user")
     if new_role not in ("admin", "user"):
         return jsonify({"error": "Invalid role"}), 400
@@ -3193,8 +3192,8 @@ def sh_users_update_role(user_id):
 @app.route("/shift-handover/users/<int:user_id>/shifts", methods=["POST"])
 @login_required
 def sh_users_update_shifts(user_id):
-    if not g.user or g.user.get("role") != "admin":
-        return jsonify({"error": "Admin only"}), 403
+    if not g.user or not g.user.get("sh_is_admin"):
+        return jsonify({"error": "SH Admin only"}), 403
     s1 = "shift_1" in request.form
     s2 = "shift_2" in request.form
     s3 = "shift_3" in request.form
@@ -3206,8 +3205,8 @@ def sh_users_update_shifts(user_id):
 @app.route("/shift-handover/users/<int:user_id>/toggle", methods=["POST"])
 @login_required
 def sh_users_toggle(user_id):
-    if not g.user or g.user.get("role") != "admin":
-        return jsonify({"error": "Admin only"}), 403
+    if not g.user or not g.user.get("sh_is_admin"):
+        return jsonify({"error": "SH Admin only"}), 403
     db.sh_toggle_user_status(user_id)
     flash("User status updated.", "success")
     return redirect(url_for("sh_users"))
@@ -3216,8 +3215,8 @@ def sh_users_toggle(user_id):
 @app.route("/shift-handover/users/<int:user_id>/delete", methods=["POST"])
 @login_required
 def sh_users_delete(user_id):
-    if not g.user or g.user.get("role") != "admin":
-        return jsonify({"error": "Admin only"}), 403
+    if not g.user or not g.user.get("sh_is_admin"):
+        return jsonify({"error": "SH Admin only"}), 403
     if user_id == g.user.get("id"):
         flash("You cannot delete your own account.", "danger")
         return redirect(url_for("sh_users"))
@@ -3231,8 +3230,8 @@ def sh_users_delete(user_id):
 @app.route("/shift-handover/reports")
 @login_required
 def sh_reports():
-    if not g.user or g.user.get("role") != "admin":
-        flash("Admin access required.", "danger")
+    if not g.user or not g.user.get("sh_is_admin"):
+        flash("SH Admin access required.", "danger")
         return redirect(url_for("shift_handover"))
     mode      = request.args.get("mode", "date")
     date_val  = request.args.get("date", date.today().isoformat())
@@ -3325,8 +3324,8 @@ def sh_history_excel():
 @app.route("/shift-handover/tracking")
 @login_required
 def sh_tracking():
-    if not g.user or g.user.get("role") != "admin":
-        flash("Admin access required.", "danger")
+    if not g.user or not g.user.get("sh_is_admin"):
+        flash("SH Admin access required.", "danger")
         return redirect(url_for("shift_handover"))
     from datetime import timedelta
     target_date = request.args.get("date", date.today().isoformat())
