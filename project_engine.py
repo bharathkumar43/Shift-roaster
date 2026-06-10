@@ -8,8 +8,6 @@ from roster_engine import (
     prepare_employees_for_roster_month,
     is_emp_scheduled_work_day,
 )
-import database as _db
-
 
 def _emp_sort_key(emp_lookup, name):
     """Stable tiebreak: employee id (not alphabetical name)."""
@@ -67,12 +65,9 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
         seen_proj_keys.add(key)
         unique_projects.append(p)
 
-    saved_handlers = _db.get_project_shift_handlers()
-    fixed_assignments, new_handlers = _assign_fixed_handlers(
-        unique_projects, employees, shift_assignments, saved_handlers
+    fixed_assignments, _ = _assign_fixed_handlers(
+        unique_projects, employees, shift_assignments
     )
-    if new_handlers:
-        _db.save_project_shift_handlers(new_handlers)
 
     num_days = calendar.monthrange(year, month)[1]
     coverage = []
@@ -165,64 +160,38 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
     return coverage, warnings
 
 
-def _assign_fixed_handlers(projects, employees, shift_assignments, saved_handlers=None):
+def _assign_fixed_handlers(projects, employees, shift_assignments):
     """
-    Assign one fixed handler per (project, shift) with ≤ 1 count difference between engineers.
+    Assign one fixed handler per (project, shift).
 
-    Rule 1 — Owner pinning: in the owner's own shift the project is always assigned to
-    the owner. This counts towards their global load.
+    All slots are assigned fresh every time — no DB cache. This guarantees the
+    distribution always reflects the current project list and current shift
+    assignments, with ≤ 1 project count difference between eligible engineers.
 
-    Rule 2 — Equal distribution for non-owner shifts: unassigned slots are grouped by
-    (shift, product_type) and filled with the globally least-loaded eligible engineer,
-    guaranteeing ≤ 1 difference within each eligible pool.
-
-    Rule 3 — Stability: saved handlers (from project_shift_handlers DB) are reused
-    as-is when still valid, preventing reshuffling when a new project is added.
-
-    Two-pass approach:
-      Pass 1 — lock in all determined assignments (owner-pinned + valid saved handlers)
-               and seed the global assignment counter with their counts.
-      Pass 2 — group remaining unassigned slots by (shift, product_type), then greedy-
-               fill each group so the least-loaded eligible engineer is always chosen,
-               achieving at most 1 project difference between engineers in the same pool.
+    Two passes:
+      Pass 1 — owner pinning: each project is pinned to its owner in the owner's
+               shift. This seeds the global load counter.
+      Pass 2 — greedy fill: remaining (project, shift) slots are grouped by
+               (shift, product_type). Within each group the globally least-loaded
+               eligible engineer is chosen, so counts stay within 1 of each other.
     """
-    if saved_handlers is None:
-        saved_handlers = {}
-
     emp_lookup = {e["name"]: e for e in employees}
     fixed = {}
-    new_handlers = {}
-    # Global count per engineer name — single-shift employees so this equals per-shift count,
-    # but tracking globally ensures cross-type fairness (e.g. CON+MSG engineer vs EML+MSG).
-    assignment_count = defaultdict(int)
+    assignment_count = defaultdict(int)  # keyed by engineer name, global across all types
 
-    def _is_valid_saved(handler_name, shift_num, product_type):
-        emp = emp_lookup.get(handler_name)
-        return (emp and shift_assignments.get(handler_name) == shift_num
-                and product_type in emp.get("content_types", []))
-
-    # ── Pass 1: lock determined assignments and seed the load counter ──────────
+    # ── Pass 1: owner pinning ─────────────────────────────────────────────────
     for proj in projects:
         owner_name = proj["employee_name"]
         if not emp_lookup.get(owner_name):
             continue
         owner_shift = shift_assignments.get(owner_name)
-        product_type = proj["product_type"]
-        proj_key = (proj["name"], product_type)
+        proj_key = (proj["name"], proj["product_type"])
         if proj_key not in fixed:
             fixed[proj_key] = {}
+        fixed[proj_key][owner_shift] = owner_name
+        assignment_count[owner_name] += 1
 
-        for shift_num in [1, 2, 3]:
-            if shift_num == owner_shift:
-                fixed[proj_key][shift_num] = owner_name
-                assignment_count[owner_name] += 1
-            else:
-                saved_pair = saved_handlers.get((proj["name"], product_type, shift_num))
-                if saved_pair and _is_valid_saved(saved_pair[0], shift_num, product_type):
-                    fixed[proj_key][shift_num] = saved_pair[0]
-                    assignment_count[saved_pair[0]] += 1
-
-    # ── Pass 2: group unassigned slots by (shift, type) then greedy-fill ───────
+    # ── Pass 2: greedy fill for all non-owner shifts ──────────────────────────
     def _candidates(shift_num, product_type):
         return [
             emp["name"] for emp in employees
@@ -230,18 +199,15 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, saved_handler
             and product_type in emp.get("content_types", [])
         ]
 
-    # Collect all unassigned (project, shift) pairs grouped by (shift, product_type)
     unassigned = defaultdict(list)
     for proj in projects:
         if not emp_lookup.get(proj["employee_name"]):
             continue
-        product_type = proj["product_type"]
-        proj_key = (proj["name"], product_type)
+        proj_key = (proj["name"], proj["product_type"])
         for shift_num in [1, 2, 3]:
             if shift_num not in fixed.get(proj_key, {}):
-                unassigned[(shift_num, product_type)].append(proj_key)
+                unassigned[(shift_num, proj["product_type"])].append(proj_key)
 
-    # Assign each group: always pick the globally least-loaded eligible engineer
     for (shift_num, product_type), proj_keys in unassigned.items():
         pool = _candidates(shift_num, product_type)
         for pk in proj_keys:
@@ -251,9 +217,8 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, saved_handler
             fixed[pk][shift_num] = chosen
             if chosen:
                 assignment_count[chosen] += 1
-                new_handlers[(pk[0], pk[1], shift_num)] = (chosen, None)
 
-    return fixed, new_handlers
+    return fixed, {}
 
 
 def _find_backup(product_type, exclude_name, shift_num,

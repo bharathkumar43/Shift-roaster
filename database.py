@@ -2157,7 +2157,8 @@ def _sh_build_coverage_for_dates(year_month_pairs):
         shift_map = get_shift_assignments_for_month(year, month)
         if not shift_map:
             continue
-        coverage, _ = generate_project_coverage(projects, employees, shift_map, year, month)
+        leave_dates = get_leave_dates_map(year, month)
+        coverage, _ = generate_project_coverage(projects, employees, shift_map, year, month, leave_dates)
         for day_info in coverage:
             all_days[(year, month, day_info["day_num"])] = day_info
 

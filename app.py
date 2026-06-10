@@ -1347,21 +1347,6 @@ def summary():
                            year_range_hi=year_hi)
 
 
-@app.route("/summary/rebalance-handlers", methods=["POST"])
-@login_required
-def summary_rebalance_handlers():
-    if not g.user or g.user.get("role") != "admin":
-        flash("Admin access required.", "danger")
-        return redirect(url_for("summary"))
-    db.clear_project_shift_handlers()
-    flash("Project handler assignments cleared. They will be recomputed evenly on the next load.", "success")
-    year = request.form.get("year", type=int)
-    month = request.form.get("month", type=int)
-    if year and month:
-        return redirect(url_for("summary", year=year, month=month))
-    return redirect(url_for("summary"))
-
-
 # ── Manual Shift Editing ─────────────────────────────────
 
 @app.route("/get_shifts", methods=["GET"])

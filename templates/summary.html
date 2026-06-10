@@ -136,17 +136,6 @@
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btnDlEmployees" title="Export current filters — By Employees">
                         <i class="bi bi-download"></i> CSV — Employees
                     </button>
-                    {% if current_user and current_user.role == 'admin' %}
-                    <form method="POST" action="{{ url_for('summary_rebalance_handlers') }}"
-                          onsubmit="return confirm('This will clear all saved project-handler assignments and recompute them evenly. Continue?')">
-                        <input type="hidden" name="year" value="{{ year }}">
-                        <input type="hidden" name="month" value="{{ month }}">
-                        <button type="submit" class="btn btn-sm btn-outline-warning"
-                                title="Clear saved handler assignments and rebalance projects evenly across engineers">
-                            <i class="bi bi-arrow-repeat"></i> Rebalance Handlers
-                        </button>
-                    </form>
-                    {% endif %}
                 </div>
             </div>
         </div>
