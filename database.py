@@ -1474,6 +1474,20 @@ def sh_init_tables():
     """)
     conn.commit()
 
+    # Remove duplicate (handover_date, shift_num, project_name) rows before adding unique constraint
+    try:
+        cur.execute("""
+            DELETE FROM sh_handovers a
+            USING sh_handovers b
+            WHERE a.id > b.id
+              AND a.handover_date = b.handover_date
+              AND a.shift_num = b.shift_num
+              AND a.project_name = b.project_name
+        """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+
     # Add UNIQUE constraint if missing
     try:
         cur.execute("""
@@ -1732,6 +1746,7 @@ def sh_get_or_create_handover(handover_date, shift_num, project_name, user_id, u
     cur.execute("""
         SELECT * FROM sh_handovers
         WHERE handover_date = %s AND shift_num = %s AND project_name = %s
+        ORDER BY id LIMIT 1
     """, (handover_date, shift_num, project_name))
     row = _fetchone(cur)
     if not row:
@@ -1740,20 +1755,13 @@ def sh_get_or_create_handover(handover_date, shift_num, project_name, user_id, u
                 (handover_date, shift_num, project_name, submitted_by_user_id,
                  submitted_by_name, status)
             VALUES (%s, %s, %s, %s, %s, 'draft')
-            ON CONFLICT (handover_date, shift_num, project_name) DO NOTHING
-            RETURNING id
         """, (handover_date, shift_num, project_name, user_id, user_name))
-        r = cur.fetchone()
         conn.commit()
-        if r:
-            handover_id = r[0]
-        else:
-            cur.execute("""
-                SELECT id FROM sh_handovers
-                WHERE handover_date = %s AND shift_num = %s AND project_name = %s
-            """, (handover_date, shift_num, project_name))
-            handover_id = cur.fetchone()[0]
-        cur.execute("SELECT * FROM sh_handovers WHERE id = %s", (handover_id,))
+        cur.execute("""
+            SELECT * FROM sh_handovers
+            WHERE handover_date = %s AND shift_num = %s AND project_name = %s
+            ORDER BY id LIMIT 1
+        """, (handover_date, shift_num, project_name))
         row = _fetchone(cur)
     cur.close()
     conn.close()

@@ -1322,16 +1322,17 @@ def summary():
             _, _, shift_assignments = _generate_roster_with_saved_month(
                 employees, year, month, night_counts
             )
-        except Exception:
+        except Exception as _e:
             shift_assignments = {}
+            flash(f"Roster generation warning: {_e}", "warning")
 
-        if all_projects and shift_assignments:
+        if all_projects:
             try:
                 proj_coverage, proj_warnings = generate_project_coverage(
                     all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
                 )
-            except Exception:
-                pass
+            except Exception as _e:
+                flash(f"Coverage generation error: {_e}", "danger")
 
     month_name = calendar.month_name[month]
     month_names = [calendar.month_name[m] for m in range(1, 13)]
@@ -2878,8 +2879,11 @@ def sh_form_save():
             "row_tint":              row_tint_list[i]      if i < len(row_tint_list)      else None,
         })
 
-    db.sh_save_entries(handover_id, entries, user_name, lead_notes=lead_notes)
-    flash("Draft saved.", "success")
+    try:
+        db.sh_save_entries(handover_id, entries, user_name, lead_notes=lead_notes)
+        flash("Draft saved.", "success")
+    except Exception as _e:
+        flash(f"Save failed: {_e}", "danger")
     return redirect(url_for("sh_form", project=project_name, date=date_str, shift=shift_num))
 
 
