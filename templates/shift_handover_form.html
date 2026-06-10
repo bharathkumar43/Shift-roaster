@@ -634,15 +634,22 @@ function openMomModal(clientName, rowIdx) {
     }
 }
 
-/* Disable double-submit */
+/* Disable double-submit — delay so form submission isn't cancelled by Chrome */
 ['saveBtn','submitBtn'].forEach(function(id) {
     var btn = document.getElementById(id);
     if (!btn) return;
     btn.addEventListener('click', function() {
-        if (this.disabled) return;
-        this.disabled = true;
+        if (this.dataset.submitting) return;
+        this.dataset.submitting = 'true';
         var orig = this.innerHTML, self = this;
-        setTimeout(function() { self.disabled = false; self.innerHTML = orig; }, 6000);
+        setTimeout(function() {
+            self.disabled = true;
+            setTimeout(function() {
+                delete self.dataset.submitting;
+                self.disabled = false;
+                self.innerHTML = orig;
+            }, 6000);
+        }, 0);
     });
 });
 

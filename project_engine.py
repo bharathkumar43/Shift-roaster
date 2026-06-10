@@ -31,13 +31,13 @@ def _pick_min_coverage(candidates, coverage_load, shift_num, product_type, emp_l
     )
 
 
-def _greedy_pick(candidates, assignment_count, shift_num, emp_lookup):
-    """Pick the candidate with the fewest total assignments in this shift (tiebreak by id)."""
+def _greedy_pick(candidates, assignment_count, emp_lookup):
+    """Pick the candidate with the fewest total project assignments globally (tiebreak by id)."""
     if not candidates:
         return None
     return min(
         candidates,
-        key=lambda n: (assignment_count[(n, shift_num)], _emp_sort_key(emp_lookup, n)),
+        key=lambda n: (assignment_count[n], _emp_sort_key(emp_lookup, n)),
     )
 
 
@@ -167,23 +167,24 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
 
 def _assign_fixed_handlers(projects, employees, shift_assignments, saved_handlers=None):
     """
-    Assign one fixed handler per (project, shift).
+    Assign one fixed handler per (project, shift) with ≤ 1 count difference between engineers.
 
     Rule 1 — Owner pinning: in the owner's own shift the project is always assigned to
-    the owner. This counts as +1 towards their load.
+    the owner. This counts towards their global load.
 
-    Rule 2 — Equal distribution for non-owner shifts: for every other shift, greedy
-    picks the engineer with the lowest total project count (owned + already-assigned),
-    so the overall workload is as equal as possible across everyone in each shift.
+    Rule 2 — Equal distribution for non-owner shifts: unassigned slots are grouped by
+    (shift, product_type) and filled with the globally least-loaded eligible engineer,
+    guaranteeing ≤ 1 difference within each eligible pool.
 
     Rule 3 — Stability: saved handlers (from project_shift_handlers DB) are reused
     as-is when still valid, preventing reshuffling when a new project is added.
 
     Two-pass approach:
       Pass 1 — lock in all determined assignments (owner-pinned + valid saved handlers)
-               and seed the assignment counter with their counts.
-      Pass 2 — greedy-fill anything still unassigned, using the seeded counter so new
-               picks go to whoever is least loaded overall.
+               and seed the global assignment counter with their counts.
+      Pass 2 — group remaining unassigned slots by (shift, product_type), then greedy-
+               fill each group so the least-loaded eligible engineer is always chosen,
+               achieving at most 1 project difference between engineers in the same pool.
     """
     if saved_handlers is None:
         saved_handlers = {}
@@ -191,6 +192,8 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, saved_handler
     emp_lookup = {e["name"]: e for e in employees}
     fixed = {}
     new_handlers = {}
+    # Global count per engineer name — single-shift employees so this equals per-shift count,
+    # but tracking globally ensures cross-type fairness (e.g. CON+MSG engineer vs EML+MSG).
     assignment_count = defaultdict(int)
 
     def _is_valid_saved(handler_name, shift_num, product_type):
@@ -212,14 +215,14 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, saved_handler
         for shift_num in [1, 2, 3]:
             if shift_num == owner_shift:
                 fixed[proj_key][shift_num] = owner_name
-                assignment_count[(owner_name, shift_num)] += 1
+                assignment_count[owner_name] += 1
             else:
                 saved_pair = saved_handlers.get((proj["name"], product_type, shift_num))
                 if saved_pair and _is_valid_saved(saved_pair[0], shift_num, product_type):
                     fixed[proj_key][shift_num] = saved_pair[0]
-                    assignment_count[(saved_pair[0], shift_num)] += 1
+                    assignment_count[saved_pair[0]] += 1
 
-    # ── Pass 2: greedy for anything still unassigned ────────────────────────────
+    # ── Pass 2: group unassigned slots by (shift, type) then greedy-fill ───────
     def _candidates(shift_num, product_type):
         return [
             emp["name"] for emp in employees
@@ -227,24 +230,28 @@ def _assign_fixed_handlers(projects, employees, shift_assignments, saved_handler
             and product_type in emp.get("content_types", [])
         ]
 
+    # Collect all unassigned (project, shift) pairs grouped by (shift, product_type)
+    unassigned = defaultdict(list)
     for proj in projects:
-        owner_name = proj["employee_name"]
-        if not emp_lookup.get(owner_name):
+        if not emp_lookup.get(proj["employee_name"]):
             continue
         product_type = proj["product_type"]
         proj_key = (proj["name"], product_type)
-
         for shift_num in [1, 2, 3]:
-            if shift_num in fixed.get(proj_key, {}):
-                continue
+            if shift_num not in fixed.get(proj_key, {}):
+                unassigned[(shift_num, product_type)].append(proj_key)
 
-            pool   = _candidates(shift_num, product_type)
-            chosen = _greedy_pick(pool, assignment_count, shift_num, emp_lookup)
-            fixed[proj_key][shift_num] = chosen
-
+    # Assign each group: always pick the globally least-loaded eligible engineer
+    for (shift_num, product_type), proj_keys in unassigned.items():
+        pool = _candidates(shift_num, product_type)
+        for pk in proj_keys:
+            if pk not in fixed:
+                fixed[pk] = {}
+            chosen = _greedy_pick(pool, assignment_count, emp_lookup) if pool else None
+            fixed[pk][shift_num] = chosen
             if chosen:
-                assignment_count[(chosen, shift_num)] += 1
-                new_handlers[(proj["name"], product_type, shift_num)] = (chosen, None)
+                assignment_count[chosen] += 1
+                new_handlers[(pk[0], pk[1], shift_num)] = (chosen, None)
 
     return fixed, new_handlers
 
