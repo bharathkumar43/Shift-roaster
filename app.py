@@ -1318,21 +1318,14 @@ def summary():
 
     if employees:
         night_counts = db.get_night_shift_counts()
-        try:
-            _, _, shift_assignments = _generate_roster_with_saved_month(
-                employees, year, month, night_counts
-            )
-        except Exception as _e:
-            shift_assignments = {}
-            flash(f"Roster generation warning: {_e}", "warning")
+        _, _, shift_assignments = _generate_roster_with_saved_month(
+            employees, year, month, night_counts
+        )
 
         if all_projects:
-            try:
-                proj_coverage, proj_warnings = generate_project_coverage(
-                    all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
-                )
-            except Exception as _e:
-                flash(f"Coverage generation error: {_e}", "danger")
+            proj_coverage, proj_warnings = generate_project_coverage(
+                all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
+            )
 
     month_name = calendar.month_name[month]
     month_names = [calendar.month_name[m] for m in range(1, 13)]

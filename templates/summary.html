@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -107,7 +107,7 @@
                 </div>
                 <div class="col-auto">
                     <label class="form-label fw-semibold small mb-1" for="summaryPersonFilter">Person</label>
-                    <select class="form-select form-select-sm" id="summaryPersonFilter" style="min-width:200px" title="Filter to one engineer's coverage">
+                    <select class="form-select form-select-sm" id="summaryPersonFilter" style="min-width:200px" title="Filter to one engineer’s coverage">
                         <option value="all">All people</option>
                     </select>
                 </div>
@@ -152,7 +152,7 @@
     </ul>
 
     <div class="tab-content">
-        <!-- â”€â”€ By Projects â”€â”€ -->
+        <!-- ── By Projects ── -->
         <div class="tab-pane fade show active" id="tabProjects" role="tabpanel">
             {% if not all_projects %}
             <div class="text-center text-muted py-5">
@@ -162,17 +162,17 @@
             {% else %}
             <div class="mb-3">
                 <input type="text" class="form-control form-control-sm" id="projFilter"
-                       placeholder="Search project name..." style="max-width:320px" autocomplete="off">
+                       placeholder="Search project name…" style="max-width:320px" autocomplete="off">
             </div>
             <div id="projectsView"></div>
             {% endif %}
         </div>
 
-        <!-- â”€â”€ By Employees â”€â”€ -->
+        <!-- ── By Employees ── -->
         <div class="tab-pane fade" id="tabEmployees" role="tabpanel">
             <div class="mb-3">
                 <input type="text" class="form-control form-control-sm" id="empFilter"
-                       placeholder="Search employee name..." style="max-width:320px" autocomplete="off">
+                       placeholder="Search employee name…" style="max-width:320px" autocomplete="off">
             </div>
             <div id="employeesView"></div>
         </div>
@@ -185,7 +185,7 @@
     <div class="container">{{ app_name }} &middot; Designed for efficient team scheduling</div>
 </footer>
 
-<script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 (function () {
     var coverage        = {{ proj_coverage | tojson }};
@@ -195,7 +195,7 @@
     var YEAR            = {{ year }};
     var MONTH           = {{ month }};
 
-    // â”€â”€ Week helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Week helpers ────────────────────────────────────────
     function weekOfMonth(dayNum) {
         var firstDay = new Date(YEAR, MONTH - 1, 1);
         var offset   = (firstDay.getDay() + 6) % 7; // Mon=0
@@ -220,7 +220,7 @@
             var last  = coverage.find(function (d) { return d.day_num === days[days.length - 1]; });
             var label = 'W' + w;
             if (first && last) {
-                label += ' (' + first.date.split(' ')[1] + '—' + last.date.split(' ')[1] + ')';
+                label += ' (' + first.date.split(' ')[1] + '–' + last.date.split(' ')[1] + ')';
             }
             var btn = document.createElement('button');
             btn.className = 'btn btn-outline-secondary';
@@ -315,7 +315,7 @@
         }
         var n = employees.filter(function (e) { return rosterShiftMatches(e.name, sf); }).length;
         el.style.display = 'block';
-        el.innerHTML = '<i class="bi bi-info-circle"></i> Showing <strong>Shift ' + sf + '</strong> roster: <strong>' + n + '</strong> engineer(s). Project tables show the <strong>S' + sf + '</strong> column; employee lists show only people on this shift, with assignments on this shift's lane.';
+        el.innerHTML = '<i class="bi bi-info-circle"></i> Showing <strong>Shift ' + sf + '</strong> roster: <strong>' + n + '</strong> engineer(s). Project tables show the <strong>S' + sf + '</strong> column; employee lists show only people on this shift, with assignments on this shift’s lane.';
     }
 
     function filteredDayNums() {
@@ -353,7 +353,7 @@
         return sh2.handler === personName;
     }
 
-    // â”€â”€ Badge helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Badge helpers ───────────────────────────────────────
     function typeBadge(ct) {
         if (ct === 'Content') return '<span class="badge bg-info text-dark">CON</span>';
         if (ct === 'Email')   return '<span class="badge bg-primary">EML</span>';
@@ -365,7 +365,7 @@
         return '<span class="badge bg-shift' + s + ' ms-1">Shift ' + s + '</span>';
     }
 
-    // â”€â”€ Build indexed data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Build indexed data ──────────────────────────────────
     // projData: project_name -> {product_type, owner, days:[...]}
     function buildProjData() {
         var pd = {};
@@ -387,7 +387,7 @@
     }
 
     // empData: emp_name -> {content_types, shift, days:{day_num: {date,day_abbr,projects:[...]}}}
-    // scopeShift: null = aggregate all shift columns; 1—3 = only that coverage column
+    // scopeShift: null = aggregate all shift columns; 1–3 = only that coverage column
     function buildEmpDataShiftScoped(scopeShift) {
         var ed = {};
         employees.forEach(function (e) {
@@ -427,7 +427,7 @@
         return buildEmpDataShiftScoped(null);
     }
 
-    // â”€â”€ Render: By Projects â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Render: By Projects ─────────────────────────────────
     function renderProjects() {
         var el = document.getElementById('projectsView');
         if (!el) return;
@@ -496,7 +496,7 @@
         updateShiftHint();
     }
 
-    // â”€â”€ Render: By Employees â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Render: By Employees ────────────────────────────────
     function renderEmployees() {
         var el = document.getElementById('employeesView');
         if (!el) return;
@@ -568,7 +568,7 @@
         updateShiftHint();
     }
 
-    // â”€â”€ CSV export (matches current week, day, person, and search filters) â”€â”€
+    // ── CSV export (matches current week, day, person, and search filters) ──
     function escapeCsv(cell) {
         var s = String(cell == null ? '' : cell);
         if (/[",\r\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
@@ -751,4 +751,3 @@
     </script>
 </body>
 </html>
-
