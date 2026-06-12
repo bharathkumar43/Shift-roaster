@@ -241,6 +241,16 @@ def init_db():
         conn.commit()
     except (psycopg2.errors.DuplicateColumn, psycopg2.errors.UndefinedTable):
         conn.rollback()
+    for _col, _def in [
+        ("manager_name",    "TEXT NOT NULL DEFAULT ''"),
+        ("division",        "TEXT NOT NULL DEFAULT ''"),
+        ("backup_division", "TEXT NOT NULL DEFAULT ''"),
+    ]:
+        try:
+            cur.execute(f"ALTER TABLE employees ADD COLUMN {_col} {_def}")
+            conn.commit()
+        except psycopg2.errors.DuplicateColumn:
+            conn.rollback()
     cur.execute("SELECT COUNT(*) FROM users")
     if cur.fetchone()[0] == 0:
         admin_user = os.getenv("ADMIN_USER", "admin")
@@ -262,6 +272,126 @@ def init_db():
     cur.close()
     conn.close()
     sh_init_tables()
+    run_manager_migration()
+
+
+def run_manager_migration():
+    """
+    One-time idempotent migration: adds Raghu/Sravan managers, sets manager_name /
+    division / backup_division for all employees, removes engineer-owned project copies,
+    and creates any manager-owned projects that had no equivalent yet.
+    """
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM employees WHERE manager_name != ''")
+    if cur.fetchone()[0] > 0:
+        cur.close()
+        conn.close()
+        return
+
+    # Add new SMB managers (Raghu, Sravan)
+    default_wd = json.dumps(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
+    for mgr_name, div in [("Raghu", "SMB"), ("Sravan", "SMB")]:
+        cur.execute("""
+            INSERT INTO employees (name, content_types, working_days, emp_role,
+                                   learning_content_types, manager_name, division, backup_division)
+            VALUES (%s, %s, %s, 'manager', %s, '', %s, '')
+            ON CONFLICT (name) DO NOTHING
+        """, (mgr_name, "[]", default_wd, "{}", div))
+    conn.commit()
+
+    # Set division + backup_division for all managers
+    for name, div, bk_div in [
+        ("Abhishek",         "Enterprise", ""),
+        ("Lakshmi Prasanna", "Enterprise", ""),
+        ("Harika",           "SMB",        "Enterprise"),
+        ("Ajay singh",       "SMB",        "Enterprise"),
+        ("Abhishikth",       "SMB",        ""),
+        ("Sriram",           "SMB",        ""),
+        ("Raghu",            "SMB",        ""),
+        ("Sravan",           "SMB",        ""),
+    ]:
+        cur.execute(
+            "UPDATE employees SET division=%s, backup_division=%s WHERE name=%s",
+            (div, bk_div, name),
+        )
+
+    # Sriram is a sub-manager that reports to Raghu for coverage purposes
+    cur.execute("UPDATE employees SET manager_name='Raghu' WHERE name='Sriram'")
+
+    # Set manager_name for engineers and shift_leads
+    for name, mgr in [
+        ("Chandra Mouli", "Abhishek"),
+        ("Arun",          "Abhishek"),
+        ("Amulya",        "Abhishek"),
+        ("Manoj",         "Abhishek"),
+        ("Harshith",      "Lakshmi Prasanna"),
+        ("David",         "Lakshmi Prasanna"),
+        ("Ganesh",        "Lakshmi Prasanna"),
+        ("Meena",         "Harika"),
+        ("Ravi H",        "Harika"),
+        ("Siva kota",     "Harika"),
+        ("Neelima",       "Ajay singh,Abhishikth"),
+        ("Pallavi",       "Ajay singh,Abhishikth"),
+        ("Ranadeep",      "Ajay singh,Abhishikth"),
+        ("Habeeb",        "Ajay singh,Abhishikth"),
+        ("Vijender",      "Ajay singh,Abhishikth"),
+        ("Ramana",        "Raghu"),
+        ("Vineeta",       "Raghu"),
+        ("Sai kumar",     "Sravan"),
+        ("Dathu",         "Sravan"),
+        ("Swaroop",       "Sravan"),
+    ]:
+        cur.execute("UPDATE employees SET manager_name=%s WHERE name=%s", (mgr, name))
+    conn.commit()
+
+    # Create missing manager-owned projects before removing engineer copies
+    # Resolve manager IDs
+    cur.execute("SELECT id FROM employees WHERE name='Lakshmi Prasanna'")
+    lp_row = cur.fetchone()
+    cur.execute("SELECT id FROM employees WHERE name='Harika'")
+    harika_row = cur.fetchone()
+    if lp_row and harika_row:
+        lp_id = lp_row[0]
+        harika_id = harika_row[0]
+        new_manager_projects = [
+            ("Applovin",      "Content", lp_id),
+            ("Bright night",  "Content", lp_id),
+            ("Chryselis",     "Content", lp_id),
+            ("Future range",  "Content", lp_id),
+            ("Travelier",     "Email",   lp_id),
+            ("Artnet",        "Content", harika_id),
+        ]
+        for pname, ptype, eid in new_manager_projects:
+            cur.execute(
+                "SELECT COUNT(*) FROM projects WHERE LOWER(name)=LOWER(%s) AND product_type=%s AND employee_id=%s",
+                (pname, ptype, eid),
+            )
+            if cur.fetchone()[0] == 0:
+                cur.execute(
+                    "INSERT INTO projects (name, product_type, employee_id) VALUES (%s, %s, %s)",
+                    (pname, ptype, eid),
+                )
+        conn.commit()
+
+    # Delete Armstrong entirely (no manager equivalent)
+    cur.execute("DELETE FROM projects WHERE LOWER(name)='armstrong'")
+
+    # Delete engineer copies of "Michigan Economic" (Sriram keeps Michigan Economic Development)
+    cur.execute("""
+        DELETE FROM projects
+        WHERE LOWER(name)='michigan economic'
+        AND employee_id IN (SELECT id FROM employees WHERE emp_role IN ('engineer','shift_lead'))
+    """)
+
+    # Delete ALL remaining engineer-owned and shift_lead-owned projects
+    cur.execute("""
+        DELETE FROM projects
+        WHERE employee_id IN (SELECT id FROM employees WHERE emp_role IN ('engineer','shift_lead'))
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
 
 
 # ── Shift Configuration ──────────────────────────────────
@@ -354,13 +484,16 @@ def save_project_shift_handlers(handlers):
 
 # ── Employee CRUD ────────────────────────────────────────
 
-def add_employee(name, content_types, working_days, emp_role="engineer", learning_content_types=None):
+def add_employee(name, content_types, working_days, emp_role="engineer",
+                 learning_content_types=None, manager_name="", division="", backup_division=""):
     conn = get_db()
     cur = conn.cursor()
     try:
         cur.execute(
-            "INSERT INTO employees (name, content_types, working_days, emp_role, learning_content_types) VALUES (%s, %s, %s, %s, %s) RETURNING id",
-            (name, json.dumps(content_types), json.dumps(working_days), emp_role, json.dumps({}))
+            "INSERT INTO employees (name, content_types, working_days, emp_role, learning_content_types,"
+            " manager_name, division, backup_division) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            (name, json.dumps(content_types), json.dumps(working_days), emp_role, json.dumps({}),
+             manager_name, division, backup_division)
         )
         emp_id = cur.fetchone()[0]
         conn.commit()
@@ -393,19 +526,26 @@ def get_employee_by_id(emp_id):
     return _row_to_employee(row) if row else None
 
 
-def update_employee(emp_id, content_types, working_days, name=None, learning_content_types=None):
+def update_employee(emp_id, content_types, working_days, name=None, learning_content_types=None,
+                    manager_name=None, division=None, backup_division=None):
     conn = get_db()
     cur = conn.cursor()
-    if name:
-        cur.execute(
-            "UPDATE employees SET name = %s, content_types = %s, working_days = %s WHERE id = %s",
-            (name, json.dumps(content_types), json.dumps(working_days), emp_id)
-        )
-    else:
-        cur.execute(
-            "UPDATE employees SET content_types = %s, working_days = %s WHERE id = %s",
-            (json.dumps(content_types), json.dumps(working_days), emp_id)
-        )
+    fields = ["content_types=%s", "working_days=%s"]
+    values = [json.dumps(content_types), json.dumps(working_days)]
+    if name is not None:
+        fields.insert(0, "name=%s")
+        values.insert(0, name)
+    if manager_name is not None:
+        fields.append("manager_name=%s")
+        values.append(manager_name)
+    if division is not None:
+        fields.append("division=%s")
+        values.append(division)
+    if backup_division is not None:
+        fields.append("backup_division=%s")
+        values.append(backup_division)
+    values.append(emp_id)
+    cur.execute(f"UPDATE employees SET {', '.join(fields)} WHERE id = %s", values)
     conn.commit()
     cur.close()
     conn.close()
@@ -519,6 +659,9 @@ def _row_to_employee(row):
         "monthly_working_days": mwd if isinstance(mwd, dict) else {},
         "learning_content_types": lct if isinstance(lct, dict) else {},
         "emp_role": row.get("emp_role", "engineer") if isinstance(row, dict) else "engineer",
+        "manager_name": row.get("manager_name", "") if isinstance(row, dict) else "",
+        "division": row.get("division", "") if isinstance(row, dict) else "",
+        "backup_division": row.get("backup_division", "") if isinstance(row, dict) else "",
     }
 
 
@@ -560,7 +703,8 @@ def get_all_projects():
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
-        SELECT p.id, p.name, p.product_type, p.employee_id, e.name AS employee_name
+        SELECT p.id, p.name, p.product_type, p.employee_id,
+               e.name AS employee_name, e.emp_role, e.division
         FROM projects p
         JOIN employees e ON p.employee_id = e.id
         ORDER BY p.id
@@ -1432,7 +1576,7 @@ def get_shift_strength(year, month, shift_assignments):
     for day in range(1, num_days + 1):
         d = dt_date(year, month, day)
         date_str = d.strftime("%Y-%m-%d")
-        daily = {1: 0, 2: 0, 3: 0}
+        daily = {2: 0, 3: 0}
         for emp in employees:
             shift = shift_assignments.get(emp["name"])
             if not shift:
@@ -1984,7 +2128,7 @@ def sh_daily_dashboard(dashboard_date):
     cur.close()
     conn.close()
     projects = sh_get_project_names()
-    dashboard = {p: {1: None, 2: None, 3: None} for p in projects}
+    dashboard = {p: {2: None, 3: None} for p in projects}
     for row in rows:
         proj, shift = row["project_name"], row["shift_num"]
         if proj in dashboard:
@@ -2182,10 +2326,10 @@ def sh_get_client_shift_handlers(date_str, shift_num, project_name):
         next_shift = shift_num + 1
         next_date  = d
     else:
-        next_shift = 1
+        next_shift = 2
         next_date  = d + timedelta(days=1)
 
-    shift_names = {1: "Morning", 2: "Afternoon", 3: "Night"}
+    shift_names = {2: "Afternoon", 3: "Night"}
     next_label  = f"{shift_names.get(next_shift, f'Shift {next_shift}')} · {next_date.strftime('%b %d')}"
 
     pt_filter = _SH_PROJECT_TO_PRODUCT_TYPE.get(project_name.lower(), project_name)

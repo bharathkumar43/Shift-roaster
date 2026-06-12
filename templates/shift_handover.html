@@ -137,9 +137,6 @@
                             <span style="font-size:.95rem;">Shift Status Overview</span>
                         </th>
                         <th colspan="2" class="text-center" style="border-left:1px solid #f3f4f6; padding-top:1rem; padding-bottom:.5rem;">
-                            Shift 1 (Morning)
-                        </th>
-                        <th colspan="2" class="text-center" style="border-left:1px solid #f3f4f6; padding-top:1rem; padding-bottom:.5rem;">
                             Shift 2 (Afternoon)
                         </th>
                         <th colspan="2" class="text-center" style="border-left:1px solid #f3f4f6; padding-top:1rem; padding-bottom:.5rem;">
@@ -148,8 +145,6 @@
                     </tr>
                     <tr style="background:#fafafa;">
                         <th>Project</th>
-                        <th style="border-left:1px solid #f3f4f6;">Status</th>
-                        <th>Lead</th>
                         <th style="border-left:1px solid #f3f4f6;">Status</th>
                         <th>Lead</th>
                         <th style="border-left:1px solid #f3f4f6;">Status</th>
@@ -165,7 +160,7 @@
                                 {{ proj }}
                             </div>
                         </td>
-                        {% for s in [1, 2, 3] %}
+                        {% for s in [2, 3] %}
                         {% set h = shifts[s] %}
                         <td style="border-left:1px solid #f3f4f6;">
                             {% if h %}

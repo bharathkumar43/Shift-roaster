@@ -9,21 +9,21 @@ from roster_engine import (
     is_emp_scheduled_work_day,
 )
 
+
 def _emp_sort_key(emp_lookup, name):
     """Stable tiebreak: employee id (not alphabetical name)."""
     e = emp_lookup.get(name) or {}
     return (e.get("id") if e is not None else 0) or 0
 
 
-def _pick_min_coverage(candidates, coverage_load, shift_num, product_type, emp_lookup):
-    """Choose engineer with lowest coverage count for (shift, product_type); tiebreak by id.
-    Used only for day-level backup selection within a month."""
+def _pick_min_coverage(candidates, coverage_load, shift_num, manager_name, emp_lookup):
+    """Choose engineer with lowest backup coverage count; tiebreak by id."""
     if not candidates:
         return None
     return min(
         candidates,
         key=lambda n: (
-            coverage_load[(n, shift_num, product_type)],
+            coverage_load[(n, shift_num, manager_name)],
             _emp_sort_key(emp_lookup, n),
         ),
     )
@@ -37,6 +37,45 @@ def _greedy_pick(candidates, assignment_count, emp_lookup):
         candidates,
         key=lambda n: (assignment_count[n], _emp_sort_key(emp_lookup, n)),
     )
+
+
+def _resolve_manager(proj, emp_lookup):
+    """
+    Return the coverage-manager name for a project.
+
+    - Project owned by a top-level manager (manager_name=='') → use owner name
+    - Project owned by a sub-manager (Sriram has manager_name='Raghu') → use parent manager
+    - Project still owned by an engineer (legacy) → use engineer's manager_name
+    """
+    owner = emp_lookup.get(proj["employee_name"]) or {}
+    if owner.get("emp_role") == "manager":
+        parent = (owner.get("manager_name") or "").strip()
+        return parent if parent else owner.get("name", "")
+    return (owner.get("manager_name") or "").strip()
+
+
+def _resolve_division(manager_name, emp_lookup):
+    mgr = emp_lookup.get(manager_name) or {}
+    return mgr.get("division", "")
+
+
+def _candidates_for(shift_num, manager_name, division, employees, shift_assignments):
+    """
+    Engineers eligible for a (project, shift) slot:
+      primary  — emp has manager_name containing manager_name
+      backup   — emp has backup_division matching the project's division
+    Only employees with a shift assignment are included.
+    """
+    result = []
+    for emp in employees:
+        if shift_assignments.get(emp["name"]) != shift_num:
+            continue
+        emp_managers = [m.strip() for m in (emp.get("manager_name") or "").split(",") if m.strip()]
+        if manager_name in emp_managers:
+            result.append(emp["name"])
+        elif division and emp.get("backup_division") == division:
+            result.append(emp["name"])
+    return result
 
 
 def generate_project_coverage(projects, employees, shift_assignments, year, month, leave_dates=None):
@@ -79,7 +118,6 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
         day_name = DAY_NAMES[weekday]
         date_str = d.strftime("%Y-%m-%d")
 
-        # Reset backup load each day so returning engineers are not overloaded
         daily_backup_load = defaultdict(int)
 
         day_info = {
@@ -99,10 +137,11 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
             owner_shift = shift_assignments.get(owner_name)
             product_type = proj["product_type"]
             proj_key = (proj["name"], product_type)
+            proj_manager = _resolve_manager(proj, emp_lookup)
 
             shift_handlers = {}
 
-            for shift_num in [1, 2, 3]:
+            for shift_num in [2, 3]:
                 fixed_person = fixed_assignments.get(proj_key, {}).get(shift_num)
 
                 if fixed_person:
@@ -118,10 +157,11 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
                         }
                     else:
                         backup = _find_backup(
-                            product_type, fixed_person, shift_num,
+                            proj_manager, fixed_person, shift_num,
                             employees, shift_assignments, day_name,
                             date_str, leave_dates,
                             backup_load=daily_backup_load,
+                            emp_lookup=emp_lookup,
                         )
                         if backup:
                             shift_handlers[shift_num] = {
@@ -152,6 +192,7 @@ def generate_project_coverage(projects, employees, shift_assignments, year, mont
                 "product_type": product_type,
                 "owner": owner_name,
                 "owner_shift": owner_shift,
+                "proj_manager": proj_manager,
                 "shifts": shift_handlers,
             })
 
@@ -164,80 +205,54 @@ def _assign_fixed_handlers(projects, employees, shift_assignments):
     """
     Assign one fixed handler per (project, shift).
 
-    All slots are assigned fresh every time — no DB cache. This guarantees the
-    distribution always reflects the current project list and current shift
-    assignments, with ≤ 1 project count difference between eligible engineers.
+    Pure greedy: for each (project, shift), pick the least-loaded eligible engineer
+    from the manager's team. Product-type filtering removed — team membership is the
+    only eligibility criterion.
 
-    Two passes:
-      Pass 1 — owner pinning: each project is pinned to its owner in the owner's
-               shift. This seeds the global load counter.
-      Pass 2 — greedy fill: remaining (project, shift) slots are grouped by
-               (shift, product_type). Within each group the globally least-loaded
-               eligible engineer is chosen, so counts stay within 1 of each other.
+    assignment_count is global (across all shifts and projects) so the distribution
+    stays within ≤1 between any two engineers in the same pool.
     """
     emp_lookup = {e["name"]: e for e in employees}
     fixed = {}
-    assignment_count = defaultdict(int)  # keyed by engineer name, global across all types
+    assignment_count = defaultdict(int)
 
-    # ── Pass 1: owner pinning ─────────────────────────────────────────────────
-    for proj in projects:
-        owner_name = proj["employee_name"]
-        if not emp_lookup.get(owner_name):
-            continue
-        owner_shift = shift_assignments.get(owner_name)
-        proj_key = (proj["name"], proj["product_type"])
-        if proj_key not in fixed:
-            fixed[proj_key] = {}
-        fixed[proj_key][owner_shift] = owner_name
-        assignment_count[owner_name] += 1
-
-    # ── Pass 2: greedy fill for all non-owner shifts ──────────────────────────
-    def _candidates(shift_num, product_type):
-        return [
-            emp["name"] for emp in employees
-            if shift_assignments.get(emp["name"]) == shift_num
-            and product_type in emp.get("content_types", [])
-        ]
-
-    unassigned = defaultdict(list)
     for proj in projects:
         if not emp_lookup.get(proj["employee_name"]):
             continue
         proj_key = (proj["name"], proj["product_type"])
-        for shift_num in [1, 2, 3]:
-            if shift_num not in fixed.get(proj_key, {}):
-                unassigned[(shift_num, proj["product_type"])].append(proj_key)
+        if proj_key not in fixed:
+            fixed[proj_key] = {}
+        proj_manager = _resolve_manager(proj, emp_lookup)
+        division = _resolve_division(proj_manager, emp_lookup)
 
-    for (shift_num, product_type), proj_keys in unassigned.items():
-        pool = _candidates(shift_num, product_type)
-        for pk in proj_keys:
-            if pk not in fixed:
-                fixed[pk] = {}
+        for shift_num in [2, 3]:
+            pool = _candidates_for(shift_num, proj_manager, division, employees, shift_assignments)
             chosen = _greedy_pick(pool, assignment_count, emp_lookup) if pool else None
-            fixed[pk][shift_num] = chosen
+            fixed[proj_key][shift_num] = chosen
             if chosen:
                 assignment_count[chosen] += 1
 
     return fixed, {}
 
 
-def _find_backup(product_type, exclude_name, shift_num,
+def _find_backup(manager_name, exclude_name, shift_num,
                  employees, shift_assignments, day_name,
                  date_str="", leave_dates=None,
-                 backup_load=None):
+                 backup_load=None, emp_lookup=None):
     """
     Find a backup handler for a day when the fixed person is off or on leave.
 
-    Eligibility: same shift, content_types, working that weekday, not on leave.
-    Among eligible engineers, prefer lowest backup_load for (shift, product_type)
-    this month; tiebreak by employee id. Increments backup_load when set.
+    Eligibility: same shift, manager's team (or backup_division match), working that
+    weekday, not on leave. Excludes the absent fixed person.
     """
     if leave_dates is None:
         leave_dates = {}
     if backup_load is None:
         backup_load = defaultdict(int)
+    if emp_lookup is None:
+        emp_lookup = {e["name"]: e for e in employees}
 
-    emp_lookup = {e["name"]: e for e in employees}
+    division = _resolve_division(manager_name, emp_lookup)
     candidates = []
 
     for emp in employees:
@@ -245,20 +260,19 @@ def _find_backup(product_type, exclude_name, shift_num,
             continue
         if shift_assignments.get(emp["name"]) != shift_num:
             continue
-        if product_type not in emp.get("content_types", []):
+        emp_managers = [m.strip() for m in (emp.get("manager_name") or "").split(",") if m.strip()]
+        in_team = (manager_name in emp_managers) or (division and emp.get("backup_division") == division)
+        if not in_team:
             continue
         if not is_emp_scheduled_work_day(emp, date.fromisoformat(date_str)):
             continue
         if date_str in leave_dates.get(emp["name"], []):
             continue
-
         candidates.append(emp["name"])
 
     if not candidates:
         return None
 
-    chosen = _pick_min_coverage(
-        candidates, backup_load, shift_num, product_type, emp_lookup
-    )
-    backup_load[(chosen, shift_num, product_type)] += 1
+    chosen = _pick_min_coverage(candidates, backup_load, shift_num, manager_name, emp_lookup)
+    backup_load[(chosen, shift_num, manager_name)] += 1
     return chosen

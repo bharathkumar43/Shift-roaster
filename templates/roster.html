@@ -71,10 +71,6 @@
             {% endif %}
             <div class="d-flex flex-wrap justify-content-center gap-3 mt-3 mb-0">
                 <span class="text-muted small">
-                    <span class="badge bg-shift1 me-1">Shift 1</span>
-                    6AM&ndash;2PM IST <span class="text-muted">/ 7:30PM&ndash;3:30AM EST</span>
-                </span>
-                <span class="text-muted small">
                     <span class="badge bg-shift2 me-1">Shift 2</span>
                     1PM&ndash;10PM IST <span class="text-muted">/ 2:30AM&ndash;11:30AM EST</span>
                 </span>
@@ -156,13 +152,13 @@
 
         <!-- Shift Summary Cards -->
         <div class="row g-3 mb-4">
-            {% for shift_num in [1, 2, 3] %}
-            <div class="col-md-4 animate-in">
+            {% for shift_num in [2, 3] %}
+            <div class="col-md-6 animate-in">
                 <div class="card border-0 shadow-sm shift{{ shift_num }}-card h-100">
                     <div class="card-body">
                         <h6 class="card-title fw-bold d-flex justify-content-between align-items-center">
                             {{ shifts[shift_num].name }}
-                            <span class="badge bg-{{ 'secondary' if shift_num == 1 else 'success' }} rounded-pill">
+                            <span class="badge bg-success rounded-pill">
                                 {{ shifts[shift_num].strength | upper }}
                             </span>
                         </h6>
@@ -205,7 +201,6 @@
                         <thead>
                             <tr class="table-dark">
                                 <th class="sticky-col">Date</th>
-                                <th class="text-center">Shift 1<br><small class="fw-normal">6AM&ndash;2PM IST</small><br><small class="fw-normal text-light">7:30PM&ndash;3:30AM EST</small></th>
                                 <th class="text-center">Shift 2<br><small class="fw-normal">1PM&ndash;10PM IST</small><br><small class="fw-normal text-light">2:30AM&ndash;11:30AM EST</small></th>
                                 <th class="text-center">Shift 3<br><small class="fw-normal">9PM&ndash;6AM IST</small><br><small class="fw-normal text-light">10:30AM&ndash;7:30PM EST</small></th>
                             </tr>
@@ -220,7 +215,7 @@
                                     <span class="badge bg-light text-muted border ms-1" style="font-size:0.6rem">WE</span>
                                     {% endif %}
                                 </td>
-                                {% for shift_num in [1, 2, 3] %}
+                                {% for shift_num in [2, 3] %}
                                 <td class="shift{{ shift_num }}-cell">
                                     {% if day.shifts[shift_num] %}
                                         {% for emp in day.shifts[shift_num] %}

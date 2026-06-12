@@ -79,12 +79,6 @@
                                 <form method="POST"
                                       action="{{ url_for('sh_users_update_shifts', user_id=u.id) }}"
                                       class="d-flex gap-2 align-items-center">
-                                    <div class="form-check mb-0" title="Shift 1">
-                                        <input class="form-check-input" type="checkbox" name="shift_1"
-                                               id="s1_{{ u.id }}" {% if u.shift_1 %}checked{% endif %}
-                                               onchange="this.form.submit()">
-                                        <label class="form-check-label small" for="s1_{{ u.id }}">S1</label>
-                                    </div>
                                     <div class="form-check mb-0" title="Shift 2">
                                         <input class="form-check-input" type="checkbox" name="shift_2"
                                                id="s2_{{ u.id }}" {% if u.shift_2 %}checked{% endif %}

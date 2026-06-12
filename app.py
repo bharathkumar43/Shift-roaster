@@ -409,6 +409,59 @@ def index():
         row["shift"] = shift_assignments.get(e["name"])
         engineers_display.append(row)
 
+    shift_leads_display = []
+    for sl in shift_leads:
+        row = dict(sl)
+        pat = coerce_to_five_day_pattern(pattern_for_calendar_month(sl, ctx_y, ctx_m))
+        row["generated_working_days"] = pat
+        row["shift"] = shift_assignments.get(sl["name"])
+        shift_leads_display.append(row)
+
+    _proj_cnt = {}
+    for _p in all_projects:
+        _eid = _p["employee_id"]
+        _proj_cnt[_eid] = _proj_cnt.get(_eid, 0) + 1
+
+    def _eng_team(mgr_name):
+        return [e for e in engineers_display
+                if mgr_name in [x.strip() for x in (e.get("manager_name") or "").split(",") if x.strip()]]
+
+    def _lead_team(mgr_name):
+        return [sl for sl in shift_leads_display
+                if (sl.get("manager_name") or "").strip() == mgr_name]
+
+    org_tree = {}
+    for _div in ["Enterprise", "SMB"]:
+        _nodes = []
+        for _mgr in managers:
+            if _mgr.get("division") != _div or (_mgr.get("manager_name") or "").strip():
+                continue
+            _subs = [{**_sm,
+                      "project_count": _proj_cnt.get(_sm["id"], 0),
+                      "engineers": _eng_team(_sm["name"]),
+                      "shift_leads": _lead_team(_sm["name"])}
+                     for _sm in managers
+                     if (_sm.get("manager_name") or "").strip() == _mgr["name"]]
+            _nodes.append({**_mgr,
+                           "project_count": _proj_cnt.get(_mgr["id"], 0),
+                           "engineers": _eng_team(_mgr["name"]),
+                           "shift_leads": _lead_team(_mgr["name"]),
+                           "sub_managers": _subs})
+        org_tree[_div] = _nodes
+
+    unassigned_engineers = [e for e in engineers_display
+                            if not (e.get("manager_name") or "").strip()]
+
+    manager_team_map = {}
+    for _e in engineers_display + shift_leads_display:
+        for _mgr in [m.strip() for m in (_e.get("manager_name") or "").split(",") if m.strip()]:
+            manager_team_map.setdefault(_mgr, []).append({"id": _e["id"], "name": _e["name"]})
+
+    all_staff_for_team = sorted(
+        [{"id": e["id"], "name": e["name"]} for e in engineers_display + shift_leads_display],
+        key=lambda x: x["name"].lower()
+    )
+
     return render_template("index.html",
                            app_name=APP_NAME,
                            engineers=engineers_display,
@@ -429,7 +482,11 @@ def index():
                            current_year=this_year,
                            year_range_lo=min(this_year - 1, ctx_y - 1),
                            year_range_hi=max(this_year + 3, ctx_y + 2),
-                           month_names=month_names)
+                           month_names=month_names,
+                           org_tree=org_tree,
+                           unassigned_engineers=unassigned_engineers,
+                           manager_team_map=manager_team_map,
+                           all_staff_for_team=all_staff_for_team)
 
 
 ROLE_LABELS = {
@@ -514,6 +571,7 @@ def edit_employee(emp_id):
         working_days = normalize_five_day_pattern(working_days)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
+    emp_row_before = db.get_employee_by_id(emp_id)
     db.update_employee(emp_id, content_types, working_days, name=new_name)
     # Keep app-month week-offs aligned with edits so roster updates immediately.
     emp_row = db.get_employee_by_id(emp_id)
@@ -527,6 +585,28 @@ def edit_employee(emp_id):
         ptype = proj.get("product_type") or "Content"
         if name:
             db.add_project(name, ptype, emp_id)
+    # Update team membership when editing a manager
+    if "team_engineer_ids" in data and emp_row_before and emp_row_before.get("emp_role") == "manager":
+        old_mgr_name = emp_row_before["name"]
+        new_mgr_name = new_name if new_name else old_mgr_name
+        new_team_ids = set(int(x) for x in (data.get("team_engineer_ids") or []))
+        all_staff = db.get_employees_by_role("engineer") + db.get_employees_by_role("shift_lead")
+        for staff_emp in all_staff:
+            current_managers = [m.strip() for m in (staff_emp.get("manager_name") or "").split(",") if m.strip()]
+            in_current = old_mgr_name in current_managers
+            in_new = staff_emp["id"] in new_team_ids
+            if in_current and not in_new:
+                updated = [m for m in current_managers if m != old_mgr_name]
+                db.update_employee(staff_emp["id"], staff_emp["content_types"], staff_emp["working_days"],
+                                   manager_name=",".join(updated))
+            elif not in_current and in_new:
+                updated = current_managers + [new_mgr_name]
+                db.update_employee(staff_emp["id"], staff_emp["content_types"], staff_emp["working_days"],
+                                   manager_name=",".join(updated))
+            elif in_current and in_new and old_mgr_name != new_mgr_name:
+                updated = [new_mgr_name if m == old_mgr_name else m for m in current_managers]
+                db.update_employee(staff_emp["id"], staff_emp["content_types"], staff_emp["working_days"],
+                                   manager_name=",".join(updated))
     return jsonify({"success": True})
 
 
@@ -561,7 +641,7 @@ def _build_roster_data(employees, roster, shift_assignments, year, month):
             "day_num": day,
             "shifts": {}
         }
-        for shift_num in [1, 2, 3]:
+        for shift_num in [2, 3]:
             emp_names = roster[d][shift_num]
             emp_details = []
             for name in emp_names:
@@ -843,10 +923,11 @@ def _render_saved_roster(year, month, saved):
 @app.route("/projects", methods=["GET", "POST"])
 @login_required
 def projects():
-    employees = db.get_employees_by_role("engineer")
+    all_employees = db.get_all_employees()
+    engineer_employees = [e for e in all_employees if e.get("emp_role") == "engineer"]
     all_projects = db.get_all_projects()
 
-    if not employees or not all_projects:
+    if not engineer_employees or not all_projects:
         flash("Add employees and projects first.", "warning")
         return redirect(url_for("index"))
 
@@ -857,7 +938,7 @@ def projects():
     night_counts = db.get_night_shift_counts()
     try:
         _, _, shift_assignments = _generate_roster_with_saved_month(
-            employees, year, month, night_counts
+            engineer_employees, year, month, night_counts
         )
     except Exception:
         flash("Roster not yet generated for this month. Please generate and save the roster first.", "warning")
@@ -865,7 +946,7 @@ def projects():
 
     try:
         coverage, proj_warnings = generate_project_coverage(
-            all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
+            all_projects, all_employees, shift_assignments, year, month, _get_leave_dates(year, month)
         )
     except Exception as e:
         app.logger.exception("generate_project_coverage failed")
@@ -876,15 +957,16 @@ def projects():
     month_name = calendar.month_name[month]
     session["last_roster"] = {"year": year, "month": month}
 
-    all_people = db.get_all_employees()
-    emp_role_map = {e["name"]: e.get("emp_role", "engineer") for e in all_people}
-    engineer_projects = [p for p in all_projects if emp_role_map.get(p["employee_name"]) == "engineer"]
-    lead_projects = [p for p in all_projects if emp_role_map.get(p["employee_name"]) == "shift_lead"]
-    manager_projects = [p for p in all_projects if emp_role_map.get(p["employee_name"]) == "manager"]
+    manager_projects = [p for p in all_projects if p.get("emp_role") == "manager"]
+    managers = db.get_employees_by_role("manager")
 
-    proj_manager_map = {}
+    # project_name → manager_name lookup for coverage grid header
+    proj_manager_map = {mp["name"]: mp["employee_name"] for mp in manager_projects}
+
+    # Group manager projects by manager name for the add-project form
+    managers_with_projects = {}
     for mp in manager_projects:
-        proj_manager_map[mp["name"]] = mp["employee_name"]
+        managers_with_projects.setdefault(mp["employee_name"], []).append(mp)
 
     return render_template("projects.html",
                            app_name=APP_NAME,
@@ -894,9 +976,9 @@ def projects():
                            year=year,
                            month=month,
                            projects=all_projects,
-                           engineer_projects=engineer_projects,
-                           lead_projects=lead_projects,
                            manager_projects=manager_projects,
+                           managers=managers,
+                           managers_with_projects=managers_with_projects,
                            proj_manager_map=proj_manager_map,
                            shifts=SHIFTS,
                            shift_assignments=shift_assignments)
@@ -1245,7 +1327,7 @@ def search():
             for p in day_data.get("projects", []):
                 if p["project_name"].lower() == proj["name"].lower() and p.get("product_type", "").lower() == proj["product_type"].lower():
                     shift_info = {}
-                    for sn in [1, 2, 3]:
+                    for sn in [2, 3]:
                         sh = p["shifts"].get(sn, {})
                         shift_info[sn] = {
                             "handler": sh.get("handler"),
@@ -1274,7 +1356,7 @@ def search():
         emp_daily = {}
         for day_data in proj_coverage:
             for p in day_data.get("projects", []):
-                for sn in [1, 2, 3]:
+                for sn in [2, 3]:
                     sh = p["shifts"].get(sn, {})
                     if sh.get("handler") == emp["name"]:
                         day_num = day_data["day_num"]
@@ -1304,8 +1386,10 @@ def search():
 @app.route("/summary", methods=["GET"])
 @login_required
 def summary():
-    employees = db.get_employees_by_role("engineer")
+    all_employees = db.get_all_employees()
+    engineer_employees = [e for e in all_employees if e.get("emp_role") == "engineer"]
     all_projects = db.get_all_projects()
+    managers = db.get_employees_by_role("manager")
 
     today = date.today()
     cy, cm = get_app_context_ym()
@@ -1316,15 +1400,15 @@ def summary():
     proj_coverage = []
     proj_warnings = []
 
-    if employees:
+    if engineer_employees:
         night_counts = db.get_night_shift_counts()
         _, _, shift_assignments = _generate_roster_with_saved_month(
-            employees, year, month, night_counts
+            engineer_employees, year, month, night_counts
         )
 
         if all_projects:
             proj_coverage, proj_warnings = generate_project_coverage(
-                all_projects, employees, shift_assignments, year, month, _get_leave_dates(year, month)
+                all_projects, all_employees, shift_assignments, year, month, _get_leave_dates(year, month)
             )
 
     month_name = calendar.month_name[month]
@@ -1334,7 +1418,7 @@ def summary():
 
     return render_template("summary.html",
                            app_name=APP_NAME,
-                           employees=employees,
+                           employees=engineer_employees,
                            all_projects=all_projects,
                            proj_coverage=proj_coverage,
                            shift_assignments=shift_assignments,
@@ -1344,7 +1428,8 @@ def summary():
                            month=month,
                            current_year=today.year,
                            year_range_lo=year_lo,
-                           year_range_hi=year_hi)
+                           year_range_hi=year_hi,
+                           managers=managers)
 
 
 # ── Manual Shift Editing ─────────────────────────────────
@@ -2049,7 +2134,7 @@ def bot():
                                 return jsonify({"answer": f"{pname} on {mn} {q_day} ({day_data['day_abbr']}), {SHIFTS[asked_shift]['name']}: {h}" + (f" | Manager: {mgr_name}" if mgr_name else "")})
                             else:
                                 parts = []
-                                for sn in [1, 2, 3]:
+                                for sn in [2, 3]:
                                     sh = shifts.get(sn) or shifts.get(str(sn)) or {}
                                     h = sh.get("handler") or "—"
                                     parts.append(f"S{sn}: {h}")
@@ -2076,7 +2161,7 @@ def bot():
                     if p["project_name"].lower() == pname.lower():
                         shifts = p.get("shifts", {})
                         parts = []
-                        for sn in [1, 2, 3]:
+                        for sn in [2, 3]:
                             sh = shifts.get(sn) or shifts.get(str(sn)) or {}
                             h = sh.get("handler")
                             if h:
@@ -2134,7 +2219,7 @@ def bot():
                 if dd.get("day_num") == q_day:
                     for p in dd.get("projects", []):
                         shifts_data = p.get("shifts", {})
-                        for s in [1, 2, 3]:
+                        for s in [2, 3]:
                             sh = shifts_data.get(s) or shifts_data.get(str(s)) or {}
                             if sh.get("handler") == name:
                                 handling.append(p["project_name"])
@@ -2188,7 +2273,7 @@ def delta():
     seen = set()
     unique_projects = []
     for p in all_projects:
-        if emp_role_map.get(p["employee_name"]) != "engineer":
+        if emp_role_map.get(p["employee_name"]) != "manager":
             continue
         key = (p["name"], p["product_type"])
         if key in excluded:
@@ -2205,6 +2290,22 @@ def delta():
 
     managers = [e["name"] for e in all_people if e.get("emp_role") == "manager"]
     managers.sort()
+
+    # Map manager → engineers under them (for direct assignment UI)
+    manager_engineer_map = {}
+    for e in all_people:
+        if e.get("emp_role") in ("engineer", "shift_lead"):
+            for mgr in [m.strip() for m in e.get("manager_name", "").split(",") if m.strip()]:
+                manager_engineer_map.setdefault(mgr, []).append(e["name"])
+    for k in manager_engineer_map:
+        manager_engineer_map[k].sort()
+
+    # If the logged-in user is a manager (not admin), restrict projects to their own
+    user_emp = db.get_employee_by_id(g.user["employee_id"]) if g.user and g.user.get("employee_id") else None
+    is_delta_admin = g.user and g.user.get("role") == "admin"
+    if not is_delta_admin and user_emp and user_emp.get("emp_role") == "manager":
+        my_name = user_emp["name"]
+        unique_projects = [p for p in unique_projects if proj_manager_map.get(p["name"]) == my_name]
 
     delta_events = db.get_all_delta_events()
     for ev in delta_events:
@@ -2264,6 +2365,7 @@ def delta():
         app_name=APP_NAME,
         unique_projects=unique_projects,
         proj_manager_map=proj_manager_map,
+        manager_engineer_map=manager_engineer_map,
         managers=managers,
         delta_events=delta_events,
         product_types=all_types,
@@ -2350,7 +2452,7 @@ def delta_preview():
 
             date_str = d.strftime("%Y-%m-%d")
             shifts_out = {}
-            for sn in [1, 2, 3]:
+            for sn in [2, 3]:
                 auto_handler = None
                 if proj_entry:
                     sh = proj_entry.get("shifts", {}).get(sn, {})
@@ -2648,11 +2750,11 @@ def drive_change_refresh():
     grouped = group_alerts(parsed)
 
     window_totals = {
-        str(w): grouped.get(w, {}).get("total", 0) for w in [1, 2, 3]
+        str(w): grouped.get(w, {}).get("total", 0) for w in [1, 2]
     }
 
     windows_data = {}
-    for w in [1, 2, 3]:
+    for w in [1, 2]:
         w_info = grouped.get(w, {})
         windows_data[str(w)] = {
             "label":  w_info.get("label", ""),
@@ -2731,7 +2833,7 @@ def sh_save_daily_notes():
 def sh_form():
     project_name = request.args.get("project", "").strip()
     date_str     = request.args.get("date", date.today().isoformat())
-    shift_num    = int(request.args.get("shift", 1))
+    shift_num    = int(request.args.get("shift", 2))
     if not project_name:
         flash("Project is required.", "danger")
         return redirect(url_for("shift_handover"))
@@ -2777,7 +2879,7 @@ def sh_form():
     # Previous shift for reference
     prev_shift = shift_num - 1
     prev_date  = date_str
-    if prev_shift < 1:
+    if prev_shift < 2:
         prev_shift = 3
         from datetime import timedelta
         prev_date = (date.fromisoformat(date_str) - timedelta(days=1)).isoformat()
@@ -2795,8 +2897,8 @@ def sh_form():
         key = (m.get("client_name") or "").strip().lower()
         mom_by_client.setdefault(key, []).append(m)
 
-    shift_labels = {1: "Morning (5:00 AM – 2:00 PM)", 2: "Afternoon (1:00 PM – 10:00 PM)", 3: "Night (9:00 PM – 6:00 AM)"}
-    shift_times  = {1: "5:00 AM – 2:00 PM", 2: "1:00 PM – 10:00 PM", 3: "9:00 PM – 6:00 AM"}
+    shift_labels = {2: "Afternoon (1:00 PM – 10:00 PM)", 3: "Night (9:00 PM – 6:00 AM)"}
+    shift_times  = {2: "1:00 PM – 10:00 PM", 3: "9:00 PM – 6:00 AM"}
 
     _d = date.fromisoformat(date_str)
     date_display = _d.strftime('%A, %B ') + str(_d.day) + _d.strftime(', %Y')
@@ -2832,7 +2934,7 @@ def sh_form_save():
     handover_id  = int(request.form.get("handover_id", 0))
     project_name = request.form.get("project_name", "")
     date_str     = request.form.get("date_str", date.today().isoformat())
-    shift_num    = int(request.form.get("shift_num", 1))
+    shift_num    = int(request.form.get("shift_num", 2))
     lead_notes   = request.form.get("lead_notes", "")
     user         = g.user
     user_name    = _sh_user_name(user)
@@ -2889,7 +2991,7 @@ def sh_form_submit():
     handover_id  = int(request.form.get("handover_id", 0))
     project_name = request.form.get("project_name", "")
     date_str     = request.form.get("date_str", date.today().isoformat())
-    shift_num    = int(request.form.get("shift_num", 1))
+    shift_num    = int(request.form.get("shift_num", 2))
     user         = g.user
     user_name    = _sh_user_name(user)
     db.sh_submit_handover(handover_id, user["id"], user_name)
@@ -3014,7 +3116,7 @@ def sh_client_history():
         date_to=to_date or None,
     )
 
-    shift_names = {1: "Morning", 2: "Afternoon", 3: "Night"}
+    shift_names = {2: "Afternoon", 3: "Night"}
 
     # Group by date → list of {shift_num, submitted_by_name, status, entry}
     by_date = OrderedDict()
@@ -3204,10 +3306,9 @@ def sh_users_update_role(user_id):
 def sh_users_update_shifts(user_id):
     if not g.user or not g.user.get("sh_is_admin"):
         return jsonify({"error": "SH Admin only"}), 403
-    s1 = "shift_1" in request.form
     s2 = "shift_2" in request.form
     s3 = "shift_3" in request.form
-    db.sh_update_user_shifts(user_id, s1, s2, s3)
+    db.sh_update_user_shifts(user_id, False, s2, s3)
     flash("Shift assignments updated.", "success")
     return redirect(url_for("sh_users"))
 

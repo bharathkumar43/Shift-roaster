@@ -6,7 +6,6 @@ from datetime import date, timedelta
 from math import ceil
 
 SHIFTS = {
-    1: {"name": "Shift 1", "time_ist": "6:00 AM - 2:00 PM IST", "time_est": "7:30 PM - 3:30 AM EST", "strength": "lean"},
     2: {"name": "Shift 2", "time_ist": "1:00 PM - 10:00 PM IST", "time_est": "2:30 AM - 11:30 AM EST", "strength": "strong"},
     3: {"name": "Shift 3", "time_ist": "9:00 PM - 6:00 AM IST", "time_est": "10:30 AM - 7:30 PM EST", "strength": "strong"},
 }
@@ -18,9 +17,11 @@ DAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 DEFAULT_FIVE_DAY_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 
-# Default mandated shift headcount ratio (Shift 1 : Shift 2 : Shift 3).
+# Default mandated shift headcount ratio (Shift 2 : Shift 3).
 # Admin can override via the Shift Configuration panel — stored in shift_config DB table.
-SHIFT_MANDATE_WEIGHTS = (6, 6, 7)
+# Internal representation keeps a placeholder weight for shift 1 = 0 so existing
+# compute_mandated_shift_targets logic (3-element tuple) continues to work.
+SHIFT_MANDATE_WEIGHTS = (0, 10, 9)
 
 # Comma-separated engineer names always kept on Shift 1 (Edit Shifts and generation honor this).
 # Optional: set PINNED_SHIFT_1_NAMES in .env, e.g. PINNED_SHIFT_1_NAMES=Alice,Bob
@@ -442,8 +443,8 @@ def assign_shifts(
     for s in assignments.values():
         shift_counts[s] += 1
 
-    for s in (1, 2, 3):
-        if shift_counts[s] > targets[s] and not relax_fixed_caps:
+    for s in sorted(SHIFTS):
+        if shift_counts.get(s, 0) > targets.get(s, 0) and not relax_fixed_caps:
             raise ValueError(
                 f"Fixed shift assignments exceed mandated cap for shift {s}: "
                 f"{shift_counts[s]} > {targets[s]} (targets {targets})."
@@ -509,16 +510,17 @@ def generate_roster_from_manual_assignments(
         weekday = d.weekday()
         day_name = DAY_NAMES[weekday]
 
-        daily = {1: [], 2: [], 3: []}
+        daily = {sn: [] for sn in SHIFTS}
 
         for emp in employees:
             if is_emp_scheduled_work_day(emp, d):
                 shift = shift_assignments[emp["name"]]
-                daily[shift].append(emp["name"])
+                if shift in daily:
+                    daily[shift].append(emp["name"])
 
         roster[d] = daily
 
-        for shift_num in [1, 2, 3]:
+        for shift_num in sorted(SHIFTS):
             shift_employees = daily[shift_num]
             if len(shift_employees) == 0:
                 warnings.append(
@@ -555,7 +557,7 @@ def _guarantee_type_coverage(
         if not candidates:
             continue
 
-        for shift_num in [1, 2, 3]:
+        for shift_num in sorted(SHIFTS):
             already_covered = any(
                 assignments.get(e["name"]) == shift_num and ct in emp_lookup[e["name"]]["content_types"]
                 for e in sorted_emps if e["name"] in assigned
@@ -623,12 +625,11 @@ def _distribute_remaining(sorted_emps, assignments, assigned, targets, night_shi
         t = type_totals[ct]
         if t == 0:
             continue
-        s1 = max(1, round(t * 0.2))
-        s3 = max(1, round(t * 0.4))
-        s2 = max(1, t - s1 - s3)
-        if s1 + s2 + s3 != t:
-            s2 += t - (s1 + s2 + s3)
-        type_targets[ct] = {1: s1, 2: s2, 3: s3}
+        s3 = max(1, round(t * 0.45))
+        s2 = max(1, t - s3)
+        if s2 + s3 != t:
+            s2 += t - (s2 + s3)
+        type_targets[ct] = {2: s2, 3: s3}
 
     if night_shift_counts:
         remaining.sort(
@@ -661,8 +662,8 @@ def _pick_best_shift(emp, shift_counts, targets, type_shift_counts, type_targets
     """
     on_night_last = bool(emp.get("id") in prev_month_night_ids)
     scores = {}
-    for s in [1, 2, 3]:
-        if shift_counts[s] >= targets[s]:
+    for s in sorted(SHIFTS):
+        if shift_counts.get(s, 0) >= targets.get(s, 0):
             scores[s] = -9999
             continue
         # Hard constraint: exclude Shift 3 for employees who were on night shift last month
@@ -670,24 +671,24 @@ def _pick_best_shift(emp, shift_counts, targets, type_shift_counts, type_targets
             scores[s] = -9999
             continue
 
-        score = targets[s] - shift_counts[s]
+        score = targets.get(s, 0) - shift_counts.get(s, 0)
         for ct in emp["content_types"]:
             if ct in type_targets:
-                needed = type_targets[ct][s] - type_shift_counts[ct][s]
+                needed = type_targets[ct].get(s, 0) - type_shift_counts[ct].get(s, 0)
                 score += needed * 2
         scores[s] = score
 
-    best = max(scores, key=scores.get)
-    if scores[best] <= -9999:
+    best = max(scores, key=scores.get) if scores else sorted(SHIFTS)[0]
+    if scores.get(best, -9999) <= -9999:
         # All preferred shifts are blocked — last resort: pick any open slot
-        eligible = [s for s in (1, 2, 3) if shift_counts[s] < targets[s]]
+        eligible = [s for s in sorted(SHIFTS) if shift_counts.get(s, 0) < targets.get(s, 0)]
         if not eligible:
-            eligible = [1, 2, 3]
+            eligible = sorted(SHIFTS)
         # Still prefer non-night for last-month-night employees even in last resort
         if on_night_last:
             non_night = [s for s in eligible if s != 3]
-            return min(non_night or eligible, key=lambda s: shift_counts[s])
-        return min(eligible, key=lambda s: shift_counts[s])
+            return min(non_night or eligible, key=lambda s: shift_counts.get(s, 0))
+        return min(eligible, key=lambda s: shift_counts.get(s, 0))
     return best
 
 
@@ -706,14 +707,14 @@ def _fix_daily_gaps(assignments, employees, prev_month_night_ids=None):
     prev_night = frozenset(prev_month_night_ids or ())
 
     for day in DAY_NAMES:
-        for shift_num in [1, 2, 3]:
+        for shift_num in sorted(SHIFTS):
             shift_names = [n for n, s in assignments.items() if s == shift_num]
             working_today = [n for n in shift_names if day in emp_lookup[n]["working_days"]]
 
             if len(working_today) > 0:
                 continue
 
-            for donor_shift in [2, 3, 1]:
+            for donor_shift in sorted(SHIFTS, reverse=True):
                 if donor_shift == shift_num:
                     continue
                 donor_names = [n for n, s in assignments.items() if s == donor_shift]
@@ -728,7 +729,7 @@ def _fix_daily_gaps(assignments, employees, prev_month_night_ids=None):
 
                 moved = False
                 for candidate in reversed(donors_working_today):
-                    if is_pinned_shift_1(candidate) and assignments.get(candidate) == 1 and shift_num != 1:
+                    if shift_num not in SHIFTS:
                         continue
                     # Hard constraint: don't move a last-month-night employee to Shift 3
                     if shift_num == 3 and emp_lookup[candidate].get("id") in prev_night:
@@ -743,7 +744,7 @@ def _fix_daily_gaps(assignments, employees, prev_month_night_ids=None):
                         moved = True
                         break
                 if moved:
-                    break
+                    break  # donor_shift loop
 
 
 def generate_roster(
@@ -778,7 +779,7 @@ def generate_roster(
     else:
         t = compute_mandated_shift_targets(roster_size)
     mandate_msgs.append(
-        f"SHIFT TARGETS: Shift 1={t[1]}, Shift 2={t[2]}, Shift 3={t[3]} "
+        f"SHIFT TARGETS: Shift 2={t.get(2,0)}, Shift 3={t.get(3,0)} "
         f"(team size {roster_size})."
     )
 
@@ -819,16 +820,17 @@ def generate_roster(
         weekday = d.weekday()
         day_name = DAY_NAMES[weekday]
 
-        daily = {1: [], 2: [], 3: []}
+        daily = {sn: [] for sn in SHIFTS}
 
         for emp in employees:
             if is_emp_scheduled_work_day(emp, d):
                 shift = shift_assignments[emp["name"]]
-                daily[shift].append(emp["name"])
+                if shift in daily:
+                    daily[shift].append(emp["name"])
 
         roster[d] = daily
 
-        for shift_num in [1, 2, 3]:
+        for shift_num in sorted(SHIFTS):
             shift_employees = daily[shift_num]
             if len(shift_employees) == 0:
                 warnings.append(
@@ -855,7 +857,7 @@ def _check_off_day_overlaps(assignments, employees):
     emp_lookup = {e["name"]: e for e in employees}
     warnings = []
 
-    for shift_num in [1, 2, 3]:
+    for shift_num in sorted(SHIFTS):
         shift_names = [n for n, s in assignments.items() if s == shift_num]
         if len(shift_names) <= 1:
             if len(shift_names) == 1:
@@ -885,7 +887,7 @@ def _check_type_distribution(assignments, employees):
     emp_lookup = {e["name"]: e for e in employees}
     warnings = []
 
-    for shift_num in [1, 2, 3]:
+    for shift_num in sorted(SHIFTS):
         shift_names = [n for n, s in assignments.items() if s == shift_num]
         type_counts = defaultdict(int)
         for name in shift_names:
@@ -906,7 +908,7 @@ def _check_type_distribution(assignments, employees):
 
 def get_roster_summary(employees, shift_assignments):
     """Return a summary of shift distribution for display."""
-    summary = {s: {ct: [] for ct in CONTENT_TYPES} for s in [1, 2, 3]}
+    summary = {s: {ct: [] for ct in CONTENT_TYPES} for s in sorted(SHIFTS)}
 
     for emp in employees:
         shift = shift_assignments[emp["name"]]

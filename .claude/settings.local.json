@@ -35,7 +35,14 @@
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\Roaster_Automation\\\\\" -ErrorAction SilentlyContinue | Select-Object -First 20)",
       "Bash(git show *)",
       "Read(//tmp/**)",
-      "Bash(grep -v \"^+$\")"
+      "Bash(grep -v \"^+$\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\Roaster_Automation\" -Force)",
+      "PowerShell(cd \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\Roaster_Automation\"; Start-Process python -ArgumentList \"app.py\" -RedirectStandardOutput \"app_test.log\" -RedirectStandardError \"app_test_err.log\" -NoNewWindow; Start-Sleep -Seconds 4; $code = \\(Invoke-WebRequest -Uri \"http://localhost:5000/login\" -UseBasicParsing -TimeoutSec 5 -ErrorAction SilentlyContinue\\).StatusCode; Write-Host \"HTTP: $code\")",
+      "Bash(cat app_test_err.log)",
+      "Bash(cat app_test.log)",
+      "PowerShell($resp = Invoke-WebRequest -Uri \"http://localhost:5050/login\" -UseBasicParsing -TimeoutSec 5; Write-Host \"HTTP: $\\($resp.StatusCode\\)\")",
+      "PowerShell($env:PYTHONUTF8 = \"1\"; python -c \"import app\" 2>&1 | Select-Object -First 20)",
+      "PowerShell(python _fix_role.py 2>&1)"
     ]
   }
 }

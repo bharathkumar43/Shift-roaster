@@ -123,9 +123,17 @@
                     <label class="form-label fw-semibold small mb-1" for="summaryShiftFilter">Roster shift</label>
                     <select class="form-select form-select-sm" id="summaryShiftFilter" style="min-width:200px" title="Focus on one shift: roster list + coverage for that shift column">
                         <option value="all">All shifts</option>
-                        <option value="1">Shift 1</option>
-                        <option value="2">Shift 2</option>
-                        <option value="3">Shift 3</option>
+                        <option value="2">Shift 2 (1pm–10pm IST)</option>
+                        <option value="3">Shift 3 (9pm–6am IST)</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label fw-semibold small mb-1" for="summaryManagerFilter">Manager</label>
+                    <select class="form-select form-select-sm" id="summaryManagerFilter" style="min-width:200px">
+                        <option value="all">All managers</option>
+                        {% for mgr in managers | sort(attribute='name') %}
+                        <option value="{{ mgr.name }}">{{ mgr.name }} {% if mgr.division %}({{ mgr.division }}){% endif %}</option>
+                        {% endfor %}
                     </select>
                 </div>
                 <div class="col-12 small text-muted" id="shiftFilterHint" style="display:none;"></div>
@@ -199,9 +207,14 @@
     var coverage        = {{ proj_coverage | tojson }};
     var allProjects     = {{ all_projects  | tojson }};
     var employees       = {{ employees     | tojson }};
+    var managers        = {{ managers      | tojson }};
     var shiftAssign     = {{ shift_assignments | tojson }};
     var YEAR            = {{ year }};
     var MONTH           = {{ month }};
+
+    // Build manager→division lookup
+    var managerDivision = {};
+    managers.forEach(function (m) { managerDivision[m.name] = m.division || ''; });
 
     // ── Week helpers ────────────────────────────────────────
     function weekOfMonth(dayNum) {
@@ -349,7 +362,7 @@
         if (shiftF === 'all') {
             if (personName === 'all') return true;
             var sn, sh;
-            for (sn = 1; sn <= 3; sn++) {
+            for (sn = 2; sn <= 3; sn++) {
                 sh = shifts[sn] || shifts[String(sn)];
                 if (sh && sh.handler === personName) return true;
             }
@@ -373,15 +386,31 @@
         return '<span class="badge bg-shift' + s + ' ms-1">Shift ' + s + '</span>';
     }
 
+    // ── Manager filter state ────────────────────────────────
+    function selectedManagerFilter() {
+        var s = document.getElementById('summaryManagerFilter');
+        return (s && s.value !== 'all') ? s.value : 'all';
+    }
+
+    function projMatchesMgr(projManager) {
+        var mgr = selectedManagerFilter();
+        return mgr === 'all' || projManager === mgr;
+    }
+
     // ── Build indexed data ──────────────────────────────────
-    // projData: project_name -> {product_type, owner, days:[...]}
+    // projData: project_name -> {product_type, owner, proj_manager, days:[...]}
     function buildProjData() {
         var pd = {};
         coverage.forEach(function (day) {
             (day.projects || []).forEach(function (p) {
                 var key = p.project_name;
                 if (!pd[key]) {
-                    pd[key] = { product_type: p.product_type, owner: p.owner, days: [] };
+                    pd[key] = {
+                        product_type: p.product_type,
+                        owner: p.owner,
+                        proj_manager: p.proj_manager || p.owner,
+                        days: []
+                    };
                 }
                 pd[key].days.push({
                     day_num:    day.day_num,
@@ -406,7 +435,7 @@
             };
         });
         var sns = scopeShift === null || scopeShift === undefined
-            ? [1, 2, 3]
+            ? [2, 3]
             : [scopeShift];
         coverage.forEach(function (day) {
             (day.projects || []).forEach(function (p) {
@@ -445,61 +474,101 @@
         var filterVal = '';
         var pf = document.getElementById('projFilter');
         if (pf) filterVal = pf.value.trim().toLowerCase();
+        var shiftF = selectedShiftFilter();
+        var shiftCols = shiftF === 'all' ? [2, 3] : [shiftF];
+
         var names = Object.keys(pd).sort();
         if (filterVal) names = names.filter(function (n) { return n.toLowerCase().indexOf(filterVal) !== -1; });
         names = names.filter(function (pname) {
             var p = pd[pname];
+            if (!projMatchesMgr(p.proj_manager)) return false;
             return p.days.some(function (d) {
                 return dayNums.indexOf(d.day_num) !== -1 && dayMatchesCoverageFilter(d, personName);
             });
         });
-        var html = '';
-        var shiftF = selectedShiftFilter();
-        var shiftCols = shiftF === 'all' ? [1, 2, 3] : [shiftF];
 
+        if (!names.length) {
+            el.innerHTML = '<div class="text-center text-muted py-5">No projects match the filter.</div>';
+            updateShiftHint();
+            return;
+        }
+
+        // Group: division -> manager -> [pnames]
+        var divMgrGroups = {};
         names.forEach(function (pname) {
             var p = pd[pname];
-            var days = p.days.filter(function (d) {
-                return dayNums.indexOf(d.day_num) !== -1 && dayMatchesCoverageFilter(d, personName);
-            });
-
-            html += '<div class="card shadow-sm border-0 mb-3">';
-            html += '<div class="card-header bg-white border-bottom d-flex align-items-center gap-2 flex-wrap">';
-            html += '<span class="fw-bold">' + pname + '</span>';
-            html += typeBadge(p.product_type);
-            html += '<small class="text-muted"><strong>' + p.owner + '</strong></small>';
-            html += '</div>';
-            html += '<div class="card-body p-0">';
-
-            if (!days.length) {
-                html += '<p class="text-muted small p-3 mb-0">No coverage data for selected period.</p>';
-            } else {
-                html += '<div class="table-responsive"><table class="table table-sm table-bordered table-hover align-middle mb-0">';
-                html += '<thead class="table-light"><tr><th>Date</th><th>Day</th>';
-                shiftCols.forEach(function (sn) {
-                    html += '<th class="text-center">S' + sn + '</th>';
-                });
-                html += '</tr></thead><tbody>';
-                days.forEach(function (d) {
-                    html += '<tr>';
-                    html += '<td class="text-muted small">' + d.date + '</td>';
-                    html += '<td><span class="badge bg-light text-dark border">' + d.day_abbr + '</span></td>';
-                    shiftCols.forEach(function (sn) {
-                        var sh = (d.shifts && (d.shifts[sn] || d.shifts[String(sn)])) || {};
-                        if (sh.handler) {
-                            html += '<td class="text-center small">' + sh.handler + '</td>';
-                        } else {
-                            html += '<td class="text-center text-muted small">—</td>';
-                        }
-                    });
-                    html += '</tr>';
-                });
-                html += '</tbody></table></div>';
-            }
-            html += '</div></div>';
+            var div = managerDivision[p.proj_manager] || 'Other';
+            var mgr = p.proj_manager || '';
+            if (!divMgrGroups[div]) divMgrGroups[div] = {};
+            if (!divMgrGroups[div][mgr]) divMgrGroups[div][mgr] = [];
+            divMgrGroups[div][mgr].push(pname);
         });
 
-        if (!names.length) html = '<div class="text-center text-muted py-5">No projects match the filter.</div>';
+        var html = '';
+        ['Enterprise', 'SMB', 'Other'].forEach(function (div) {
+            var mgrGroups = divMgrGroups[div];
+            if (!mgrGroups) return;
+            var mgrNames = Object.keys(mgrGroups).sort();
+            var totalProjs = mgrNames.reduce(function (acc, m) { return acc + mgrGroups[m].length; }, 0);
+
+            var divClass = div === 'Enterprise' ? 'bg-dark' : (div === 'SMB' ? 'bg-success' : 'bg-secondary');
+            var divIcon  = div === 'Enterprise' ? 'bi-building' : (div === 'SMB' ? 'bi-shop' : 'bi-question-circle');
+
+            html += '<div class="mb-5">';
+            html += '<div class="d-flex align-items-center gap-2 mb-3 pb-2 border-bottom">';
+            html += '<span class="badge ' + divClass + ' px-3 py-2" style="font-size:.9rem"><i class="bi ' + divIcon + ' me-1"></i>' + div + '</span>';
+            html += '<span class="text-muted small">' + totalProjs + ' project(s)</span>';
+            html += '</div>';
+
+            mgrNames.forEach(function (mgr) {
+                var pnames = mgrGroups[mgr];
+                html += '<div class="ms-2 mb-3">';
+                if (mgr) {
+                    html += '<div class="d-flex align-items-center gap-2 mb-2">';
+                    html += '<i class="bi bi-person-fill-gear text-muted"></i>';
+                    html += '<span class="fw-semibold small">' + mgr + '</span>';
+                    html += '<span class="badge bg-light text-dark border ms-1" style="font-size:.7rem">' + pnames.length + ' proj</span>';
+                    html += '</div>';
+                }
+                pnames.forEach(function (pname) {
+                    var p = pd[pname];
+                    var days = p.days.filter(function (d) {
+                        return dayNums.indexOf(d.day_num) !== -1 && dayMatchesCoverageFilter(d, personName);
+                    });
+                    html += '<div class="card shadow-sm border-0 mb-3 ms-3">';
+                    html += '<div class="card-header bg-white border-bottom d-flex align-items-center gap-2 flex-wrap">';
+                    html += '<span class="fw-bold">' + pname + '</span>';
+                    html += typeBadge(p.product_type);
+                    html += '</div>';
+                    html += '<div class="card-body p-0">';
+                    if (!days.length) {
+                        html += '<p class="text-muted small p-3 mb-0">No coverage data for selected period.</p>';
+                    } else {
+                        html += '<div class="table-responsive"><table class="table table-sm table-bordered table-hover align-middle mb-0">';
+                        html += '<thead class="table-light"><tr><th>Date</th><th>Day</th>';
+                        shiftCols.forEach(function (sn) { html += '<th class="text-center">S' + sn + '</th>'; });
+                        html += '</tr></thead><tbody>';
+                        days.forEach(function (d) {
+                            html += '<tr>';
+                            html += '<td class="text-muted small">' + d.date + '</td>';
+                            html += '<td><span class="badge bg-light text-dark border">' + d.day_abbr + '</span></td>';
+                            shiftCols.forEach(function (sn) {
+                                var sh = (d.shifts && (d.shifts[sn] || d.shifts[String(sn)])) || {};
+                                html += sh.handler
+                                    ? '<td class="text-center small">' + sh.handler + '</td>'
+                                    : '<td class="text-center text-muted small">—</td>';
+                            });
+                            html += '</tr>';
+                        });
+                        html += '</tbody></table></div>';
+                    }
+                    html += '</div></div>';
+                });
+                html += '</div>';
+            });
+            html += '</div>';
+        });
+
         el.innerHTML = html;
         updateShiftHint();
     }
@@ -517,59 +586,103 @@
         var fi = document.getElementById('empFilter');
         if (fi) filterVal = fi.value.trim().toLowerCase();
 
+        // Build emp -> primary manager lookup
+        var empMgrMap = {};
+        employees.forEach(function (e) {
+            var mgrs = (e.manager_name || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+            empMgrMap[e.name] = mgrs[0] || '';
+        });
+
+        var mgrFilter = selectedManagerFilter();
         var names = Object.keys(ed).sort();
         if (filterVal) names = names.filter(function (n) { return n.toLowerCase().indexOf(filterVal) !== -1; });
         if (personName !== 'all') names = names.filter(function (n) { return n === personName; });
         if (shiftF !== 'all') names = names.filter(function (n) { return rosterShiftMatches(n, shiftF); });
+        if (mgrFilter !== 'all') names = names.filter(function (n) { return empMgrMap[n] === mgrFilter; });
 
-        var html = '';
         if (!names.length) {
-            html = '<div class="text-center text-muted py-5">No employees match the filter.</div>';
-            el.innerHTML = html;
+            el.innerHTML = '<div class="text-center text-muted py-5">No employees match the filter.</div>';
             updateShiftHint();
             return;
         }
 
-        var showLane = shiftF !== 'all';
-
+        // Group: division -> manager -> [emp names]
+        var divMgrGroups = {};
         names.forEach(function (ename) {
-            var e = ed[ename];
-            var relevantNums = dayNums.filter(function (n) { return e.days[n]; });
+            var mgr = empMgrMap[ename] || '';
+            var div = (mgr && managerDivision[mgr]) || 'Other';
+            if (!divMgrGroups[div]) divMgrGroups[div] = {};
+            if (!divMgrGroups[div][mgr]) divMgrGroups[div][mgr] = [];
+            divMgrGroups[div][mgr].push(ename);
+        });
 
-            html += '<div class="card shadow-sm border-0 mb-3">';
-            html += '<div class="card-header bg-white border-bottom d-flex align-items-center gap-2 flex-wrap">';
-            html += '<span class="fw-bold">' + ename + '</span>';
-            e.content_types.forEach(function (ct) { html += typeBadge(ct); });
-            html += shiftBadge(e.shift);
+        var showLane = shiftF !== 'all';
+        var html = '';
+
+        ['Enterprise', 'SMB', 'Other'].forEach(function (div) {
+            var mgrGroups = divMgrGroups[div];
+            if (!mgrGroups) return;
+            var mgrNames = Object.keys(mgrGroups).sort();
+            var totalEmps = mgrNames.reduce(function (acc, m) { return acc + mgrGroups[m].length; }, 0);
+
+            var divClass = div === 'Enterprise' ? 'bg-dark' : (div === 'SMB' ? 'bg-success' : 'bg-secondary');
+            var divIcon  = div === 'Enterprise' ? 'bi-building' : (div === 'SMB' ? 'bi-shop' : 'bi-question-circle');
+
+            html += '<div class="mb-5">';
+            html += '<div class="d-flex align-items-center gap-2 mb-3 pb-2 border-bottom">';
+            html += '<span class="badge ' + divClass + ' px-3 py-2" style="font-size:.9rem"><i class="bi ' + divIcon + ' me-1"></i>' + div + '</span>';
+            html += '<span class="text-muted small">' + totalEmps + ' engineer(s)</span>';
             html += '</div>';
-            html += '<div class="card-body p-0">';
 
-            if (!relevantNums.length) {
-                html += '<p class="text-muted small p-3 mb-0">No project assignments for selected period.</p>';
-            } else {
-                html += '<div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">';
-                html += '<thead class="table-light"><tr><th>Date</th><th>Day</th><th>Project</th><th>Type</th>';
-                if (showLane) html += '<th class="text-center">Lane</th>';
-                html += '</tr></thead><tbody>';
-                relevantNums.forEach(function (dayNum) {
-                    var dd = e.days[dayNum];
-                    dd.projects.forEach(function (p, pi) {
-                        html += '<tr>';
-                        if (pi === 0) {
-                            html += '<td class="text-muted small" rowspan="' + dd.projects.length + '">' + dd.date + '</td>';
-                            html += '<td rowspan="' + dd.projects.length + '"><span class="badge bg-light text-dark border">' + dd.day_abbr + '</span></td>';
-                        }
-                        html += '<td class="fw-medium">' + p.name + '</td>';
-                        html += '<td>' + typeBadge(p.type) + '</td>';
-                        if (showLane) {
-                            html += '<td class="text-center small text-muted">S' + (p.shift_lane || '') + '</td>';
-                        }
-                        html += '</tr>';
-                    });
+            mgrNames.forEach(function (mgr) {
+                var empNames = mgrGroups[mgr];
+                html += '<div class="ms-2 mb-3">';
+                if (mgr) {
+                    html += '<div class="d-flex align-items-center gap-2 mb-2">';
+                    html += '<i class="bi bi-person-fill-gear text-muted"></i>';
+                    html += '<span class="fw-semibold small">' + mgr + '</span>';
+                    html += '</div>';
+                }
+                empNames.forEach(function (ename) {
+                    var e = ed[ename];
+                    var relevantNums = dayNums.filter(function (n) { return e.days[n]; });
+
+                    html += '<div class="card shadow-sm border-0 mb-3 ms-3">';
+                    html += '<div class="card-header bg-white border-bottom d-flex align-items-center gap-2 flex-wrap">';
+                    html += '<span class="fw-bold">' + ename + '</span>';
+                    e.content_types.forEach(function (ct) { html += typeBadge(ct); });
+                    html += shiftBadge(e.shift);
+                    html += '</div>';
+                    html += '<div class="card-body p-0">';
+
+                    if (!relevantNums.length) {
+                        html += '<p class="text-muted small p-3 mb-0">No project assignments for selected period.</p>';
+                    } else {
+                        html += '<div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">';
+                        html += '<thead class="table-light"><tr><th>Date</th><th>Day</th><th>Project</th><th>Type</th>';
+                        if (showLane) html += '<th class="text-center">Lane</th>';
+                        html += '</tr></thead><tbody>';
+                        relevantNums.forEach(function (dayNum) {
+                            var dd = e.days[dayNum];
+                            dd.projects.forEach(function (p, pi) {
+                                html += '<tr>';
+                                if (pi === 0) {
+                                    html += '<td class="text-muted small" rowspan="' + dd.projects.length + '">' + dd.date + '</td>';
+                                    html += '<td rowspan="' + dd.projects.length + '"><span class="badge bg-light text-dark border">' + dd.day_abbr + '</span></td>';
+                                }
+                                html += '<td class="fw-medium">' + p.name + '</td>';
+                                html += '<td>' + typeBadge(p.type) + '</td>';
+                                if (showLane) html += '<td class="text-center small text-muted">S' + (p.shift_lane || '') + '</td>';
+                                html += '</tr>';
+                            });
+                        });
+                        html += '</tbody></table></div>';
+                    }
+                    html += '</div></div>';
                 });
-                html += '</tbody></table></div>';
-            }
-            html += '</div></div>';
+                html += '</div>';
+            });
+            html += '</div>';
         });
 
         el.innerHTML = html;
@@ -600,23 +713,35 @@
         var dayNums = filteredDayNums();
         var personName = selectedPersonName();
         var shiftF = selectedShiftFilter();
-        var shiftCols = shiftF === 'all' ? [1, 2, 3] : [shiftF];
+        var shiftCols = shiftF === 'all' ? [2, 3] : [shiftF];
         var filterVal = '';
         var pf = document.getElementById('projFilter');
         if (pf) filterVal = pf.value.trim().toLowerCase();
         var names = Object.keys(pd).sort();
         if (filterVal) names = names.filter(function (n) { return n.toLowerCase().indexOf(filterVal) !== -1; });
-        var header = ['Project', 'Product type', 'Owner', 'Date', 'Day'];
+        var header = ['Division', 'Manager', 'Project', 'Product type', 'Date', 'Day'];
         shiftCols.forEach(function (sn) { header.push('Shift ' + sn); });
         var rows = [header];
+        // Sort names by division then manager then project
+        names.sort(function (a, b) {
+            var da = managerDivision[pd[a].proj_manager] || 'Other';
+            var db2 = managerDivision[pd[b].proj_manager] || 'Other';
+            var order = ['Enterprise', 'SMB', 'Other'];
+            var oi = order.indexOf(da) - order.indexOf(db2);
+            if (oi !== 0) return oi;
+            var mi = (pd[a].proj_manager || '').localeCompare(pd[b].proj_manager || '');
+            if (mi !== 0) return mi;
+            return a.localeCompare(b);
+        });
         names.forEach(function (pname) {
             var p = pd[pname];
+            var div = managerDivision[p.proj_manager] || '';
             var days = p.days.filter(function (d) {
                 return dayNums.indexOf(d.day_num) !== -1 && dayMatchesCoverageFilter(d, personName);
             });
             days.forEach(function (d) {
                 var sh = d.shifts || {};
-                var row = [pname, p.product_type, p.owner, d.date, d.day_abbr];
+                var row = [div, p.proj_manager || '', pname, p.product_type, d.date, d.day_abbr];
                 shiftCols.forEach(function (sn) {
                     var h = sh[sn] || sh[String(sn)];
                     row.push(h && h.handler ? h.handler : '');
@@ -722,6 +847,14 @@
     var summaryShiftFilter = document.getElementById('summaryShiftFilter');
     if (summaryShiftFilter) {
         summaryShiftFilter.addEventListener('change', function () {
+            renderProjects();
+            renderEmployees();
+        });
+    }
+
+    var summaryManagerFilter = document.getElementById('summaryManagerFilter');
+    if (summaryManagerFilter) {
+        summaryManagerFilter.addEventListener('change', function () {
             renderProjects();
             renderEmployees();
         });

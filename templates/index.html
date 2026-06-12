@@ -7,6 +7,24 @@
     <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='bootstrap-icons.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+    <style>
+    .div-banner{border-radius:8px;padding:.5rem 1rem;font-weight:700;font-size:.88rem;color:#fff;display:flex;align-items:center;gap:.6rem;}
+    .div-banner.ent{background:linear-gradient(90deg,#1e3a5f,#2563eb);}
+    .div-banner.smb{background:linear-gradient(90deg,#14532d,#16a34a);}
+    .mgr-card{border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;}
+    .mgr-card-hdr{background:#f8fafc;padding:.6rem 1rem;display:flex;align-items:center;gap:.5rem;font-weight:700;font-size:.85rem;border-bottom:1px solid #e5e7eb;flex-wrap:wrap;}
+    .mgr-card-hdr.ent-hdr{border-left:4px solid #1e40af;}
+    .mgr-card-hdr.smb-hdr{border-left:4px solid #15803d;}
+    .eng-row{position:relative;display:flex;align-items:center;gap:.45rem;padding:.38rem 1rem .38rem 1.75rem;border-bottom:1px solid #f3f4f6;font-size:.82rem;flex-wrap:wrap;}
+    .eng-row:last-child{border-bottom:none;}
+    .eng-row::before{content:'';position:absolute;left:.6rem;top:0;bottom:0;width:1px;background:#d1d5db;}
+    .eng-row:last-child::before{bottom:50%;}
+    .eng-row::after{content:'';position:absolute;left:.6rem;top:50%;width:.65rem;height:1px;background:#d1d5db;}
+    .eng-name{font-weight:600;color:#1f2937;min-width:80px;}
+    .eng-days-sm{font-size:.7rem;color:#9ca3af;}
+    .sub-mgr-hdr{display:flex;align-items:center;gap:.5rem;font-size:.82rem;font-weight:600;color:#374151;padding:.4rem 1rem .4rem 1.75rem;background:#f8f9fa;border-top:1px dashed #d1d5db;flex-wrap:wrap;}
+    .shared-tag{background:#fef3c7;color:#92400e;font-size:.65rem;padding:.1em .45em;border-radius:8px;font-weight:700;}
+    </style>
 </head>
 <body>
     <nav class="navbar navbar-dark bg-primary-gradient">
@@ -391,14 +409,14 @@
 
             </div>
 
-            <!-- Employee List -->
+            <!-- Team Org Tree / Table View -->
             <div class="col-lg-7">
-                <div class="card shadow-sm border-0 animate-in">
-                    <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">
-                            <i class="bi bi-people"></i> Migration Engineers
-                            <span class="badge bg-primary rounded-pill ms-2">{{ engineers|length }}</span>
-                        </h5>
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <h5 class="mb-0">
+                        <i class="bi bi-people text-primary"></i> Team Overview
+                        <span class="badge bg-secondary rounded-pill ms-1">{{ engineers|length }}</span>
+                    </h5>
+                    <div class="d-flex align-items-center gap-2">
                         {% if employees|length > 0 and current_user and current_user.role == 'admin' %}
                         <form method="POST" action="{{ url_for('clear_all') }}" class="d-inline">
                             <button type="submit" class="btn btn-outline-danger btn-sm"
@@ -407,49 +425,227 @@
                             </button>
                         </form>
                         {% endif %}
-                    </div>
-                    <div class="px-3 py-2 border-bottom bg-white">
-                        <div class="row g-2 align-items-end">
-                            <div class="col-auto">
-                                <label class="form-label fw-semibold small mb-1" for="empShiftFilter">Shift</label>
-                                <select class="form-select form-select-sm" id="empShiftFilter" style="min-width:130px">
-                                    <option value="all">All shifts</option>
-                                    <option value="1">Shift 1</option>
-                                    <option value="2">Shift 2</option>
-                                    <option value="3">Shift 3</option>
-                                </select>
-                            </div>
-                            <div class="col-auto">
-                                <label class="form-label fw-semibold small mb-1" for="empDayFilter">Day</label>
-                                <select class="form-select form-select-sm" id="empDayFilter" style="min-width:130px">
-                                    <option value="all">All days</option>
-                                    <option value="Monday">Mon</option>
-                                    <option value="Tuesday">Tue</option>
-                                    <option value="Wednesday">Wed</option>
-                                    <option value="Thursday">Thu</option>
-                                    <option value="Friday">Fri</option>
-                                    <option value="Saturday">Sat</option>
-                                    <option value="Sunday">Sun</option>
-                                </select>
-                            </div>
-                            <div class="col-auto">
-                                <label class="form-label fw-semibold small mb-1" for="empPersonFilter">Person</label>
-                                <select class="form-select form-select-sm" id="empPersonFilter" style="min-width:160px">
-                                    <option value="all">All people</option>
-                                    {% for emp in employees %}
-                                    <option value="{{ emp.name | e }}">{{ emp.name }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-auto ms-auto text-end">
-                                <span class="small text-muted">
-                                    <i class="bi bi-calendar2-week me-1"></i>{{ app_context_month_name }} {{ app_context_year }}
-                                </span><br>
-                                <span class="small text-muted">Showing <strong id="engVisibleCount">{{ employees|length }}</strong> of {{ employees|length }}</span>
-                            </div>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-primary" id="btnTreeView" onclick="showOrgView('tree')">
+                                <i class="bi bi-diagram-3 me-1"></i>Org Tree
+                            </button>
+                            <button class="btn btn-outline-secondary" id="btnTableView" onclick="showOrgView('table')">
+                                <i class="bi bi-table me-1"></i>Tables
+                            </button>
                         </div>
                     </div>
-                    <div class="card-body p-0">
+                </div>
+
+                <!-- ORG TREE VIEW (shown by default) -->
+                <div id="orgTreeContainer">
+                    {% if employees|length == 0 %}
+                    <div class="text-center py-5 text-muted">
+                        <i class="bi bi-people display-3 d-block mb-3 opacity-25"></i>
+                        <p>No team members added yet.</p>
+                    </div>
+                    {% else %}
+                    {% for division in ['Enterprise', 'SMB'] %}
+                    {% set div_nodes = org_tree.get(division, []) %}
+                    {% if div_nodes %}
+                    <div class="div-banner {{ 'ent' if division == 'Enterprise' else 'smb' }} mb-2">
+                        <i class="bi bi-building-fill"></i>
+                        {{ division }} Division
+                        <span style="font-size:.75rem;opacity:.8">— {{ div_nodes|length }} manager{{ 's' if div_nodes|length != 1 }}</span>
+                    </div>
+                    {% for mgr in div_nodes %}
+                    <div class="mgr-card mb-2 shadow-sm">
+                        <div class="mgr-card-hdr {{ 'ent-hdr' if division == 'Enterprise' else 'smb-hdr' }}">
+                            <i class="bi bi-person-fill-gear" style="color:{{ '#1e40af' if division == 'Enterprise' else '#15803d' }}"></i>
+                            <span>{{ mgr.name }}</span>
+                            {% if mgr.backup_division %}
+                            <span class="badge bg-warning text-dark" style="font-size:.65rem">Backup: {{ mgr.backup_division }}</span>
+                            {% endif %}
+                            <span class="badge bg-light text-dark border ms-1" style="font-size:.65rem">{{ mgr.project_count }} proj</span>
+                            {% if current_user and current_user.role == 'admin' %}
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary ms-auto edit-emp-btn py-0 px-1"
+                                    style="font-size:.7rem"
+                                    data-emp-id="{{ mgr.id }}"
+                                    data-emp-name="{{ mgr.name | e }}"
+                                    data-emp-role="manager"
+                                    data-content-types='{{ mgr.content_types | tojson }}'
+                                    data-working-days='{{ mgr.working_days | tojson }}'
+                                    data-projects='{{ (all_projects | selectattr("employee_id", "equalto", mgr.id) | list) | tojson }}'
+                                    data-team-engineers='{{ manager_team_map.get(mgr.name, []) | tojson }}'>
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            {% endif %}
+                        </div>
+                        {% set all_members = mgr.engineers + mgr.shift_leads %}
+                        {% for member in all_members %}
+                        <div class="eng-row">
+                            {% if member.emp_role == 'shift_lead' %}<i class="bi bi-person-badge text-muted"></i>
+                            {% else %}<i class="bi bi-person text-muted"></i>{% endif %}
+                            <span class="eng-name">{{ member.name }}</span>
+                            {% if member.emp_role == 'shift_lead' %}<span class="badge bg-secondary" style="font-size:.65rem">Lead</span>{% endif %}
+                            {% if member.manager_name and ',' in member.manager_name %}<span class="shared-tag">shared</span>{% endif %}
+                            {% if member.shift == 2 %}<span class="badge bg-primary" style="font-size:.65rem">S2</span>
+                            {% elif member.shift == 3 %}<span class="badge bg-warning text-dark" style="font-size:.65rem">S3</span>{% endif %}
+                            <span class="eng-days-sm">{% for d in member.generated_working_days %}{{ d[:3] }}{% if not loop.last %} {% endif %}{% endfor %}</span>
+                            {% if current_user and current_user.role == 'admin' %}
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary ms-auto edit-emp-btn py-0 px-1"
+                                    style="font-size:.7rem"
+                                    data-emp-id="{{ member.id }}"
+                                    data-emp-name="{{ member.name | e }}"
+                                    data-emp-role="{{ member.emp_role }}"
+                                    data-content-types='{{ member.content_types | tojson }}'
+                                    data-working-days='{{ member.working_days | tojson }}'
+                                    data-projects='{{ (all_projects | selectattr("employee_id", "equalto", member.id) | list) | tojson }}'>
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        {% if not all_members %}<div class="text-muted small px-3 py-2 fst-italic">No team members assigned</div>{% endif %}
+                        {% for sub_mgr in mgr.sub_managers %}
+                        <div class="sub-mgr-hdr">
+                            <i class="bi bi-diagram-2 text-muted"></i>
+                            <span>{{ sub_mgr.name }}</span>
+                            <span class="badge bg-light text-dark border" style="font-size:.65rem">sub-manager</span>
+                            <span class="badge bg-light text-dark border" style="font-size:.65rem">{{ sub_mgr.project_count }} proj</span>
+                            {% if current_user and current_user.role == 'admin' %}
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary ms-auto edit-emp-btn py-0 px-1"
+                                    style="font-size:.7rem"
+                                    data-emp-id="{{ sub_mgr.id }}"
+                                    data-emp-name="{{ sub_mgr.name | e }}"
+                                    data-emp-role="manager"
+                                    data-content-types='{{ sub_mgr.content_types | tojson }}'
+                                    data-working-days='{{ sub_mgr.working_days | tojson }}'
+                                    data-projects='{{ (all_projects | selectattr("employee_id", "equalto", sub_mgr.id) | list) | tojson }}'
+                                    data-team-engineers='{{ manager_team_map.get(sub_mgr.name, []) | tojson }}'>
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            {% endif %}
+                        </div>
+                        {% for eng in sub_mgr.engineers %}
+                        <div class="eng-row" style="padding-left:2.5rem">
+                            <i class="bi bi-person text-muted"></i>
+                            <span class="eng-name">{{ eng.name }}</span>
+                            {% if eng.shift == 2 %}<span class="badge bg-primary" style="font-size:.65rem">S2</span>
+                            {% elif eng.shift == 3 %}<span class="badge bg-warning text-dark" style="font-size:.65rem">S3</span>{% endif %}
+                            <span class="eng-days-sm">{% for d in eng.generated_working_days %}{{ d[:3] }}{% if not loop.last %} {% endif %}{% endfor %}</span>
+                            {% if current_user and current_user.role == 'admin' %}
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary ms-auto edit-emp-btn py-0 px-1"
+                                    style="font-size:.7rem"
+                                    data-emp-id="{{ eng.id }}"
+                                    data-emp-name="{{ eng.name | e }}"
+                                    data-emp-role="{{ eng.emp_role }}"
+                                    data-content-types='{{ eng.content_types | tojson }}'
+                                    data-working-days='{{ eng.working_days | tojson }}'
+                                    data-projects='{{ (all_projects | selectattr("employee_id", "equalto", eng.id) | list) | tojson }}'>
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        {% for sl in sub_mgr.shift_leads %}
+                        <div class="eng-row" style="padding-left:2.5rem">
+                            <i class="bi bi-person-badge text-muted"></i>
+                            <span class="eng-name">{{ sl.name }}</span>
+                            <span class="badge bg-secondary" style="font-size:.65rem">Lead</span>
+                            {% if sl.shift == 2 %}<span class="badge bg-primary" style="font-size:.65rem">S2</span>
+                            {% elif sl.shift == 3 %}<span class="badge bg-warning text-dark" style="font-size:.65rem">S3</span>{% endif %}
+                            <span class="eng-days-sm">{% for d in sl.generated_working_days %}{{ d[:3] }}{% if not loop.last %} {% endif %}{% endfor %}</span>
+                        </div>
+                        {% endfor %}
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                    {% if not loop.last %}<div class="mb-2"></div>{% endif %}
+                    {% endif %}
+                    {% endfor %}
+                    {% if unassigned_engineers %}
+                    <div class="mgr-card mb-2 shadow-sm">
+                        <div class="mgr-card-hdr" style="border-left:4px solid #9ca3af;background:#f9fafb">
+                            <i class="bi bi-person-dash text-muted"></i>
+                            <span class="text-muted">Unassigned Engineers</span>
+                            <span class="badge bg-secondary ms-1" style="font-size:.65rem">{{ unassigned_engineers|length }}</span>
+                        </div>
+                        {% for eng in unassigned_engineers %}
+                        <div class="eng-row">
+                            <i class="bi bi-person text-muted"></i>
+                            <span class="eng-name">{{ eng.name }}</span>
+                            {% if eng.shift == 2 %}<span class="badge bg-primary" style="font-size:.65rem">S2</span>
+                            {% elif eng.shift == 3 %}<span class="badge bg-warning text-dark" style="font-size:.65rem">S3</span>{% endif %}
+                            <span class="eng-days-sm">{% for d in eng.generated_working_days %}{{ d[:3] }}{% if not loop.last %} {% endif %}{% endfor %}</span>
+                            {% if current_user and current_user.role == 'admin' %}
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary ms-auto edit-emp-btn py-0 px-1"
+                                    style="font-size:.7rem"
+                                    data-emp-id="{{ eng.id }}"
+                                    data-emp-name="{{ eng.name | e }}"
+                                    data-emp-role="engineer"
+                                    data-content-types='{{ eng.content_types | tojson }}'
+                                    data-working-days='{{ eng.working_days | tojson }}'
+                                    data-projects='{{ (all_projects | selectattr("employee_id", "equalto", eng.id) | list) | tojson }}'>
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    {% endif %}
+                </div>
+
+                <!-- TABLE VIEW (hidden by default, toggle via buttons) -->
+                <div id="tableViewContainer" style="display:none">
+                    <div class="card shadow-sm border-0 animate-in">
+                        <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">
+                                <i class="bi bi-people"></i> Migration Engineers
+                                <span class="badge bg-primary rounded-pill ms-2">{{ engineers|length }}</span>
+                            </h5>
+                        </div>
+                        <div class="px-3 py-2 border-bottom bg-white">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-auto">
+                                    <label class="form-label fw-semibold small mb-1" for="empShiftFilter">Shift</label>
+                                    <select class="form-select form-select-sm" id="empShiftFilter" style="min-width:130px">
+                                        <option value="all">All shifts</option>
+                                        <option value="2">Shift 2</option>
+                                        <option value="3">Shift 3</option>
+                                    </select>
+                                </div>
+                                <div class="col-auto">
+                                    <label class="form-label fw-semibold small mb-1" for="empDayFilter">Day</label>
+                                    <select class="form-select form-select-sm" id="empDayFilter" style="min-width:130px">
+                                        <option value="all">All days</option>
+                                        <option value="Monday">Mon</option>
+                                        <option value="Tuesday">Tue</option>
+                                        <option value="Wednesday">Wed</option>
+                                        <option value="Thursday">Thu</option>
+                                        <option value="Friday">Fri</option>
+                                        <option value="Saturday">Sat</option>
+                                        <option value="Sunday">Sun</option>
+                                    </select>
+                                </div>
+                                <div class="col-auto">
+                                    <label class="form-label fw-semibold small mb-1" for="empPersonFilter">Person</label>
+                                    <select class="form-select form-select-sm" id="empPersonFilter" style="min-width:160px">
+                                        <option value="all">All people</option>
+                                        {% for emp in employees %}
+                                        <option value="{{ emp.name | e }}">{{ emp.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-auto ms-auto text-end">
+                                    <span class="small text-muted">
+                                        <i class="bi bi-calendar2-week me-1"></i>{{ app_context_month_name }} {{ app_context_year }}
+                                    </span><br>
+                                    <span class="small text-muted">Showing <strong id="engVisibleCount">{{ employees|length }}</strong> of {{ employees|length }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
                         {% if employees|length == 0 %}
                         <div class="empty-state text-center">
                             <i class="bi bi-person-plus display-3 d-block mb-3"></i>
@@ -463,6 +659,7 @@
                                     <tr>
                                         <th style="width:40px">#</th>
                                         <th>Name</th>
+                                        <th>Team</th>
                                         {% if current_user and current_user.role == 'admin' %}<th>Product Types</th>{% endif %}
                                         <th>Shift</th>
                                         <th>Working Days</th>
@@ -478,6 +675,15 @@
                                         data-name="{{ emp.name | e }}">
                                         <td class="text-muted">{{ loop.index }}</td>
                                         <td class="fw-semibold">{{ emp.name }}</td>
+                                        <td class="small">
+                                            {% if emp.manager_name %}
+                                            {% for mgr in emp.manager_name.split(',') %}
+                                            <span class="badge bg-secondary">{{ mgr.strip() }}</span>
+                                            {% endfor %}
+                                            {% else %}
+                                            <span class="text-muted">—</span>
+                                            {% endif %}
+                                        </td>
                                         {% if current_user and current_user.role == 'admin' %}
                                         <td>
                                             {% for ct in emp.content_types %}
@@ -492,9 +698,7 @@
                                         </td>
                                         {% endif %}
                                         <td>
-                                            {% if emp.shift == 1 %}
-                                            <span class="badge bg-success">S1</span>
-                                            {% elif emp.shift == 2 %}
+                                            {% if emp.shift == 2 %}
                                             <span class="badge bg-primary">S2</span>
                                             {% elif emp.shift == 3 %}
                                             <span class="badge bg-warning text-dark">S3</span>
@@ -643,6 +847,7 @@
                                     <tr>
                                         <th>#</th>
                                         <th>Name</th>
+                                        <th>Division</th>
                                         <th>Projects</th>
                                         <th style="width:80px"></th>
                                     </tr>
@@ -652,6 +857,15 @@
                                     <tr>
                                         <td class="text-muted">{{ loop.index }}</td>
                                         <td class="fw-semibold">{{ emp.name }}</td>
+                                        <td class="small">
+                                            {% if emp.division == 'Enterprise' %}
+                                            <span class="badge bg-dark">Enterprise</span>
+                                            {% elif emp.division == 'SMB' %}
+                                            <span class="badge bg-success">SMB</span>
+                                            {% else %}
+                                            <span class="text-muted">—</span>
+                                            {% endif %}
+                                        </td>
                                         <td>
                                             {% set mgr_projects = all_projects | selectattr('employee_id', 'equalto', emp.id) | list %}
                                             {% if mgr_projects %}
@@ -743,9 +957,10 @@
                     </div>
                 </div>
                 {% endif %}
-            </div>
+                </div><!-- /tableViewContainer -->
+            </div><!-- /col-lg-7 -->
 
-        </div>
+        </div><!-- /row g-4 -->
     <!-- Edit Employee Modal -->
     <div class="modal fade" id="editEmpModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog">
@@ -758,6 +973,18 @@
                     <div class="mb-4">
                         <label class="form-label fw-semibold">Employee Name</label>
                         <input type="text" class="form-control" id="editEmpNameInput" placeholder="Employee name">
+                    </div>
+                    <div class="mb-3" id="editTeamSection" style="display:none">
+                        <label class="form-label fw-semibold">Team Members</label>
+                        <div id="editTeamList" class="mb-2"></div>
+                        <div class="d-flex gap-2 align-items-center">
+                            <select class="form-select form-select-sm" id="addTeamMemberSel" style="max-width:230px">
+                                <option value="">— Add engineer / lead —</option>
+                            </select>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="addTeamMemberBtn">
+                                <i class="bi bi-plus"></i> Add
+                            </button>
+                        </div>
                     </div>
                     <div class="mb-3" id="editTypeSection">
                         <label class="form-label fw-semibold">Primary Product Types</label>
@@ -1103,6 +1330,8 @@
         var TYPE_ABBR   = ['CON','EML','MSG'];
         var TYPE_COLORS = ['info','primary','warning'];
         var DAY_ABBR    = ['Mo','Tu','We','Th','Fr','Sa','Su'];
+        var ALL_STAFF_FOR_TEAM = {{ all_staff_for_team | tojson }};
+        var currentTeamMembers = [];
 
         function esc(s) {
             return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -1278,6 +1507,55 @@
         var editEmpModal     = new bootstrap.Modal(document.getElementById('editEmpModal'));
         var currentEditEmpId = null;
 
+        function renderTeamList() {
+            var list = document.getElementById('editTeamList');
+            list.innerHTML = '';
+            if (!currentTeamMembers.length) {
+                list.innerHTML = '<div class="text-muted small fst-italic">No team members assigned.</div>';
+                return;
+            }
+            currentTeamMembers.forEach(function(m) {
+                var div = document.createElement('div');
+                div.className = 'd-flex align-items-center gap-2 mb-1';
+                div.innerHTML = '<i class="bi bi-person text-muted"></i>' +
+                    '<span class="flex-fill small">' + esc(m.name) + '</span>' +
+                    '<button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 remove-team-btn" data-mid="' + m.id + '">' +
+                    '<i class="bi bi-x"></i></button>';
+                div.querySelector('.remove-team-btn').addEventListener('click', function() {
+                    var mid = parseInt(this.dataset.mid);
+                    currentTeamMembers = currentTeamMembers.filter(function(x) { return x.id !== mid; });
+                    renderTeamList();
+                    populateAddDropdown();
+                });
+                list.appendChild(div);
+            });
+        }
+
+        function populateAddDropdown() {
+            var sel = document.getElementById('addTeamMemberSel');
+            var currentIds = currentTeamMembers.map(function(m) { return m.id; });
+            sel.innerHTML = '<option value="">— Add engineer / lead —</option>';
+            ALL_STAFF_FOR_TEAM.forEach(function(s) {
+                if (currentIds.indexOf(s.id) === -1) {
+                    var opt = document.createElement('option');
+                    opt.value = s.id;
+                    opt.textContent = s.name;
+                    sel.appendChild(opt);
+                }
+            });
+        }
+
+        document.getElementById('addTeamMemberBtn').addEventListener('click', function() {
+            var sel = document.getElementById('addTeamMemberSel');
+            var id = parseInt(sel.value);
+            if (!id) return;
+            var staff = ALL_STAFF_FOR_TEAM.find(function(s) { return s.id === id; });
+            if (!staff) return;
+            currentTeamMembers.push(staff);
+            renderTeamList();
+            populateAddDropdown();
+        });
+
         function makeProjectRow(name, ptype) {
             var row = document.createElement('div');
             row.className = 'project-row d-flex gap-2 mb-2 align-items-center';
@@ -1311,6 +1589,17 @@
                 document.getElementById('editDaySection').style.display = hideFields ? 'none' : '';
                 var lsEl = document.getElementById('editLearningSection');
                 if (lsEl) lsEl.style.display = hideFields ? 'none' : '';
+
+                var teamSection = document.getElementById('editTeamSection');
+                if (empRole === 'manager') {
+                    currentTeamMembers = JSON.parse(btn.dataset.teamEngineers || '[]');
+                    renderTeamList();
+                    populateAddDropdown();
+                    teamSection.style.display = '';
+                } else {
+                    currentTeamMembers = [];
+                    teamSection.style.display = 'none';
+                }
 
                 var cts      = JSON.parse(btn.dataset.contentTypes);
                 var days     = JSON.parse(btn.dataset.workingDays);
@@ -1400,6 +1689,9 @@
             var editedName = document.getElementById('editEmpNameInput').value.trim();
 
             var payload = {name: editedName, content_types: cts, working_days: days, projects: projs};
+            if (document.getElementById('editTeamSection').style.display !== 'none') {
+                payload.team_engineer_ids = currentTeamMembers.map(function(m) { return m.id; });
+            }
 
             fetch('/edit_employee/' + currentEditEmpId, {
                 method: 'POST',
@@ -1547,13 +1839,13 @@
                         html += '<small class="text-muted fw-semibold">Daily Coverage (All Shifts):</small>';
                         html += '<div class="table-responsive mt-1"><table class="table table-sm table-bordered table-hover align-middle mb-0">';
                         html += '<thead class="table-light"><tr><th>Date</th><th>Day</th>';
-                        html += '<th class="text-center">S1</th><th class="text-center">S2</th><th class="text-center">S3</th>';
+                        html += '<th class="text-center">S2</th><th class="text-center">S3</th>';
                         html += '</tr></thead><tbody>';
                         proj.daily.forEach(function(d) {
                             html += '<tr>';
                             html += '<td class="text-muted small">' + d.date + '</td>';
                             html += '<td><span class="badge bg-light text-dark border">' + d.day_abbr + '</span></td>';
-                            [1,2,3].forEach(function(sn) {
+                            [2,3].forEach(function(sn) {
                                 var sh = (d.shifts && (d.shifts[sn] || d.shifts[String(sn)])) || {};
                                 if (sh.handler) {
                                     html += '<td class="text-center small">';
@@ -1591,8 +1883,8 @@
         var shiftMgrsBody  = document.getElementById('shiftManagersBody');
         var shiftTitle   = document.getElementById('shiftModalTitle');
 
-        var SHIFTS = {1: 'Shift 1', 2: 'Shift 2', 3: 'Shift 3'};
-        var SHIFT_COLORS = {1: 'bg-shift1', 2: 'bg-shift2', 3: 'bg-shift3'};
+        var SHIFTS = {2: 'Shift 2', 3: 'Shift 3'};
+        var SHIFT_COLORS = {2: 'bg-shift2', 3: 'bg-shift3'};
 
         function typeBadge(ct) {
             if (ct === 'Content') return '<span class="badge bg-info text-dark">CON</span>';
@@ -1608,7 +1900,7 @@
             }
             h += '<td><div class="d-flex gap-1">';
             if (isAdmin) {
-                [1, 2, 3].forEach(function (s) {
+                [2, 3].forEach(function (s) {
                     var on = savedShift === s;
                     h += '<button type="button" class="btn btn-sm shift-pick-btn ' +
                          (on ? SHIFT_COLORS[s] + ' text-white' : 'btn-outline-secondary') +
@@ -1777,6 +2069,23 @@
 
         }
     })();
+    </script>
+    <script>
+    function showOrgView(view) {
+        var tree = document.getElementById('orgTreeContainer');
+        var tbl  = document.getElementById('tableViewContainer');
+        var bT   = document.getElementById('btnTreeView');
+        var bTb  = document.getElementById('btnTableView');
+        if (view === 'tree') {
+            tree.style.display = ''; tbl.style.display = 'none';
+            bT.classList.add('btn-primary'); bT.classList.remove('btn-outline-secondary');
+            bTb.classList.add('btn-outline-secondary'); bTb.classList.remove('btn-primary');
+        } else {
+            tree.style.display = 'none'; tbl.style.display = '';
+            bT.classList.add('btn-outline-secondary'); bT.classList.remove('btn-primary');
+            bTb.classList.add('btn-primary'); bTb.classList.remove('btn-outline-secondary');
+        }
+    }
     </script>
     <button class="chat-fab" id="chatFab" title="Ask me anything"><i class="bi bi-chat-dots"></i></button>
     <div class="chat-window d-none" id="chatWindow">

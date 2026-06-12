@@ -229,16 +229,12 @@ body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkM
         <div class="stat-sub" id="sDate"></div>
     </div>
     <div class="stat">
-        <div class="stat-lbl">12 AM – 8 AM</div>
+        <div class="stat-lbl">1 AM – 1 PM</div>
         <div class="stat-val" id="s1">—</div>
     </div>
     <div class="stat">
-        <div class="stat-lbl">8 AM – 4 PM</div>
+        <div class="stat-lbl">1 PM – 1 AM</div>
         <div class="stat-val" id="s2">—</div>
-    </div>
-    <div class="stat">
-        <div class="stat-lbl">4 PM – 12 AM</div>
-        <div class="stat-val" id="s3">—</div>
     </div>
     <div class="stat">
         <div class="stat-lbl">Parse Failures</div>
@@ -251,7 +247,7 @@ body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkM
     <div class="empty-state" id="emptyState">
         <div class="empty-icon">📬</div>
         <div class="empty-title">Click <strong>Refresh Emails</strong> to load drive change alerts</div>
-        <div class="empty-sub">Emails are grouped by 8-hour IST time window &middot; No data is modified</div>
+        <div class="empty-sub">Emails are grouped by 12-hour IST time window &middot; No data is modified</div>
     </div>
     <div id="dataWrap" style="display:none">
         <div id="windowsContainer"></div>
@@ -283,7 +279,7 @@ var AUTO_MIN = 30;
 var IST_MS = (5*60+30)*60*1000;
 var DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 var MONS   = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-var WIN_LBL = {1:'12:00 AM – 8:00 AM IST', 2:'8:00 AM – 4:00 PM IST', 3:'4:00 PM – 12:00 AM IST'};
+var WIN_LBL = {1:'1:00 AM – 1:00 PM IST', 2:'1:00 PM – 1:00 AM IST'};
 
 // UTC + IST offset — browser local timezone does NOT affect this calculation
 function nowIST(){ return new Date(Date.now() + IST_MS); }
@@ -296,7 +292,7 @@ function todayStr(){
 
 function curWin(){
     var h = nowIST().getUTCHours();
-    return h < 8 ? 1 : h < 16 ? 2 : 3;
+    return (h >= 1 && h < 13) ? 1 : 2;
 }
 
 function isToday(){ return !selDate || selDate === todayStr(); }
@@ -328,6 +324,7 @@ function tickClock(){
 }
 setInterval(tickClock, 1000);
 tickClock();
+doRefresh();
 
 // ── Date picker ────────────────────────────────────────────────────────────
 document.getElementById('clockDate').onclick = function(){
@@ -414,7 +411,6 @@ function renderAll(data){
     document.getElementById('sDate').textContent  = '('+fmtDateStr(data.date)+')';
     document.getElementById('s1').textContent = wt['1']||0;
     document.getElementById('s2').textContent = wt['2']||0;
-    document.getElementById('s3').textContent = wt['3']||0;
     var fail = data.parse_failures||0;
     var fEl = document.getElementById('sFail');
     fEl.textContent = fail;
@@ -428,7 +424,7 @@ function renderAll(data){
     var windows = data.windows || {};
     var cw = curWin();
 
-    [1,2,3].forEach(function(n){
+    [1,2].forEach(function(n){
         var wdata = windows[String(n)] || {label:'', total:0, groups:[]};
         container.appendChild(buildWindowSection(n, wdata, cw));
     });

@@ -8,9 +8,8 @@ from html.parser import HTMLParser
 IST_OFFSET = timedelta(hours=5, minutes=30)
 
 WINDOWS = {
-    1: {"label": "12:00 AM – 8:00 AM IST",  "start_h": 0,  "end_h": 8},
-    2: {"label": "8:00 AM – 4:00 PM IST",   "start_h": 8,  "end_h": 16},
-    3: {"label": "4:00 PM – 12:00 AM IST",  "start_h": 16, "end_h": 24},
+    1: {"label": "1:00 AM – 1:00 PM IST",  "start_h": 1,  "end_h": 13},
+    2: {"label": "1:00 PM – 1:00 AM IST",  "start_h": 13, "end_h": 25},
 }
 
 
@@ -42,11 +41,7 @@ def _ist_hour(received_at: str) -> int:
 
 def classify_window(received_at: str) -> int:
     h = _ist_hour(received_at)
-    if h < 8:
-        return 1
-    if h < 16:
-        return 2
-    return 3
+    return 1 if 1 <= h < 13 else 2
 
 
 def _find(patterns: list[str], text: str) -> str:

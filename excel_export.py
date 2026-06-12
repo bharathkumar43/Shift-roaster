@@ -90,7 +90,7 @@ def _create_roster_sheet(wb, roster, shift_assignments, employees, year, month):
     ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=num_days + 1)
     legend = ws.cell(
         row=2, column=1,
-        value="Shift 1: 6AM-2PM IST / 7:30PM-3:30AM EST (Lean)  |  Shift 2: 1PM-10PM IST / 2:30AM-11:30AM EST (Strong)  |  Shift 3: 9PM-6AM IST / 10:30AM-7:30PM EST (Strong)"
+        value="Shift 2: 1PM-10PM IST / 2:30AM-11:30AM EST (Strong)  |  Shift 3: 9PM-6AM IST / 10:30AM-7:30PM EST (Strong)"
     )
     legend.font = Font(size=9, italic=True, color="5D6D7E")
     legend.alignment = Alignment(horizontal="center")
@@ -112,7 +112,7 @@ def _create_roster_sheet(wb, roster, shift_assignments, employees, year, month):
 
     row += 1
 
-    for shift_num in [1, 2, 3]:
+    for shift_num in [2, 3]:
         shift_info = SHIFTS[shift_num]
         shift_emps = [e for e in employees if shift_assignments[e["name"]] == shift_num]
 
@@ -169,7 +169,7 @@ def _create_summary_sheet(wb, shift_assignments, employees, year, month):
         _style_header(cell)
 
     row = 4
-    for shift_num in [1, 2, 3]:
+    for shift_num in [2, 3]:
         shift_emps = [e for e in employees if shift_assignments[e["name"]] == shift_num]
         for emp in shift_emps:
             ws.cell(row=row, column=1, value=emp["name"]).border = THIN_BORDER
@@ -223,12 +223,12 @@ def _create_project_coverage_sheet(wb, proj_coverage, year, month):
 
     col = 2
     for pname, ptype in project_names:
-        ws.merge_cells(start_row=row, start_column=col, end_row=row, end_column=col + 2)
+        ws.merge_cells(start_row=row, start_column=col, end_row=row, end_column=col + 1)
         cell = ws.cell(row=row, column=col, value=f"{pname} ({ptype})")
         _style_header(cell)
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-        for s_idx, s_label in enumerate(["S1", "S2", "S3"]):
+        for s_idx, s_label in enumerate(["S2", "S3"]):
             c = ws.cell(row=row + 1, column=col + s_idx, value=s_label)
             c.font = Font(bold=True, size=9, color="5D6D7E")
             c.fill = PatternFill(start_color="E8E8E8", end_color="E8E8E8", fill_type="solid")
@@ -236,7 +236,7 @@ def _create_project_coverage_sheet(wb, proj_coverage, year, month):
             c.alignment = Alignment(horizontal="center")
             ws.column_dimensions[get_column_letter(col + s_idx)].width = 16
 
-        col += 3
+        col += 2
 
     row += 2
 
@@ -253,7 +253,7 @@ def _create_project_coverage_sheet(wb, proj_coverage, year, month):
         col = 2
         for key in project_names:
             p = proj_map.get(key)
-            for sn in [1, 2, 3]:
+            for sn in [2, 3]:
                 cell = ws.cell(row=row, column=col)
                 cell.border = THIN_BORDER
                 cell.alignment = Alignment(horizontal="center", vertical="center")
@@ -311,12 +311,12 @@ def generate_delta_excel(events, assignments_by_id, product_type):
     ws.cell(row=1, column=1, value=f"Delta Calendar — {product_type}")
     ws.cell(row=1, column=1).font = TITLE_FONT
 
-    headers = ["Project Name", "Product Type", "Manager", "Start Date", "End Date", "Date", "Shift 1", "Shift 2", "Shift 3"]
+    headers = ["Project Name", "Product Type", "Manager", "Start Date", "End Date", "Date", "Shift 2", "Shift 3"]
     for col, h in enumerate(headers, 1):
         cell = ws.cell(row=3, column=col, value=h)
         _style_header(cell)
 
-    col_widths = [28, 14, 22, 14, 14, 14, 22, 22, 22]
+    col_widths = [28, 14, 22, 14, 14, 14, 22, 22]
     for i, w in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
@@ -348,8 +348,8 @@ def generate_delta_excel(events, assignments_by_id, product_type):
             date_cell.border = THIN_BORDER
             date_cell.font = Font(size=10)
 
-            for sn in [1, 2, 3]:
-                col = 6 + sn
+            for sn in [2, 3]:
+                col = 5 + sn
                 name = shifts.get(sn, "—")
                 c = ws.cell(row=row, column=col, value=name)
                 c.border = THIN_BORDER
@@ -381,7 +381,6 @@ def generate_delta_image(events, assignments_by_id, product_type):
         ("Start Date", 110),
         ("End Date", 110),
         ("Date", 110),
-        ("Shift 1", 180),
         ("Shift 2", 180),
         ("Shift 3", 180),
     ]
@@ -462,7 +461,6 @@ def generate_delta_image(events, assignments_by_id, product_type):
     y += HEADER_H
 
     shift_colors = {
-        1: (213, 245, 227),
         2: (214, 234, 248),
         3: (249, 231, 159),
     }
@@ -493,7 +491,7 @@ def generate_delta_image(events, assignments_by_id, product_type):
             x += col_w
 
         for sni, (_, col_w) in enumerate(columns[6:]):
-            sn = sni + 1
+            sn = sni + 2
             sv = row["shifts"].get(sn)
             if sv:
                 draw.rectangle([x + 1, y + 1, x + col_w - 1, y + ROW_H - 1], fill=shift_colors[sn])

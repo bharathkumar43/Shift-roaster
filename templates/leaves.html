@@ -350,7 +350,6 @@
                                     <thead class="table-light">
                                         <tr>
                                             <th>Day</th>
-                                            <th class="text-center">S1</th>
                                             <th class="text-center">S2</th>
                                             <th class="text-center">S3</th>
                                         </tr>
@@ -360,7 +359,6 @@
                                         {% set s = strength[day_num] %}
                                         <tr>
                                             <td class="small fw-medium">{{ month_names[month - 1][:3] }} {{ day_num }}</td>
-                                            <td class="text-center small {{ 'table-danger' if s[1] == 0 else ('table-warning' if s[1] <= 2 else '') }}">{{ s[1] }}</td>
                                             <td class="text-center small {{ 'table-danger' if s[2] == 0 else ('table-warning' if s[2] <= 2 else '') }}">{{ s[2] }}</td>
                                             <td class="text-center small {{ 'table-danger' if s[3] == 0 else ('table-warning' if s[3] <= 2 else '') }}">{{ s[3] }}</td>
                                         </tr>
@@ -403,7 +401,7 @@
                     var html = '';
                     html += '<div><strong>' + d.employee + '</strong> (Shift ' + (d.shift || '?') + ')</div>';
                     html += '<div>Shift strength on this day: ';
-                    [1,2,3].forEach(function(s) {
+                    [2,3].forEach(function(s) {
                         var cnt = (d.shift_strength && d.shift_strength[s]) || 0;
                         var cls = cnt === 0 ? 'bg-danger' : (cnt <= 2 ? 'bg-warning text-dark' : 'bg-success');
                         html += '<span class="badge ' + cls + ' me-1">S' + s + ': ' + cnt + '</span>';

@@ -59,6 +59,7 @@
             </h2>
         </div>
 
+        {% if current_user and (current_user.role == 'admin' or (linked_employee and linked_employee.emp_role == 'manager')) %}
         <div class="row g-4">
             <!-- Left: Create Delta Form -->
             <div class="col-lg-5">
@@ -128,9 +129,6 @@
                             <input class="form-check-input" type="checkbox" id="singleDayCheck">
                             <label class="form-check-label small" for="singleDayCheck">Single day</label>
                         </div>
-                        <button type="button" class="btn btn-primary btn-sm w-100" id="previewBtn">
-                            <i class="bi bi-search"></i> Preview Engineers
-                        </button>
                         <div id="previewError" class="text-danger small mt-2 d-none"></div>
                         {% else %}
                         <div class="text-center text-muted py-4">
@@ -143,26 +141,32 @@
                 </div>
             </div>
 
-            <!-- Right: Engineer Preview -->
+            <!-- Right: Assign Engineers -->
             <div class="col-lg-7">
-                <div class="card shadow-sm border-0 animate-in" id="previewCard" style="display:none!important">
+                <div class="card shadow-sm border-0 animate-in" id="assignPanel" style="display:none">
                     <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
-                        <h6 class="mb-0"><i class="bi bi-people"></i> Engineer Preview</h6>
-                        <span class="badge bg-secondary" id="previewProjectBadge"></span>
+                        <h6 class="mb-0"><i class="bi bi-person-check"></i> Assign Engineers</h6>
+                        <span class="badge bg-secondary" id="assignProjectBadge"></span>
                     </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-sm table-bordered align-middle mb-0" id="previewTable">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Date</th>
-                                        <th class="text-center" style="min-width:160px">Shift 1</th>
-                                        <th class="text-center" style="min-width:160px">Shift 2</th>
-                                        <th class="text-center" style="min-width:160px">Shift 3</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="previewBody"></tbody>
-                            </table>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold">
+                                <span class="badge me-1" style="background:#D6EAF8;color:#1a5276">Shift 2</span> Engineer
+                            </label>
+                            <select class="form-select form-select-sm" id="engShift2">
+                                <option value="">— unassigned —</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold">
+                                <span class="badge me-1" style="background:#F9E79F;color:#7d6608">Shift 3</span> Engineer
+                            </label>
+                            <select class="form-select form-select-sm" id="engShift3">
+                                <option value="">— unassigned —</option>
+                            </select>
+                        </div>
+                        <div id="noEngMsg" class="text-warning small d-none">
+                            <i class="bi bi-exclamation-triangle me-1"></i>No engineers found under this manager.
                         </div>
                     </div>
                     <div class="card-footer bg-white border-top">
@@ -175,7 +179,7 @@
                             <input type="hidden" name="end_time" id="saveEndTime">
                             <input type="hidden" name="manager_name" id="saveManager">
                             <div id="saveAssignments"></div>
-                            <button type="submit" class="btn btn-success btn-sm w-100">
+                            <button type="button" class="btn btn-success btn-sm w-100" id="saveDeltaBtn">
                                 <i class="bi bi-save"></i> Save Delta
                             </button>
                         </form>
@@ -183,6 +187,7 @@
                 </div>
             </div>
         </div>
+        {% endif %}
 
         <!-- Delta Lifecycle Tabs -->
         <div class="card shadow-sm border-0 animate-in mt-4">
@@ -579,45 +584,78 @@
     <script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
     <script>
     var PROJ_MANAGER_MAP = {{ proj_manager_map | tojson }};
+    var MGR_ENG_MAP      = {{ manager_engineer_map | tojson }};
 
     (function () {
-        var projectSel = document.getElementById('deltaProject');
-        var startInput = document.getElementById('deltaStart');
-        var endInput   = document.getElementById('deltaEnd');
+        var projectSel     = document.getElementById('deltaProject');
+        var startInput     = document.getElementById('deltaStart');
+        var endInput       = document.getElementById('deltaEnd');
         var startTimeInput = document.getElementById('deltaStartTime');
         var endTimeInput   = document.getElementById('deltaEndTime');
-        var singleCheck = document.getElementById('singleDayCheck');
-        var endRow     = document.getElementById('endDateRow');
-        var previewBtn = document.getElementById('previewBtn');
-        var previewCard = document.getElementById('previewCard');
-        var previewBody = document.getElementById('previewBody');
-        var previewBadge = document.getElementById('previewProjectBadge');
-        var previewError = document.getElementById('previewError');
+        var singleCheck    = document.getElementById('singleDayCheck');
+        var endRow         = document.getElementById('endDateRow');
+        var assignPanel    = document.getElementById('assignPanel');
+        var assignBadge    = document.getElementById('assignProjectBadge');
+        var engShift2      = document.getElementById('engShift2');
+        var engShift3      = document.getElementById('engShift3');
+        var noEngMsg       = document.getElementById('noEngMsg');
         var saveAssignments = document.getElementById('saveAssignments');
-        var saveProject = document.getElementById('saveProject');
+        var saveProject    = document.getElementById('saveProject');
         var saveProductType = document.getElementById('saveProductType');
-        var saveStart = document.getElementById('saveStart');
-        var saveEnd = document.getElementById('saveEnd');
-        var saveStartTime = document.getElementById('saveStartTime');
-        var saveEndTime = document.getElementById('saveEndTime');
-        var saveManager = document.getElementById('saveManager');
-        var managerRow = document.getElementById('managerRow');
+        var saveStart      = document.getElementById('saveStart');
+        var saveEnd        = document.getElementById('saveEnd');
+        var saveStartTime  = document.getElementById('saveStartTime');
+        var saveEndTime    = document.getElementById('saveEndTime');
+        var saveManager    = document.getElementById('saveManager');
+        var managerRow     = document.getElementById('managerRow');
         var managerAutoRow = document.getElementById('managerAutoRow');
         var managerAutoInput = document.getElementById('managerAutoInput');
         var managerSelectRow = document.getElementById('managerSelectRow');
-        var managerSelect = document.getElementById('managerSelect');
+        var managerSelect  = document.getElementById('managerSelect');
+        var saveDeltaBtn   = document.getElementById('saveDeltaBtn');
+        var previewError   = document.getElementById('previewError');
 
         if (!projectSel) return;
 
+        function pad(n) { return String(n).padStart(2, '0'); }
+
+        function showError(msg) {
+            previewError.textContent = msg;
+            previewError.classList.remove('d-none');
+        }
+
+        function populateDropdown(sel, engineers) {
+            sel.innerHTML = '<option value="">— unassigned —</option>';
+            engineers.forEach(function(name) {
+                var o = document.createElement('option');
+                o.value = name; o.textContent = name;
+                sel.appendChild(o);
+            });
+        }
+
+        function loadEngineersForManager(mgr) {
+            var engineers = (mgr && MGR_ENG_MAP[mgr]) ? MGR_ENG_MAP[mgr] : [];
+            populateDropdown(engShift2, engineers);
+            populateDropdown(engShift3, engineers);
+            noEngMsg.classList.toggle('d-none', engineers.length > 0);
+        }
+
         projectSel.addEventListener('change', function () {
-            var projectName = this.value;
+            var opt = this.options[this.selectedIndex];
+            var projectName = opt.value;
+            var productType = opt.getAttribute('data-type') || '';
+
+            previewError.classList.add('d-none');
+
             if (!projectName) {
                 managerRow.style.display = 'none';
+                assignPanel.style.display = 'none';
                 saveManager.value = '';
                 return;
             }
-            managerRow.style.display = '';
+
             var mgr = PROJ_MANAGER_MAP[projectName] || null;
+            managerRow.style.display = '';
             if (mgr) {
                 managerAutoInput.value = mgr;
                 managerAutoRow.classList.remove('d-none');
@@ -629,11 +667,18 @@
                 managerSelect.value = '';
                 saveManager.value = '';
             }
+
+            loadEngineersForManager(mgr);
+            saveProject.value = projectName;
+            saveProductType.value = productType;
+            assignBadge.textContent = projectName + (productType ? ' — ' + productType : '');
+            assignPanel.style.display = '';
         });
 
         if (managerSelect) {
             managerSelect.addEventListener('change', function () {
                 saveManager.value = this.value;
+                loadEngineersForManager(this.value);
             });
         }
 
@@ -650,145 +695,51 @@
         startInput.addEventListener('change', function () {
             if (singleCheck.checked) endInput.value = this.value;
         });
-
         startTimeInput.addEventListener('change', function () {
             if (singleCheck.checked) endTimeInput.value = this.value;
         });
 
-        var SHIFT_LABELS = {1: 'Shift 1', 2: 'Shift 2', 3: 'Shift 3'};
-        var SHIFT_COLORS = {1: '#D5F5E3', 2: '#D6EAF8', 3: '#F9E79F'};
-
-        previewBtn.addEventListener('click', function () {
-            var opt = projectSel.options[projectSel.selectedIndex];
-            var projectName = opt.value;
-            var productType = opt.getAttribute('data-type');
-            var startDate = startInput.value;
-            var endDate = singleCheck.checked ? startDate : endInput.value;
+        saveDeltaBtn.addEventListener('click', function () {
+            var projectName = saveProject.value;
+            var startDate   = startInput.value;
+            var endDate     = singleCheck.checked ? startDate : endInput.value;
 
             previewError.classList.add('d-none');
-
             if (!projectName) { showError('Please select a project.'); return; }
             if (!startDate)   { showError('Please select a start date.'); return; }
             if (!endDate)     { showError('Please select an end date.'); return; }
             if (endDate < startDate) { showError('End date must be on or after start date.'); return; }
 
-            previewBtn.disabled = true;
-            previewBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Loading...';
-
-            fetch('/delta/preview', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    project_name: projectName,
-                    product_type: productType,
-                    start_date: startDate,
-                    end_date: endDate
-                })
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                previewBtn.disabled = false;
-                previewBtn.innerHTML = '<i class="bi bi-search"></i> Preview Engineers';
-
-                if (data.error) { showError(data.error); return; }
-
-                previewBody.innerHTML = '';
-                saveAssignments.innerHTML = '';
-
-                data.days.forEach(function(day) {
-                    var tr = document.createElement('tr');
-
-                    var tdDate = document.createElement('td');
-                    tdDate.className = 'fw-medium small';
-                    tdDate.textContent = day.day_name;
-                    tr.appendChild(tdDate);
-
-                    [1, 2, 3].forEach(function(sn) {
-                        var td = document.createElement('td');
-                        td.className = 'text-center';
-                        td.style.backgroundColor = SHIFT_COLORS[sn];
-
-                        var shiftData = day.shifts[String(sn)] || {auto: null, eligible: []};
-                        var sel = document.createElement('select');
-                        sel.className = 'form-select form-select-sm';
-                        sel.name = 'assign[' + day.date_str + '][' + sn + ']';
-                        sel.id = 'sel_' + day.date_str + '_' + sn;
-
-                        var emptyOpt = document.createElement('option');
-                        emptyOpt.value = '';
-                        emptyOpt.textContent = '— unassigned —';
-                        sel.appendChild(emptyOpt);
-
-                        shiftData.eligible.forEach(function(name) {
-                            var o = document.createElement('option');
-                            o.value = name;
-                            o.textContent = name;
-                            if (name === shiftData.auto) o.selected = true;
-                            sel.appendChild(o);
-                        });
-
-                        if (shiftData.eligible.length === 0) {
-                            var o = document.createElement('option');
-                            o.value = '';
-                            o.textContent = 'No eligible engineers';
-                            sel.appendChild(o);
-                            sel.disabled = true;
-                        }
-
-                        td.appendChild(sel);
-                        tr.appendChild(td);
-                    });
-
-                    previewBody.appendChild(tr);
-                });
-
-                saveProject.value = projectName;
-                saveProductType.value = productType;
-                saveStart.value = startDate;
-                saveEnd.value = endDate;
-                saveStartTime.value = startTimeInput.value;
-                saveEndTime.value = endTimeInput.value;
-
-                previewBadge.textContent = projectName + ' — ' + productType;
-                previewCard.style.removeProperty('display');
-
-                previewCard.scrollIntoView({behavior: 'smooth', block: 'nearest'});
-            })
-            .catch(function() {
-                previewBtn.disabled = false;
-                previewBtn.innerHTML = '<i class="bi bi-search"></i> Preview Engineers';
-                showError('Network error. Please try again.');
-            });
-        });
-
-        document.getElementById('saveDeltaForm').addEventListener('submit', function(e) {
-            var btn = this.querySelector('button[type="submit"]');
-            if (btn.disabled) { e.preventDefault(); return; }   // block double-submit
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving...';
-
-            var selects = previewBody.querySelectorAll('select');
-            saveAssignments.innerHTML = '';
-            selects.forEach(function(sel) {
-                var hidden = document.createElement('input');
-                hidden.type = 'hidden';
-                hidden.name = sel.name;
-                hidden.value = sel.value;
-                saveAssignments.appendChild(hidden);
-            });
-            if (!managerAutoRow.classList.contains('d-none')) {
-                saveManager.value = managerAutoInput.value;
-            } else if (!managerSelectRow.classList.contains('d-none')) {
-                saveManager.value = managerSelect.value;
-            }
+            saveStart.value     = startDate;
+            saveEnd.value       = endDate;
             saveStartTime.value = startTimeInput.value;
-            saveEndTime.value = endTimeInput.value;
-        });
+            saveEndTime.value   = endTimeInput.value;
 
-        function showError(msg) {
-            previewError.textContent = msg;
-            previewError.classList.remove('d-none');
-        }
+            // Generate one assignment per day in range for each shift
+            saveAssignments.innerHTML = '';
+            var s2 = engShift2.value;
+            var s3 = engShift3.value;
+            var cur = new Date(startDate + 'T00:00:00');
+            var end = new Date(endDate   + 'T00:00:00');
+            while (cur <= end) {
+                var ds = cur.getFullYear() + '-' + pad(cur.getMonth() + 1) + '-' + pad(cur.getDate());
+                if (s2) {
+                    var h = document.createElement('input');
+                    h.type = 'hidden'; h.name = 'assign[' + ds + '][2]'; h.value = s2;
+                    saveAssignments.appendChild(h);
+                }
+                if (s3) {
+                    var h2 = document.createElement('input');
+                    h2.type = 'hidden'; h2.name = 'assign[' + ds + '][3]'; h2.value = s3;
+                    saveAssignments.appendChild(h2);
+                }
+                cur.setDate(cur.getDate() + 1);
+            }
+
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving...';
+            document.getElementById('saveDeltaForm').submit();
+        });
     })();
     </script>
     <script>
@@ -936,7 +887,7 @@
                             '</div>' +
                             '<div class="table-responsive"><table class="table table-sm table-bordered mb-0">' +
                             '<thead class="table-light"><tr>' +
-                            '<th>Date</th><th class="text-center">Shift 1</th><th class="text-center">Shift 2</th><th class="text-center">Shift 3</th>' +
+                            '<th>Date</th><th class="text-center">Shift 2</th><th class="text-center">Shift 3</th>' +
                             '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
                     });
 

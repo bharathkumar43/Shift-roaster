@@ -164,7 +164,7 @@
         </div>
         <div class="card-body p-0">
             <div class="accordion accordion-flush" id="shiftAccordion">
-                {% for s_num in [1, 2, 3] %}
+                {% for s_num in [2, 3] %}
                 {% set s_rows = data.shift_breakdown | selectattr('shift_num', 'equalto', s_num) | list %}
                 {% if s_rows %}
                 <div class="accordion-item">
@@ -173,9 +173,8 @@
                                 type="button" data-bs-toggle="collapse"
                                 data-bs-target="#collapse{{ s_num }}">
                             <span class="shift-badge s{{ s_num }}-badge me-2">Shift {{ s_num }}</span>
-                            {% if s_num == 1 %}Morning (12 AM – 8 AM)
-                            {% elif s_num == 2 %}Afternoon (8 AM – 4 PM)
-                            {% else %}Night (4 PM – 12 AM){% endif %}
+                            {% if s_num == 2 %}Afternoon (1 PM – 10 PM)
+                            {% else %}Night (9 PM – 6 AM){% endif %}
                             <span class="badge bg-secondary ms-2">{{ s_rows|length }} project{{ 's' if s_rows|length != 1 }}</span>
                         </button>
                     </h2>
